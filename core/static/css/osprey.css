@@ -774,3 +774,116 @@ button.ghost:hover {
     max-width: 44rem;
     line-height: 1.6;
 }
+/* ---- Search form (project list) ---- */
+
+.search-form {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.search-form .search-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+    width: 100%;
+}
+
+.search-form .search-row + .search-row {
+    margin-top: 0.75rem;
+}
+
+.search-form .search-row.narrow {
+    flex-wrap: wrap;
+    align-items: end;
+}
+
+.search-form .search-input {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    font-size: 1.05rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+.search-form .search-input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+}
+
+.search-form button[type="submit"] {
+    flex: 0 0 auto;
+}
+
+.search-form .search-field {
+    flex: 1 1 14rem;
+    min-width: 12rem;
+}
+
+.search-form .search-field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.25rem;
+}
+
+.search-form .search-field select {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+/* ---- Project card byline ---- */
+
+.byline {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.9rem;
+    color: var(--fg-muted);
+}
+
+.byline span {
+    color: var(--fg);
+}
+
+/* ---- Form actions row ---- */
+
+.form-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.form-actions .ghost,
+button.ghost,
+.button.ghost {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border);
+}
+
+.form-actions .ghost:hover,
+button.ghost:hover,
+.button.ghost:hover {
+    background: var(--bg-soft);
+}
+
+/* ---- Profile ---- */
+
+.profile section {
+    margin-top: 1.5rem;
+}
+
+.profile .grid {
+    margin-top: 0.5rem;
+}

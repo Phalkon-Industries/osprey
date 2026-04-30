@@ -38,13 +38,6 @@
         <h2>README</h2>
         <div class="prose">{{ project.readme|markdown }}</div>
     </section>
-    {% elif project.description %}
-    <section>
-        <h2>About</h2>
-        <div class="prose">
-            <p>{{ project.description|linebreaksbr }}</p>
-        </div>
-    </section>
     {% endif %}
 
     {% if project.images.count > 1 %}
@@ -81,15 +74,21 @@
         </section>
 
         <section>
-            <h2>Artifacts</h2>
+            <h2>Where the files live</h2>
             <ul>
+                {% if project.canonical_url %}
+                <li>
+                    <span class="pill">canonical</span>
+                    <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a>
+                </li>
+                {% endif %}
                 {% for a in project.artifact_links.all %}
                 <li>
                     <span class="pill">{{ a.get_kind_display }}</span>
                     <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
                 </li>
                 {% empty %}
-                <li class="muted">No artifact links yet.</li>
+                {% if not project.canonical_url %}<li class="muted">No file links yet.</li>{% endif %}
                 {% endfor %}
             </ul>
         </section>

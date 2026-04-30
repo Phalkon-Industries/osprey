@@ -2,6 +2,10 @@ from django.conf import settings
 from django.db import models
 
 
+def _avatar_upload_to(instance: "Profile", filename: str) -> str:
+    return f"avatars/{instance.user_id}/{filename}"
+
+
 class Institution(models.Model):
     name = models.CharField(max_length=200, unique=True)
     short_name = models.CharField(max_length=40, blank=True)
@@ -22,6 +26,15 @@ class Profile(models.Model):
         related_name="profile",
     )
     display_name = models.CharField(max_length=200, blank=True)
+    bio = models.TextField(
+        blank=True,
+        help_text="Optional short bio. Markdown is supported.",
+    )
+    avatar = models.ImageField(
+        upload_to=_avatar_upload_to,
+        blank=True,
+        null=True,
+    )
     orcid_placeholder = models.CharField(
         max_length=40,
         blank=True,

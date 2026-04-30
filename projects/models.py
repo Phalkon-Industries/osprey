@@ -55,7 +55,10 @@ class Project(models.Model):
         blank=True,
         help_text="One-line plain-English description. Used for cards and search.",
     )
-    description = models.TextField(blank=True)
+    description = models.TextField(
+        blank=True,
+        help_text="Deprecated. Kept for backwards compatibility; new content goes in summary or readme.",
+    )
     readme = models.TextField(
         blank=True,
         help_text="Long-form project README. Markdown is supported.",

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}Edit profile — OSPREY{% endblock %}
+{% block content %}
+<h1>Edit your profile</h1>
+<p class="muted" style="max-width:42rem">
+    These details show up on your profile page and on projects you're listed
+    on. Everything is optional except a username.
+</p>
+
+<form method="post" enctype="multipart/form-data" style="max-width:42rem">
+    {% csrf_token %}
+    {% for field in form %}
+    <p>
+        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
+        {{ field }}
+        {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
+        {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
+    </p>
+    {% endfor %}
+    <button type="submit">Save profile</button>
+    <a class="button ghost" href="{% url 'people:detail' user.pk %}" style="margin-left:.5rem">Cancel</a>
+</form>
+{% endblock %}

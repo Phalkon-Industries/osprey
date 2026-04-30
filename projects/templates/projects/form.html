@@ -1,41 +1,47 @@
 {% extends "base.html" %}
 {% block title %}{% if mode == 'edit' %}Edit{% else %}Submit{% endif %} project — OSPREY{% endblock %}
+
 {% block content %}
 <h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
 <p class="muted" style="max-width:42rem">
-    Required: title, slug, license. Drafts default to <em>private</em> — flip the
-    visibility field to <em>public</em> when ready to share. Images, contributors,
-    and artifact links are added through the admin or (post-create) the project page.
+    A short description shows up on cards. The README is the main page.
+    {% if mode == 'new' or not project.is_public %}
+    Save a draft to come back to it later. Publish when you're ready to share.
+    {% else %}
+    This project is published. Edits go live immediately.
+    {% endif %}
 </p>
 
-<form method="post" style="max-width:42rem">
+<form method="post" enctype="multipart/form-data" style="max-width:42rem" class="project-form">
     {% csrf_token %}
     {% for field in form %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
         {{ field }}
         {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
-        {% if field.errors %}<br><span style="color:#b91c1c">{{ field.errors|join:" " }}</span>{% endif %}
+        {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
     </p>
     {% endfor %}
-    <button type="submit" style="padding:.5rem 1rem">
-        {% if mode == 'edit' %}Save changes{% else %}Create project{% endif %}
-    </button>
-    {% if mode == 'edit' %}
-    <a href="{{ project.get_absolute_url }}" style="margin-left:1rem">Cancel</a>
+
+    <div class="form-actions">
+        {% if mode == 'edit' and project.is_public %}
+        <button type="submit" name="action" value="save">Save changes</button>
+        <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
+        {% else %}
+        <button type="submit" name="action" value="draft" class="ghost">Save draft</button>
+        <button type="submit" name="action" value="publish">Publish</button>
+        {% if mode == 'edit' %}
+        <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    {% if mode == 'new' %}
+    <p class="muted" style="font-size:.85rem;margin-top:1rem">
+        Heads up: once a project is published, it can't be flipped back to a
+        draft from this form. You can keep editing it, but the page stays
+        visible. Reach out if you need it pulled.
+    </p>
     {% endif %}
 </form>
-
-<style>
-    form input[type="text"],
-    form input[type="url"],
-    form select,
-    form textarea {
-        width: 100%;
-        padding: .4rem .5rem;
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        font: inherit;
-    }
-</style>
 {% endblock %}

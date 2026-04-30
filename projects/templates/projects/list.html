@@ -9,31 +9,51 @@
     {% endif %}
 </div>
 
-<form method="get" class="filters">
-    <div>
-        <label for="q">Search</label>
-        <input type="text" name="q" id="q" value="{{ q }}" placeholder="title, summary, description">
+<form method="get" class="search-form">
+    <div class="search-row">
+        <input class="search-input" type="search" name="q" id="q" value="{{ q }}"
+            placeholder="Search projects: title, summary, or README">
+        <button type="submit">Search</button>
     </div>
-    <div>
-        <label for="field">Field</label>
-        <select name="field" id="field">
-            <option value="">any</option>
-            {% for f in fields %}
-            <option value="{{ f }}" {% if f==active_field %}selected{% endif %}>{{ f }}</option>
-            {% endfor %}
-        </select>
+    <div class="search-row narrow">
+        <div class="search-field">
+            <label for="field-filter">Field</label>
+            <select name="field" id="field-filter">
+                <option value="">Any field</option>
+                {% for opt in field_options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="search-field">
+            <label for="type-filter">Project type</label>
+            <select name="project_type" id="type-filter">
+                <option value="">Any type</option>
+                {% for opt in project_type_options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+            </select>
+        </div>
     </div>
-    <div>
-        <label for="artifact_type">Artifact type</label>
-        <select name="artifact_type" id="artifact_type">
-            <option value="">any</option>
-            {% for a in artifact_types %}
-            <option value="{{ a }}" {% if a==active_artifact_type %}selected{% endif %}>{{ a }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <button type="submit">Apply</button>
 </form>
+
+<script>
+    // Re-apply selected state without using template comparisons. Avoids a
+    // cosmetic auto-formatter quirk that strips whitespace inside Django
+    // tags inside HTML files.
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        function setSel(id, val) {
+            if (!val) return;
+            var el = document.getElementById(id);
+            if (!el) return;
+            for (var i = 0; i < el.options.length; i++) {
+                if (el.options[i].value.toLowerCase() === val.toLowerCase()) {
+                    el.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+        setSel('field-filter', params.get('field'));
+        setSel('type-filter', params.get('project_type'));
+    })();
+</script>
 
 <div class="grid">
     {% for project in projects %}
@@ -45,9 +65,20 @@
         {% endwith %}
         <h3>
             <span>{{ project.title }}</span>
-            {% if not project.is_public %}<span class="badge private" style="font-weight:500">private</span>{% endif %}
+            {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
         </h3>
-        <p class="summary">{{ project.summary|default:project.description|truncatewords:22 }}</p>
+        <p class="summary">{{ project.summary|truncatewords:22 }}</p>
+        {% with authors=project.contributions.all|slice:":3" %}
+        {% if authors %}
+        <p class="byline">
+            by
+            {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{
+                c.user.profile.display_name|default:c.user.get_full_name|default:c.user.username }}</span>{% endfor %}
+            {% if project.contributions.count > 3 %}<span class="muted"> +{{ project.contributions.count|add:"-3"
+                }}</span>{% endif %}
+        </p>
+        {% endif %}
+        {% endwith %}
         <div class="meta">
             {% if project.field %}<span>{{ project.field }}</span>{% endif %}
             {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}

@@ -1,19 +1,112 @@
 {% extends "base.html" %}
-{% block title %}About OSPREY{% endblock %}
+{% block title %}About — OSPREY{% endblock %}
+
 {% block content %}
-<h1>About OSPREY</h1>
-<p>
-    OSPREY is a public-benefit research engineering commons. It is a curation, credit,
-    and lineage layer that sits on top of repositories like GitHub, Codeberg, and
-    Zenodo, rather than a primary file host.
-</p>
-<p>
-    This site is a demo. It carries a small body of pre-loaded projects from the WHOI
-    pilot. Anything OSPREY stores can be exported as plain JSON via
-    <a href="/api/v1/export/">/api/v1/export/</a>.
-</p>
-<p>
-    Source-of-truth planning documents live in the <code>planning/</code> directory of
-    the repository.
-</p>
+<article class="prose" style="max-width:44rem">
+    <h1>About OSPREY</h1>
+
+    <p style="font-size:1.1rem">
+        <strong>OSPREY</strong> &mdash; Open Science Platform for Research and
+        Engineering. A public-benefit commons for open research engineering.
+    </p>
+
+    <h2>The problem</h2>
+    <p>
+        Two graduate students in different labs are designing the same
+        underwater peristaltic pump right now, and neither knows the other
+        exists. Both designs will mostly work. Both will end up flattened
+        into one sentence in a paper or thesis: &ldquo;a custom peristaltic
+        pump was used.&rdquo; Next year, a third student starts from zero.
+        Either of those designs could have saved weeks of work, but neither
+        is findable. This pattern holds across experimental fields, and
+        it's a quiet drag on how fast science moves.
+    </p>
+    <p>
+        Good designs already exist out there, and many researchers and
+        engineers are willing to share them if they're asked. But formally
+        open-sourcing a design is a lot of effort with often no benefit to
+        the creator. How would somebody find their design even if they did
+        open source it? And if nobody can find it, why bother documenting
+        and open-sourcing it in the first place?
+    </p>
+
+    <h2>What OSPREY is</h2>
+    <p>
+        OSPREY is a proposed commons for open-sourced research engineering.
+        If you've used Printables or Thingiverse for 3D-printable models,
+        the idea is similar: a place where people upload designs with
+        enough metadata that other researchers can actually find them.
+        The main difference is that OSPREY is built around how academic
+        research credit works.
+    </p>
+    <p>
+        When you publish a project, it gets a citable DOI. If somebody
+        uses your design, they're expected to cite it in any resulting
+        publication or, when a citation isn't a natural fit, leave a user
+        attestation on the project page. OSPREY tracks both. Over time a
+        project accumulates a public record of who used it and what came
+        out of that use.
+    </p>
+    <p>
+        OSPREY also gives projects the tools to make their open-source
+        efforts succeed: community wikis for documentation, issue tracking
+        so people can report problems and suggest improvements, and basic
+        governance structures so a project can grow beyond one person
+        maintaining it alone.
+    </p>
+    <p>
+        When somebody forks a project to adapt it for their own work,
+        OSPREY records a lineage edge from the new version back to the
+        original. Credit propagates through the tree, so the engineer who
+        did the foundational work still gets recognized when somebody
+        three forks down publishes a paper using a descendant of their
+        pump. And at any time, somebody can look at the lineage tree to
+        see the path a project has taken to get where it is, and to find
+        related projects worth knowing about.
+    </p>
+    <p>
+        The point of all of this is to make open-sourcing engineering work
+        easier, and to make it feel worth doing. People who upload,
+        contribute to, and maintain designs that get used build a visible
+        record of that contribution, in a form that hiring committees and
+        funders can actually evaluate. And researchers looking for a
+        design can search a catalog of projects that have been used and
+        tested in real labs.
+    </p>
+
+    <h2>The future I want to build</h2>
+    <p>
+        In ten years, when a new graduate student is asked to build a
+        pump, their first move is to search OSPREY's commons of research
+        engineering. They find three mature, well-documented designs.
+        They pick the closest fit, adapt it, and have a working prototype
+        in a week. The original authors get credit every time someone
+        uses the design. The student can submit improvements back, and
+        the next person who comes along starts from their version.
+    </p>
+    <p>
+        Every research field would have a handful of canonical reference
+        designs that the community has converged on, maintains together,
+        and improves over time. Researchers get credit for useful
+        engineering work, tracked through real reuse. Funders and hiring
+        committees treat open source engineering contributions as real,
+        measurable outputs in evaluations. And open-sourcing a design
+        becomes a standard publishing step because it just makes sense.
+    </p>
+
+    <h2>Where the project is at</h2>
+    <p>
+        Right now I'm building a demo. A small web app that shows the
+        core platform working with a couple of reference designs.
+        Alongside that, I'm starting conversations with a few labs and a
+        couple of peer institutions about what they'd want from a tool
+        like this, and looking at potential grant routes for funding the
+        next phase.
+    </p>
+    <p>
+        OSPREY is run by Jonathan A Pfeifer through pHalkon Industries
+        LLC as a public-benefit project. If you'd like to help build it,
+        or use the demo with your own work, get in touch.
+    </p>
+</article>
 {% endblock %}

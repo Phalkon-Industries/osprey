@@ -1,23 +1,81 @@
 {% extends "base.html" %}
-{% block title %}{{ person.username }} — OSPREY{% endblock %}
-{% block content %}
-<h1>{{ person.profile.display_name|default:person.get_full_name|default:person.username }}</h1>
-<p class="muted">
-    {% if person.profile.institution %}{{ person.profile.institution }}{% endif %}
-    {% if person.profile.orcid_placeholder %}
-    &middot; ORCID (placeholder): {{ person.profile.orcid_placeholder }}
-    {% endif %}
-</p>
+{% load osprey_md %}
+{% block title %}{{ person.profile.display_name|default:person.get_full_name|default:person.username }} — OSPREY{%
+endblock %}
 
-<h2>Projects</h2>
-<ul>
-    {% for c in contributions %}
-    <li>
-        <a href="{{ c.project.get_absolute_url }}">{{ c.project.title }}</a>
-        <span class="muted">— {{ c.get_role_display }}</span>
-    </li>
-    {% empty %}
-    <li class="muted">No project contributions recorded.</li>
-    {% endfor %}
-</ul>
+{% block content %}
+<article class="profile">
+    <header style="display:flex;gap:1.25rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1rem">
+        {% if person.profile.avatar %}
+        <img src="{{ person.profile.avatar.url }}" alt="" class="avatar"
+            style="width:6rem;height:6rem;border-radius:50%;object-fit:cover;border:1px solid var(--border);background:var(--bg-soft)">
+        {% else %}
+        <div class="avatar" aria-hidden="true"
+            style="width:6rem;height:6rem;border-radius:50%;background:var(--bg-soft);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--fg-muted);font-size:1.6rem;font-weight:600">
+            {{ person.username|slice:":1"|upper }}
+        </div>
+        {% endif %}
+        <div style="flex:1;min-width:14rem">
+            <h1 style="margin:0">
+                {{ person.profile.display_name|default:person.get_full_name|default:person.username }}
+            </h1>
+            <p class="muted" style="margin:.25rem 0">
+                @{{ person.username }}
+                {% if person.profile.institution %}&middot; {{ person.profile.institution }}{% endif %}
+                {% if person.profile.orcid_placeholder %}&middot; ORCID {{ person.profile.orcid_placeholder }}{% endif
+                %}
+            </p>
+        </div>
+        {% if is_self %}
+        <a class="button ghost" href="{% url 'people:edit' %}">Edit profile</a>
+        {% endif %}
+    </header>
+
+    {% if person.profile.bio %}
+    <section>
+        <h2>About</h2>
+        <div class="prose">{{ person.profile.bio|markdown }}</div>
+    </section>
+    {% endif %}
+
+    {% if is_self and own_projects %}
+    <section>
+        <h2>Your projects</h2>
+        <div class="grid">
+            {% for project in own_projects %}
+            <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
+                <h3>
+                    <span>{{ project.title }}</span>
+                    {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{%
+                    endif %}
+                </h3>
+                <p class="summary">{{ project.summary|truncatewords:18 }}</p>
+                <div class="meta">
+                    {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+                    {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <section>
+        <h2>Project credits</h2>
+        {% if contributions %}
+        <ul>
+            {% for c in contributions %}
+            {% if c.project.is_public or is_self %}
+            <li>
+                <a href="{{ c.project.get_absolute_url }}">{{ c.project.title }}</a>
+                <span class="muted">— {{ c.get_role_display }}</span>
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No project contributions recorded.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+</article>
 {% endblock %}

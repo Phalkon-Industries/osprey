@@ -24,7 +24,19 @@
             {% endif %}
             {% endwith %}
             <h3>{{ project.title }}</h3>
-            <p class="summary">{{ project.summary|default:project.description|truncatewords:18 }}</p>
+            <p class="summary">{{ project.summary|truncatewords:18 }}</p>
+            {% with authors=project.contributions.all|slice:":3" %}
+            {% if authors %}
+            <p class="byline">
+                by
+                {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{
+                    c.user.profile.display_name|default:c.user.get_full_name|default:c.user.username }}</span>{% endfor
+                %}
+                {% if project.contributions.count > 3 %}<span class="muted"> +{{ project.contributions.count|add:"-3"
+                    }}</span>{% endif %}
+            </p>
+            {% endif %}
+            {% endwith %}
             <div class="meta">
                 {% if project.field %}<span>{{ project.field }}</span>{% endif %}
                 {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
