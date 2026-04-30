@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}OSPREY — Open Science Platform for Research and Engineering{% endblock %}
+{% block content %}
+<section class="hero">
+    <h1>A credit and lineage layer for research engineering.</h1>
+    <p class="lede">
+        OSPREY makes the second user of an instrument, a script, or a board design
+        easy to find, easy to credit, and easy to build on. This is the demo build.
+        Browse the <a href="{% url 'projects:list' %}">projects</a> seeded from the
+        WHOI pilot, follow the lineage between them, or pull the whole record as
+        plain JSON from <a href="/api/v1/export/">/api/v1/export/</a>.
+    </p>
+</section>
+
+<section>
+    <h2>Recent additions</h2>
+    {% if recent %}
+    <div class="grid">
+        {% for project in recent %}
+        <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
+            {% with first_image=project.images.first %}
+            {% if first_image %}
+            <img class="thumb" src="{{ first_image.image.url }}" alt="{{ first_image.caption|default:project.title }}">
+            {% endif %}
+            {% endwith %}
+            <h3>{{ project.title }}</h3>
+            <p class="summary">{{ project.summary|default:project.description|truncatewords:18 }}</p>
+            <div class="meta">
+                {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+                {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
+                {% if project.institution %}<span>· {{ project.institution }}</span>{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No projects yet. Sign in and add one.</p>
+    {% endif %}
+</section>
+{% endblock %}

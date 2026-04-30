@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+planning/
+node_modules/
+.venv/
+staticfiles/
+media/

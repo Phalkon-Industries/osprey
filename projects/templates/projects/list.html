@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Projects — OSPREY{% endblock %}
+{% block content %}
+<div class="project-header">
+    <h1>Projects</h1>
+    <span class="spacer"></span>
+    {% if user.is_authenticated %}
+    <a class="button" href="{% url 'projects:new' %}">+ Submit a project</a>
+    {% endif %}
+</div>
+
+<form method="get" class="filters">
+    <div>
+        <label for="q">Search</label>
+        <input type="text" name="q" id="q" value="{{ q }}" placeholder="title, summary, description">
+    </div>
+    <div>
+        <label for="field">Field</label>
+        <select name="field" id="field">
+            <option value="">any</option>
+            {% for f in fields %}
+            <option value="{{ f }}" {% if f==active_field %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="artifact_type">Artifact type</label>
+        <select name="artifact_type" id="artifact_type">
+            <option value="">any</option>
+            {% for a in artifact_types %}
+            <option value="{{ a }}" {% if a==active_artifact_type %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit">Apply</button>
+</form>
+
+<div class="grid">
+    {% for project in projects %}
+    <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
+        {% with first_image=project.images.first %}
+        {% if first_image %}
+        <img class="thumb" src="{{ first_image.image.url }}" alt="{{ first_image.caption|default:project.title }}">
+        {% endif %}
+        {% endwith %}
+        <h3>
+            <span>{{ project.title }}</span>
+            {% if not project.is_public %}<span class="badge private" style="font-weight:500">private</span>{% endif %}
+        </h3>
+        <p class="summary">{{ project.summary|default:project.description|truncatewords:22 }}</p>
+        <div class="meta">
+            {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+            {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
+            {% if project.institution %}<span>· {{ project.institution }}</span>{% endif %}
+            {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{%
+            endif %}
+        </div>
+        {% if project.tags.all %}
+        <div style="margin-top:.5rem">
+            {% for tag in project.tags.all %}<span class="pill">{{ tag.name }}</span>{% endfor %}
+        </div>
+        {% endif %}
+    </a>
+    {% empty %}
+    <p class="muted">No projects match those filters.</p>
+    {% endfor %}
+</div>
+{% endblock %}

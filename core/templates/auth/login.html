@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Sign in — OSPREY{% endblock %}
+{% block content %}
+<h1>Sign in</h1>
+<p class="muted">The demo is invite-only. Reviewers receive credentials by email.</p>
+<form method="post" style="max-width:24rem">
+    {% csrf_token %}
+    {% if form.errors %}
+    <p style="color:#b91c1c">Username and password did not match. Please try again.</p>
+    {% endif %}
+    <p>
+        <label for="id_username">Username</label><br>
+        <input type="text" name="username" id="id_username" required autofocus style="width:100%;padding:.4rem">
+    </p>
+    <p>
+        <label for="id_password">Password</label><br>
+        <input type="password" name="password" id="id_password" required style="width:100%;padding:.4rem">
+    </p>
+    <button type="submit" style="padding:.5rem 1rem">Sign in</button>
+    <input type="hidden" name="next" value="{{ next }}">
+</form>
+{% endblock %}

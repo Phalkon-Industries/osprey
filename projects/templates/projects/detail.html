@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}{{ project.title }} — OSPREY{% endblock %}
+
+{% block content %}
+<article>
+    {% with hero=project.images.first %}
+    {% if hero %}
+    <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
+    {% endif %}
+    {% endwith %}
+
+    <header class="project-header">
+        <h1>{{ project.title }}</h1>
+        {% if not project.is_public %}<span class="badge private">private</span>{% endif %}
+        {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
+        <span class="spacer"></span>
+        {% if can_edit %}
+        <a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>
+        {% endif %}
+    </header>
+
+    {% if project.summary %}
+    <p class="project-summary">{{ project.summary }}</p>
+    {% endif %}
+
+    <p class="project-meta">
+        {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+        {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
+        {% if project.institution %}
+        <span class="sep">{{ project.institution }}</span>
+        {% endif %}
+        <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
+    </p>
+
+    {% if project.readme %}
+    <section>
+        <h2>README</h2>
+        <div class="prose">{{ project.readme|markdown }}</div>
+    </section>
+    {% elif project.description %}
+    <section>
+        <h2>About</h2>
+        <div class="prose">
+            <p>{{ project.description|linebreaksbr }}</p>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if project.images.count > 1 %}
+    <section>
+        <h2>Gallery</h2>
+        <div class="gallery">
+            {% for img in project.images.all|slice:"1:" %}
+            <figure style="margin:0">
+                <img src="{{ img.image.url }}" alt="{{ img.caption|default:project.title }}">
+                {% if img.caption %}
+                <figcaption class="muted" style="font-size:.85rem;margin-top:.25rem">{{ img.caption }}</figcaption>
+                {% endif %}
+            </figure>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="two-col" style="margin-top:1.5rem">
+        <section>
+            <h2>Contributors</h2>
+            <ul>
+                {% for c in project.contributions.all %}
+                <li>
+                    <a href="{% url 'people:detail' c.user.id %}">
+                        {{ c.user.get_full_name|default:c.user.username }}
+                    </a>
+                    <span class="muted">— {{ c.get_role_display }}</span>
+                </li>
+                {% empty %}
+                <li class="muted">No contributors recorded.</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section>
+            <h2>Artifacts</h2>
+            <ul>
+                {% for a in project.artifact_links.all %}
+                <li>
+                    <span class="pill">{{ a.get_kind_display }}</span>
+                    <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
+                </li>
+                {% empty %}
+                <li class="muted">No artifact links yet.</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+
+    <section>
+        <h2>Citation</h2>
+        <div class="cite-actions">
+            <a href="{% url 'projects:cite' project.slug %}?format=bibtex">BibTeX</a>
+            <a href="{% url 'projects:cite' project.slug %}?format=csl">CSL JSON</a>
+        </div>
+        <p class="muted" style="font-size:.9rem;margin-top:.6rem">
+            DOI placeholder:
+            <code>{{ project.placeholder_doi|default:"10.demo/" }}{% if not project.placeholder_doi %}{{ project.slug }}{% endif %}</code>
+            {% if project.license %} &middot; License: <strong>{{ project.license }}</strong>{% endif %}
+        </p>
+    </section>
+
+    <section>
+        <h2>Cited by</h2>
+        {% if project.citations.all %}
+        <ul>
+            {% for c in project.citations.all %}
+            <li>
+                {{ c.text }}
+                {% if c.year %} <span class="muted">({{ c.year }})</span>{% endif %}
+                {% if c.doi %} &middot; <a href="https://doi.org/{{ c.doi }}" rel="noopener">{{ c.doi }}</a>{% endif %}
+                {% if c.url %} &middot; <a href="{{ c.url }}" rel="noopener">link</a>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No citations recorded yet.</p>
+        {% endif %}
+    </section>
+
+    <section>
+        <h2>Lineage</h2>
+        {% if lineage_svg %}
+        <div class="lineage">{{ lineage_svg|safe }}</div>
+        {% else %}
+        <p class="muted">No lineage relationships recorded for this project.</p>
+        {% endif %}
+    </section>
+
+    {% if project.tags.all %}
+    <section>
+        <h2>Tags</h2>
+        {% for tag in project.tags.all %}
+        <a href="{% url 'projects:list' %}?tag={{ tag.name }}" class="pill">{{ tag.name }}</a>
+        {% endfor %}
+    </section>
+    {% endif %}
+</article>
+{% endblock %}

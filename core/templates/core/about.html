@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}About OSPREY{% endblock %}
+{% block content %}
+<h1>About OSPREY</h1>
+<p>
+    OSPREY is a public-benefit research engineering commons. It is a curation, credit,
+    and lineage layer that sits on top of repositories like GitHub, Codeberg, and
+    Zenodo, rather than a primary file host.
+</p>
+<p>
+    This site is a demo. It carries a small body of pre-loaded projects from the WHOI
+    pilot. Anything OSPREY stores can be exported as plain JSON via
+    <a href="/api/v1/export/">/api/v1/export/</a>.
+</p>
+<p>
+    Source-of-truth planning documents live in the <code>planning/</code> directory of
+    the repository.
+</p>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Institutions — OSPREY{% endblock %}
+{% block content %}
+<h1>Institutions</h1>
+<ul>
+    {% for inst in institutions %}
+    <li>{{ inst.name }}{% if inst.short_name %} <span class="muted">({{ inst.short_name }})</span>{% endif %}</li>
+    {% empty %}
+    <li class="muted">No institutions yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

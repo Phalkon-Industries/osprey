@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}People — OSPREY{% endblock %}
+{% block content %}
+<h1>People</h1>
+<ul>
+    {% for u in users %}
+    <li>
+        <a href="{% url 'people:detail' u.id %}">
+            {{ u.profile.display_name|default:u.get_full_name|default:u.username }}
+        </a>
+        {% if u.profile.institution %}
+        <span class="muted">— {{ u.profile.institution }}</span>
+        {% endif %}
+    </li>
+    {% empty %}
+    <li class="muted">No people yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

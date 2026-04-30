@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'edit' %}Edit{% else %}Submit{% endif %} project — OSPREY{% endblock %}
+{% block content %}
+<h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
+<p class="muted" style="max-width:42rem">
+    Required: title, slug, license. Drafts default to <em>private</em> — flip the
+    visibility field to <em>public</em> when ready to share. Images, contributors,
+    and artifact links are added through the admin or (post-create) the project page.
+</p>
+
+<form method="post" style="max-width:42rem">
+    {% csrf_token %}
+    {% for field in form %}
+    <p>
+        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
+        {{ field }}
+        {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
+        {% if field.errors %}<br><span style="color:#b91c1c">{{ field.errors|join:" " }}</span>{% endif %}
+    </p>
+    {% endfor %}
+    <button type="submit" style="padding:.5rem 1rem">
+        {% if mode == 'edit' %}Save changes{% else %}Create project{% endif %}
+    </button>
+    {% if mode == 'edit' %}
+    <a href="{{ project.get_absolute_url }}" style="margin-left:1rem">Cancel</a>
+    {% endif %}
+</form>
+
+<style>
+    form input[type="text"],
+    form input[type="url"],
+    form select,
+    form textarea {
+        width: 100%;
+        padding: .4rem .5rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font: inherit;
+    }
+</style>
+{% endblock %}

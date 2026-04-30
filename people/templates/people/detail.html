@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ person.username }} — OSPREY{% endblock %}
+{% block content %}
+<h1>{{ person.profile.display_name|default:person.get_full_name|default:person.username }}</h1>
+<p class="muted">
+    {% if person.profile.institution %}{{ person.profile.institution }}{% endif %}
+    {% if person.profile.orcid_placeholder %}
+    &middot; ORCID (placeholder): {{ person.profile.orcid_placeholder }}
+    {% endif %}
+</p>
+
+<h2>Projects</h2>
+<ul>
+    {% for c in contributions %}
+    <li>
+        <a href="{{ c.project.get_absolute_url }}">{{ c.project.title }}</a>
+        <span class="muted">— {{ c.get_role_display }}</span>
+    </li>
+    {% empty %}
+    <li class="muted">No project contributions recorded.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

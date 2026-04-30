@@ -1,0 +1,105 @@
+<!doctype html>
+{% load static %}
+<html lang="en" data-theme="auto">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}OSPREY{% endblock %}</title>
+    {# Set theme before paint to avoid flash of incorrect theme. #}
+    <script>
+        (function () {
+            try {
+                var m = document.cookie.match(/(?:^|; )osprey-theme=([^;]+)/);
+                var t = m ? decodeURIComponent(m[1]) : 'auto';
+                if (t !== 'light' && t !== 'dark') t = 'auto';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { /* fall through to auto default */ }
+        })();
+    </script>
+    <link rel="stylesheet" href="{% static 'css/osprey.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+    <header class="site">
+        <a class="brand" href="{% url 'home' %}">
+            {# Simple osprey-ish silhouette as inline SVG: bird wing arc. #}
+            <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 17 C 7 12, 11 11, 14 9 L 22 4 L 19 11 C 17 16, 13 19, 8 20 L 2 17 Z"></path>
+                <path d="M14 9 L 11 14"></path>
+            </svg>
+            OSPREY
+        </a>
+        <nav>
+            <a href="{% url 'projects:list' %}">Projects</a>
+            <a href="{% url 'people:list' %}">People</a>
+            <a href="{% url 'institutions:list' %}">Institutions</a>
+            <a href="{% url 'about' %}">About</a>
+            {% if user.is_authenticated %}
+            <a href="{% url 'projects:new' %}">Submit</a>
+            {% endif %}
+        </nav>
+        <span class="spacer"></span>
+        <span class="theme-toggle" role="group" aria-label="Theme">
+            <button type="button" data-theme-set="light" title="Light theme" aria-pressed="false">Light</button>
+            <button type="button" data-theme-set="auto" title="Match system" aria-pressed="false">Auto</button>
+            <button type="button" data-theme-set="dark" title="Dark theme" aria-pressed="false">Dark</button>
+        </span>
+        <span class="auth">
+            {% if user.is_authenticated %}
+            <span class="muted">{{ user.get_username }}</span>
+            <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
+                {% csrf_token %}
+                <button type="submit" class="ghost" style="padding:.3rem .65rem;font-size:.85rem">Sign out</button>
+            </form>
+            {% else %}
+            <a href="{% url 'login' %}">Sign in</a>
+            {% endif %}
+        </span>
+    </header>
+    <main>
+        {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+            <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="site">
+        OSPREY demo &middot; data export at <a href="/api/v1/export/">/api/v1/export/</a> &middot;
+        OpenAPI at <a href="/api/v1/docs">/api/v1/docs</a>
+    </footer>
+
+    <script>
+        (function () {
+            var root = document.documentElement;
+            var btns = document.querySelectorAll('[data-theme-set]');
+
+            function apply(theme) {
+                root.setAttribute('data-theme', theme);
+                btns.forEach(function (b) {
+                    b.setAttribute('aria-pressed', b.dataset.themeSet === theme ? 'true' : 'false');
+                });
+            }
+
+            // Initial sync of toggle UI with whatever the inline script picked.
+            apply(root.getAttribute('data-theme') || 'auto');
+
+            btns.forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var t = b.dataset.themeSet;
+                    apply(t);
+                    // 1 year cookie, lax, available across the site.
+                    document.cookie = 'osprey-theme=' + encodeURIComponent(t) +
+                        '; path=/; max-age=31536000; samesite=lax';
+                });
+            });
+        })();
+    </script>
+</body>
+
+</html>
