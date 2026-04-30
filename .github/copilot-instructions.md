@@ -14,18 +14,18 @@ OSPREY is a public-benefit research engineering commons. The current state of th
 
 Read these before suggesting changes that touch their domain:
 
-- [vision.md](vision.md) — the why, future picture, and pump anecdote. Narrative source of truth.
-- [concept.md](concept.md) — what OSPREY is. Spec source of truth.
-- [implementation-plan.md](implementation-plan.md) — phases, milestones, support, risks. Plan source of truth.
-- [naming-shortlist.md](naming-shortlist.md) — naming decision and backup candidates.
-- [trademark-guide.md](trademark-guide.md) — trademark strategy and class recommendations.
-- [pose-notes.md](pose-notes.md) — NSF POSE analysis and adjacent funding programs.
-- [ai-writing-tells.md](ai-writing-tells.md) — what to avoid in writing. **Always consult before producing prose.**
+- [planning/vision.md](../planning/vision.md) — the why, future picture, and pump anecdote. Narrative source of truth.
+- [planning/concept.md](../planning/concept.md) — what OSPREY is. Spec source of truth.
+- [planning/implementation-plan.md](../planning/implementation-plan.md) — phases, milestones, support, risks. Plan source of truth.
+- [planning/demo-architecture.md](../planning/demo-architecture.md) — technical blueprint for the demo system. Source of truth for stack, deploy, repo layout. **Read before any code scaffolding work.**
+- [planning/trademark-guide.md](../planning/trademark-guide.md) — trademark strategy and class recommendations.
+- [planning/pose-notes.md](../planning/pose-notes.md) — NSF POSE analysis and adjacent funding programs.
+- [planning/ai-writing-tells.md](../planning/ai-writing-tells.md) — what to avoid in writing. **Always consult before producing prose.**
 
 Composed documents (derived from sources, not sources themselves):
 
-- [one-pager.md](one-pager.md) — for cold first-contact emails.
-- [pitch-deck-outline.md](pitch-deck-outline.md) — the slide outline.
+- [planning/one-pager.md](../planning/one-pager.md) — for cold first-contact emails.
+- [planning/pitch-deck-outline.md](../planning/pitch-deck-outline.md) — the slide outline.
 
 A document is one or the other, not both.
 
