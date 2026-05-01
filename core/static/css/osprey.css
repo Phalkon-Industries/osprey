@@ -641,9 +641,9 @@ button.ghost:hover {
 }
 
 .prose {
-    font-family: var(--font-serif);
-    font-size: 1.02rem;
-    line-height: 1.7;
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.65;
     max-width: 42rem;
     color: var(--fg);
 }
@@ -774,6 +774,7 @@ button.ghost:hover {
     max-width: 44rem;
     line-height: 1.6;
 }
+
 /* ---- Search form (project list) ---- */
 
 .search-form {
@@ -791,7 +792,7 @@ button.ghost:hover {
     width: 100%;
 }
 
-.search-form .search-row + .search-row {
+.search-form .search-row+.search-row {
     margin-top: 0.75rem;
 }
 
@@ -886,4 +887,63 @@ button.ghost:hover,
 
 .profile .grid {
     margin-top: 0.5rem;
+}
+
+/* Contributor formset rows on the project form. */
+.contributor-formset .contributor-row {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem 1rem;
+    margin: 0.75rem 0;
+    background: var(--bg-card, transparent);
+}
+
+.contributor-grid {
+    display: grid;
+    grid-template-columns: minmax(11rem, auto) 1fr 1fr 4.5rem;
+    gap: 0.5rem 0.75rem;
+    align-items: end;
+}
+
+.contributor-grid label,
+.contributor-credit {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.contributor-grid input,
+.contributor-grid select,
+.contributor-credit input {
+    width: 100%;
+    margin-top: 0.15rem;
+}
+
+.contributor-credit {
+    display: block;
+    margin-top: 0.6rem;
+}
+
+.contributor-row .delete-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.project-form input[type="text"],
+.project-form input[type="url"],
+.project-form input[type="email"],
+.project-form select,
+.project-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 700px) {
+    .contributor-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }

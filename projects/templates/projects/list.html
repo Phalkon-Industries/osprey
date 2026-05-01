@@ -58,24 +58,26 @@
 <div class="grid">
     {% for project in projects %}
     <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
+        {% if project.cover_image_url %}
+        <img class="thumb" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy">
+        {% else %}
         {% with first_image=project.images.first %}
         {% if first_image %}
         <img class="thumb" src="{{ first_image.image.url }}" alt="{{ first_image.caption|default:project.title }}">
         {% endif %}
         {% endwith %}
+        {% endif %}
         <h3>
             <span>{{ project.title }}</span>
             {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
         </h3>
         <p class="summary">{{ project.summary|truncatewords:22 }}</p>
-        {% with authors=project.contributions.all|slice:":3" %}
+        {% with authors=project.contributions.all|slice:":3" total=project.contributions.count %}
         {% if authors %}
         <p class="byline">
             by
-            {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{
-                c.user.profile.display_name|default:c.user.get_full_name|default:c.user.username }}</span>{% endfor %}
-            {% if project.contributions.count > 3 %}<span class="muted"> +{{ project.contributions.count|add:"-3"
-                }}</span>{% endif %}
+            {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor %}
+            {% if total > 3 %}<span class="muted"> +{{ total|add:"-3" }}</span>{% endif %}
         </p>
         {% endif %}
         {% endwith %}

@@ -21,7 +21,9 @@ endblock %}
             </h1>
             <p class="muted" style="margin:.25rem 0">
                 @{{ person.username }}
-                {% if person.profile.institution %}&middot; {{ person.profile.institution }}{% endif %}
+                {% if person.profile.institution %}&middot; <a
+                    href="{% url 'institutions:detail' person.profile.institution|slugify %}">{{
+                    person.profile.institution }}</a>{% endif %}
                 {% if person.profile.orcid_placeholder %}&middot; ORCID {{ person.profile.orcid_placeholder }}{% endif
                 %}
             </p>
@@ -67,7 +69,7 @@ endblock %}
             {% if c.project.is_public or is_self %}
             <li>
                 <a href="{{ c.project.get_absolute_url }}">{{ c.project.title }}</a>
-                <span class="muted">— {{ c.get_role_display }}</span>
+                <span class="muted">— {{ c.role }}</span>
             </li>
             {% endif %}
             {% endfor %}

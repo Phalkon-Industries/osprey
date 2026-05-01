@@ -8,7 +8,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 
-from people.models import Institution, Profile
+from people.models import Profile
 from projects.models import (
     ArtifactLink,
     Citation,
@@ -22,10 +22,7 @@ from projects.models import (
 
 User = get_user_model()
 
-whoi, _ = Institution.objects.get_or_create(
-    name="Woods Hole Oceanographic Institution",
-    defaults={"short_name": "WHOI"},
-)
+WHOI = "WHOI"
 
 alice, created = User.objects.get_or_create(
     username="alice",
@@ -36,7 +33,7 @@ if created:
     alice.save()
 Profile.objects.filter(user=alice).update(
     display_name="Alice Pfeifer",
-    institution=whoi,
+    institution=WHOI,
     orcid_placeholder="0000-0001-0000-0001",
 )
 
@@ -49,7 +46,7 @@ if created:
     bob.save()
 Profile.objects.filter(user=bob).update(
     display_name="Bob Hall",
-    institution=whoi,
+    institution=WHOI,
     orcid_placeholder="0000-0001-0000-0002",
 )
 
@@ -119,12 +116,16 @@ parent, _ = Project.objects.get_or_create(
         "license": "CERN-OHL-S-2.0",
         "placeholder_doi": "10.demo/whoi-pump-v1",
         "canonical_url": "https://github.com/example/whoi-pump-v1",
-        "institution": whoi,
+        "institution": WHOI,
         "visibility": Project.VISIBILITY_PUBLIC,
     },
 )
 Project.objects.filter(pk=parent.pk).update(
-    visibility=Project.VISIBILITY_PUBLIC, readme=PUMP_V1_README
+    visibility=Project.VISIBILITY_PUBLIC,
+    readme=PUMP_V1_README,
+    summary="First-generation peristaltic pump for in-situ ocean sampling.",
+    institution=WHOI,
+    cover_image_url="https://placehold.co/1200x600/0b3d5c/ffffff?text=WHOI+Pump+v1",
 )
 
 child, _ = Project.objects.get_or_create(
@@ -139,17 +140,44 @@ child, _ = Project.objects.get_or_create(
         "license": "CERN-OHL-S-2.0",
         "placeholder_doi": "10.demo/whoi-pump-v2",
         "canonical_url": "https://github.com/example/whoi-pump-v2",
-        "institution": whoi,
+        "institution": WHOI,
         "visibility": Project.VISIBILITY_PUBLIC,
     },
 )
 Project.objects.filter(pk=child.pk).update(
-    visibility=Project.VISIBILITY_PUBLIC, readme=PUMP_V2_README
+    visibility=Project.VISIBILITY_PUBLIC,
+    readme=PUMP_V2_README,
+    summary="Improved seal stack and lower power draw on the v1 design.",
+    institution=WHOI,
+    cover_image_url="https://placehold.co/1200x600/0b3d5c/ffffff?text=WHOI+Pump+v2",
 )
 
-Contribution.objects.get_or_create(project=parent, user=alice, role="author", defaults={"order": 0})
-Contribution.objects.get_or_create(project=parent, user=bob, role="contributor", defaults={"order": 1})
-Contribution.objects.get_or_create(project=child, user=alice, role="author", defaults={"order": 0})
+Contribution.objects.update_or_create(
+    project=parent,
+    orcid_id="0000-0001-0000-0001",
+    defaults={"user": alice, "display_name": "Alice Researcher", "role": "Author", "order": 0},
+)
+Contribution.objects.update_or_create(
+    project=parent,
+    orcid_id="0000-0001-0000-0002",
+    defaults={"user": bob, "display_name": "Bob Engineer", "role": "Contributor", "order": 1},
+)
+Contribution.objects.update_or_create(
+    project=parent,
+    orcid_id="0000-0009-9999-9999",
+    defaults={
+        "user": None,
+        "display_name": "Carol Stub (no OSPREY account yet)",
+        "role": "Advisor",
+        "credit_statement": "Stub credit. Auto-links if Carol later registers with this ORCID iD.",
+        "order": 2,
+    },
+)
+Contribution.objects.update_or_create(
+    project=child,
+    orcid_id="0000-0001-0000-0001",
+    defaults={"user": alice, "display_name": "Alice Researcher", "role": "Author", "order": 0},
+)
 
 ArtifactLink.objects.get_or_create(
     project=parent,
@@ -216,7 +244,6 @@ Citation.objects.get_or_create(
 )
 
 print("=== Seeded ===")
-print(f"institutions:    {Institution.objects.count()}")
 print(f"users:           {User.objects.count()}")
 print(f"projects:        {Project.objects.count()} (public: {Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).count()})")
 print(f"contributions:   {Contribution.objects.count()}")

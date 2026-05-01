@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}License guide — OSPREY{% endblock %}
+
+{% block content %}
+<section style="max-width:46rem">
+    <h1>License guide</h1>
+    <p style="color:var(--muted)">
+        A short tour of the licenses that show up in the project form. I'm
+        not a lawyer and this isn't legal advice, just plain-language notes
+        to help you pick something reasonable. When in doubt, ask your
+        institution's tech-transfer office or a colleague who's published
+        open-source work before.
+    </p>
+
+    <h2>What a license actually does</h2>
+    <p>
+        A license tells other people what they're allowed to do with your
+        work. Without one, the default in most countries is "all rights
+        reserved," which means a careful reader can't legally reuse your
+        code or designs even if you posted them publicly. Picking a license
+        is how you grant permission.
+    </p>
+    <p>
+        Different kinds of work want different licenses. Code, hardware
+        designs, documentation, and datasets each have their own
+        conventions. The form lets you pick one license per project; if
+        your project has, say, code and a paper draft and a CAD file, the
+        right answer is usually to license each piece in its own
+        repository and pick whichever one is the project's center of
+        gravity here.
+    </p>
+
+    <h2>Code, permissive</h2>
+    <p>
+        Permissive licenses let people do nearly anything with your code,
+        including using it in proprietary products, as long as they keep
+        your copyright notice.
+    </p>
+    <ul>
+        <li><strong>MIT</strong> — short, well understood, the safe default
+            for most code.</li>
+        <li><strong>BSD-3-Clause</strong> — similar to MIT with an extra
+            clause that says nobody can use your name to endorse their
+            derivative without permission.</li>
+        <li><strong>Apache-2.0</strong> — like MIT plus an explicit patent
+            grant. A good pick when there might be patents in the
+            neighborhood.</li>
+    </ul>
+
+    <h2>Code, copyleft</h2>
+    <p>
+        Copyleft licenses say: you can use this, but if you distribute a
+        modified version, your modifications also have to be open under
+        the same license. The intent is to keep derivatives in the
+        commons.
+    </p>
+    <ul>
+        <li><strong>GPL-3.0-or-later</strong> — strong copyleft for
+            applications. Anyone shipping a product built on top has to
+            release their changes under GPL too.</li>
+        <li><strong>LGPL-3.0-or-later</strong> — softer copyleft, designed
+            for libraries. Lets proprietary applications link to your
+            library without having to open up.</li>
+        <li><strong>MPL-2.0</strong> — file-level copyleft. Modifications
+            to MPL files stay open, but you can combine MPL files with
+            proprietary files in the same project.</li>
+    </ul>
+
+    <h2>Open hardware</h2>
+    <p>
+        Hardware needs its own licenses because the things being licensed
+        are schematics, board files, and mechanical drawings, not code.
+        CERN's Open Hardware License family is the most common pick.
+    </p>
+    <ul>
+        <li><strong>CERN-OHL-S-2.0</strong> — strongly reciprocal. Anyone
+            who makes a derivative design has to release it under the same
+            license.</li>
+        <li><strong>CERN-OHL-W-2.0</strong> — weakly reciprocal. Friendlier
+            to mixed open and proprietary hardware.</li>
+        <li><strong>CERN-OHL-P-2.0</strong> — permissive. Closest hardware
+            analog to MIT.</li>
+        <li><strong>TAPR-OHL-1.0</strong> — older copyleft hardware
+            license. Still seen on amateur radio designs.</li>
+    </ul>
+
+    <h2>Content and data</h2>
+    <p>
+        For papers, posters, figures, datasets, and documentation, the
+        Creative Commons family is the standard.
+    </p>
+    <ul>
+        <li><strong>CC-BY-4.0</strong> — anyone can reuse and adapt as
+            long as they credit you. The closest CC analog to MIT.</li>
+        <li><strong>CC-BY-SA-4.0</strong> — attribution plus share-alike.
+            Derivatives must use the same license.</li>
+        <li><strong>CC0-1.0</strong> — public-domain dedication. No
+            attribution required, no strings attached.</li>
+    </ul>
+
+    <h2>Public-domain code</h2>
+    <p>
+        <strong>The Unlicense</strong> dedicates code to the public
+        domain. It's a fine pick for tiny utilities, but for anything
+        substantial, MIT or CC0 are usually safer because their wording
+        has held up better in international courts.
+    </p>
+
+    <h2>Proprietary</h2>
+    <p>
+        Pick <strong>Proprietary</strong> if the work isn't openly
+        licensed. OSPREY can still record the project's existence and
+        credit, and you can link out to wherever the files live, but
+        nobody should reuse the work without contacting the rights
+        holder. This is the right choice for work under embargo, work
+        owned by a sponsor, or work that's still pre-publication.
+    </p>
+
+    <h2>Other</h2>
+    <p>
+        If none of the above fit, pick "Other" and write the SPDX
+        identifier or a short label. Examples: dual licensing, a
+        custom institutional license, a license that isn't on this
+        list yet. If you find yourself reaching for "Other" often, let
+        me know and I'll add the license to the dropdown.
+    </p>
+
+    <h2>Further reading</h2>
+    <ul>
+        <li><a href="https://choosealicense.com" rel="noopener">choosealicense.com</a> — GitHub's plain-language picker
+            for code.</li>
+        <li><a href="https://spdx.org/licenses/" rel="noopener">SPDX license list</a> — the canonical IDs and full text.
+        </li>
+        <li><a href="https://ohwr.org/cernohl" rel="noopener">CERN OHL</a> — the official site for the open hardware
+            licenses.</li>
+        <li><a href="https://creativecommons.org/share-your-work/cclicenses/" rel="noopener">Creative Commons
+                licenses</a> — overview of the CC family.</li>
+    </ul>
+</section>
+{% endblock %}

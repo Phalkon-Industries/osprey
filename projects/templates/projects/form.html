@@ -3,25 +3,72 @@
 
 {% block content %}
 <h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
-<p class="muted" style="max-width:42rem">
-    A short description shows up on cards. The README is the main page.
-    {% if mode == 'new' or not project.is_public %}
-    Save a draft to come back to it later. Publish when you're ready to share.
-    {% else %}
-    This project is published. Edits go live immediately.
-    {% endif %}
-</p>
 
-<form method="post" enctype="multipart/form-data" style="max-width:42rem" class="project-form">
+<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form">
     {% csrf_token %}
+
     {% for field in form %}
+    {% if field.name != 'license_choice' and field.name != 'license_custom' %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
         {{ field }}
         {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
         {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
     </p>
+    {% endif %}
     {% endfor %}
+
+    <p>
+        <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong></label><br>
+        {{ form.license_choice }}
+        <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
+            <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.</span>
+        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
+            }}</span>{% endif %}
+    </p>
+    <p id="license-custom-row">
+        <label for="{{ form.license_custom.id_for_label }}">Custom license</label><br>
+        {{ form.license_custom }}
+        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" "
+            }}</span>{% endif %}
+    </p>
+
+    <h2 style="margin-top:1.5rem">Contributors</h2>
+    <p class="muted" style="font-size:.9rem">
+        Each contributor needs an ORCID iD. People who don't have one can be
+        acknowledged in the README. Roles are free text (e.g. Author,
+        Maintainer, Hardware).
+    </p>
+
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+    <p style="color:#fca5a5">{{ formset.non_form_errors|join:" " }}</p>
+    {% endif %}
+
+    <div class="contributor-formset">
+        {% for cform in formset %}
+        <fieldset class="contributor-row">
+            {% for hidden in cform.hidden_fields %}{{ hidden }}{% endfor %}
+            <div class="contributor-grid">
+                <label>ORCID iD<br>{{ cform.orcid_id }}</label>
+                <label>Display name<br>{{ cform.display_name }}</label>
+                <label>Role<br>{{ cform.role }}</label>
+                <label class="order-cell">Order<br>{{ cform.order }}</label>
+            </div>
+            <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
+            {% if cform.errors %}
+            <p style="color:#fca5a5;margin:.25rem 0 0">
+                {% for fname, errs in cform.errors.items %}
+                <strong>{{ fname }}:</strong> {{ errs|join:" " }}<br>
+                {% endfor %}
+            </p>
+            {% endif %}
+            {% if cform.instance.pk %}
+            <label class="delete-row">{{ cform.DELETE }} Remove this contributor</label>
+            {% endif %}
+        </fieldset>
+        {% endfor %}
+    </div>
 
     <div class="form-actions">
         {% if mode == 'edit' and project.is_public %}
@@ -36,12 +83,25 @@
         {% endif %}
     </div>
 
-    {% if mode == 'new' %}
+    {% if mode == 'new' or not project.is_public %}
     <p class="muted" style="font-size:.85rem;margin-top:1rem">
-        Heads up: once a project is published, it can't be flipped back to a
-        draft from this form. You can keep editing it, but the page stays
-        visible. Reach out if you need it pulled.
+        A draft is private and only visible to you. Publishing makes the
+        project public, and once published it can't be flipped back to a
+        draft from this form.
     </p>
     {% endif %}
 </form>
+
+<script>
+    (function () {
+        var sel = document.getElementById('id_license_choice');
+        var custom = document.getElementById('license-custom-row');
+        if (!sel || !custom) return;
+        function sync() {
+            custom.style.display = (sel.value === '__other__') ? '' : 'none';
+        }
+        sel.addEventListener('change', sync);
+        sync();
+    })();
+</script>
 {% endblock %}

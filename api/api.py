@@ -19,7 +19,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Schema
 
-from people.models import Institution, Profile
+from people.models import Profile
 from projects.models import (
     ArtifactLink,
     Citation,
@@ -39,9 +39,12 @@ api = NinjaAPI(title="OSPREY demo API", version="1.0.0")
 
 
 class ContributionOut(Schema):
-    user_id: int
-    username: str
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    orcid_id: str
+    display_name: str
     role: str
+    credit_statement: str = ""
     order: int
 
 
@@ -85,6 +88,7 @@ class ProjectDetail(ProjectSummary):
     description: str
     readme: str
     canonical_url: str
+    cover_image_url: str
     created_at: datetime
     contributors: list[ContributionOut]
     artifact_links: list[ArtifactLinkOut]
@@ -116,9 +120,7 @@ def _project_summary(p: Project) -> dict:
         "field": p.field,
         "artifact_type": p.artifact_type,
         "license": p.license,
-        "institution": p.institution.short_name or p.institution.name
-        if p.institution
-        else None,
+        "institution": p.institution or None,
         "placeholder_doi": p.placeholder_doi or f"10.demo/{p.slug}",
         "visibility": p.visibility,
         "updated_at": p.updated_at,
@@ -132,12 +134,16 @@ def _project_detail(p: Project) -> dict:
             "description": p.description,
             "readme": p.readme,
             "canonical_url": p.canonical_url,
+            "cover_image_url": p.cover_image_url,
             "created_at": p.created_at,
             "contributors": [
                 {
                     "user_id": c.user_id,
-                    "username": c.user.get_username(),
+                    "username": c.user.get_username() if c.user_id else None,
+                    "orcid_id": c.orcid_id,
+                    "display_name": c.display_name,
                     "role": c.role,
+                    "credit_statement": c.credit_statement,
                     "order": c.order,
                 }
                 for c in p.contributions.select_related("user").all()
@@ -172,9 +178,7 @@ def list_projects(
     institution: str = "",
     tag: str = "",
 ):
-    qs = Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).select_related(
-        "institution"
-    ).prefetch_related("tags")
+    qs = Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).prefetch_related("tags")
     if q:
         qs = qs.filter(
             Q(title__icontains=q)
@@ -187,7 +191,7 @@ def list_projects(
     if artifact_type:
         qs = qs.filter(artifact_type=artifact_type)
     if institution:
-        qs = qs.filter(institution__short_name=institution)
+        qs = qs.filter(institution__iexact=institution)
     if tag:
         qs = qs.filter(tags__name=tag)
     return [_project_summary(p) for p in qs.distinct()]
@@ -196,7 +200,7 @@ def list_projects(
 @api.get("/projects/{slug}/", response=ProjectDetail)
 def project_detail(request, slug: str):
     p = get_object_or_404(
-        Project.objects.select_related("institution").prefetch_related(
+        Project.objects.prefetch_related(
             "artifact_links", "contributions__user", "tags", "images", "citations"
         ),
         slug=slug,
@@ -226,7 +230,7 @@ def lineage(request, slug: str, depth: int = 2):
                     next_frontier.add(pk)
         frontier = next_frontier
 
-    nodes = Project.objects.filter(pk__in=seen_ids).select_related("institution")
+    nodes = Project.objects.filter(pk__in=seen_ids)
     slug_by_id = {n.pk: n.slug for n in nodes}
     return {
         "project": project.slug,
@@ -258,9 +262,6 @@ def full_export(request):
     return {
         "version": "1",
         "generated_at": datetime.utcnow().isoformat() + "Z",
-        "institutions": list(
-            Institution.objects.values("id", "name", "short_name")
-        ),
         "users": [
             {
                 "id": u.id,
@@ -270,11 +271,11 @@ def full_export(request):
                 "orcid_placeholder": getattr(
                     getattr(u, "profile", None), "orcid_placeholder", ""
                 ),
-                "institution_id": getattr(
-                    getattr(u, "profile", None), "institution_id", None
+                "institution": getattr(
+                    getattr(u, "profile", None), "institution", ""
                 ),
             }
-            for u in User.objects.select_related("profile", "profile__institution")
+            for u in User.objects.select_related("profile")
         ],
         "projects": list(
             Project.objects.filter(id__in=public_project_ids).values(
@@ -289,15 +290,23 @@ def full_export(request):
                 "license",
                 "placeholder_doi",
                 "canonical_url",
+                "cover_image_url",
                 "visibility",
-                "institution_id",
+                "institution",
                 "created_at",
                 "updated_at",
             )
         ),
         "contributions": list(
             Contribution.objects.filter(project_id__in=public_project_ids).values(
-                "id", "project_id", "user_id", "role", "order"
+                "id",
+                "project_id",
+                "user_id",
+                "orcid_id",
+                "display_name",
+                "role",
+                "credit_statement",
+                "order",
             )
         ),
         "artifact_links": list(

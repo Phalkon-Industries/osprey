@@ -1,8 +1,14 @@
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models
 from django.urls import reverse
 
-from people.models import Institution
+
+# 16-digit ORCID iD with hyphens, last char digit or X.
+ORCID_VALIDATOR = RegexValidator(
+    regex=r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$",
+    message="ORCID iD must look like 0000-0000-0000-000X.",
+)
 
 
 ARTIFACT_KIND_CHOICES = [
@@ -22,11 +28,23 @@ LINEAGE_RELATION_CHOICES = [
     ("replaces", "replaces"),
 ]
 
-CONTRIBUTION_ROLE_CHOICES = [
-    ("author", "Author"),
-    ("maintainer", "Maintainer"),
-    ("contributor", "Contributor"),
-    ("advisor", "Advisor"),
+
+# Free text on the form, but these surface as a `<datalist>` for hints.
+CONTRIBUTION_ROLE_SUGGESTIONS = [
+    "Author",
+    "Maintainer",
+    "Project lead",
+    "Designer",
+    "Software",
+    "Firmware",
+    "Hardware",
+    "Documentation",
+    "Data analysis",
+    "Reviewer",
+    "Advisor",
+    "Funding",
+    "Contributor",
+    "Other (explain in credit statement)",
 ]
 
 
@@ -76,18 +94,23 @@ class Project(models.Model):
         help_text="Spoofed DOI of the form 10.demo/<slug> until DataCite is wired up.",
     )
     canonical_url = models.URLField(blank=True)
+    cover_image_url = models.URLField(
+        blank=True,
+        help_text=(
+            "Optional. Link to a cover image hosted elsewhere "
+            "(GitHub raw URL, Zenodo, lab website). OSPREY does not host images."
+        ),
+    )
     visibility = models.CharField(
         max_length=10,
         choices=VISIBILITY_CHOICES,
         default=VISIBILITY_PRIVATE,
         help_text="Drafts default to private. Flip to public when ready to share.",
     )
-    institution = models.ForeignKey(
-        Institution,
-        on_delete=models.SET_NULL,
-        null=True,
+    institution = models.CharField(
+        max_length=200,
         blank=True,
-        related_name="projects",
+        help_text="Institution or lab name. Free text for now.",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -136,26 +159,68 @@ class Project(models.Model):
 
 
 class Contribution(models.Model):
+    """A credit row on a project. ORCID is mandatory; user FK fills in
+    automatically when a Profile with the matching ORCID exists or is
+    created later.
+    """
+
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="contributions")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="contributions",
+        help_text="Filled in once a user with this ORCID iD exists on OSPREY.",
     )
-    role = models.CharField(max_length=40, choices=CONTRIBUTION_ROLE_CHOICES, default="author")
+    orcid_id = models.CharField(
+        max_length=19,
+        validators=[ORCID_VALIDATOR],
+        help_text="ORCID iD of the contributor. Required.",
+    )
+    display_name = models.CharField(
+        max_length=200,
+        help_text="Name as it should appear on the project page.",
+    )
+    role = models.CharField(
+        max_length=80,
+        default="Author",
+        help_text="Free text. Pick from the suggestions or write your own.",
+    )
+    credit_statement = models.CharField(
+        max_length=400,
+        blank=True,
+        help_text="Optional. A sentence describing what this person did.",
+    )
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["order", "id"]
         constraints = [
             models.UniqueConstraint(
-                fields=["project", "user", "role"],
-                name="unique_contribution_role",
+                fields=["project", "orcid_id"],
+                name="unique_contribution_per_project",
             )
+        ]
+        indexes = [
+            models.Index(fields=["orcid_id"]),
         ]
 
     def __str__(self) -> str:
-        return f"{self.user} as {self.role} on {self.project}"
+        return f"{self.display_name} ({self.role}) on {self.project}"
+
+    def save(self, *args, **kwargs):
+        if self.orcid_id and self.user_id is None:
+            # Try to attach an existing user with this ORCID iD.
+            from people.models import Profile  # avoid circular import at module load
+            profile = (
+                Profile.objects.filter(orcid_placeholder=self.orcid_id)
+                .select_related("user")
+                .first()
+            )
+            if profile is not None:
+                self.user = profile.user
+        super().save(*args, **kwargs)
 
 
 class ArtifactLink(models.Model):

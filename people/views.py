@@ -4,11 +4,12 @@ from django.contrib import messages
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.text import slugify
 
 from projects.models import Project
 
 from .forms import ProfileForm
-from .models import Institution, Profile
+from .models import Profile
 
 
 def person_detail(request, pk: int):
@@ -19,7 +20,7 @@ def person_detail(request, pk: int):
     """
     User = get_user_model()
     person = get_object_or_404(
-        User.objects.select_related("profile", "profile__institution"),
+        User.objects.select_related("profile"),
         pk=pk,
     )
     Profile.objects.get_or_create(user=person)
@@ -72,6 +73,28 @@ def profile_edit(request):
     return render(request, "people/edit.html", {"form": form, "profile": profile})
 
 
-def institutions_list(request):
-    institutions = Institution.objects.all()
-    return render(request, "people/institutions.html", {"institutions": institutions})
+def institution_detail(request, slug: str):
+    """List visible projects whose institution string slugifies to `slug`.
+
+    Institutions are stored as free text. This view does a Python-side
+    match across distinct institution strings and surfaces a canonical
+    display name (the most-used spelling) for the heading.
+    """
+    from projects.views import _visible_projects_for
+    qs = _visible_projects_for(request.user).exclude(institution="")
+    matches = [p for p in qs if slugify(p.institution) == slug]
+    if not matches:
+        raise Http404
+    # Pick the most common spelling as the display name.
+    counts: dict[str, int] = {}
+    for p in matches:
+        counts[p.institution] = counts.get(p.institution, 0) + 1
+    display_name = max(counts.items(), key=lambda kv: kv[1])[0]
+    return render(
+        request,
+        "people/institution_detail.html",
+        {
+            "institution_name": display_name,
+            "projects": sorted(matches, key=lambda p: p.updated_at, reverse=True),
+        },
+    )

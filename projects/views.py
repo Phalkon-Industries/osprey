@@ -6,14 +6,19 @@ from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import FIELD_SUGGESTIONS, PROJECT_TYPE_SUGGESTIONS, ProjectForm
+from .forms import (
+    FIELD_SUGGESTIONS,
+    PROJECT_TYPE_SUGGESTIONS,
+    ContributionFormSet,
+    ProjectForm,
+)
 from .lineage import render_lineage_svg
-from .models import Contribution, Project
+from .models import Project
 
 
 def _visible_projects_for(user):
     """Queryset of projects the given user is allowed to see in lists."""
-    qs = Project.objects.select_related("institution").prefetch_related(
+    qs = Project.objects.prefetch_related(
         "tags", "images", "contributions__user"
     )
     if user.is_authenticated and user.is_staff:
@@ -54,7 +59,7 @@ def project_list(request):
     if project_type:
         qs = qs.filter(artifact_type__iexact=project_type)
     if institution:
-        qs = qs.filter(institution__short_name=institution)
+        qs = qs.filter(institution__iexact=institution)
     if tag:
         qs = qs.filter(tags__name=tag)
 
@@ -83,7 +88,7 @@ def project_list(request):
 
 def project_detail(request, slug: str):
     project = get_object_or_404(
-        Project.objects.select_related("institution").prefetch_related(
+        Project.objects.prefetch_related(
             "artifact_links",
             "contributions__user",
             "tags",
@@ -108,59 +113,79 @@ def project_detail(request, slug: str):
     )
 
 
-def _handle_form_submission(request, form: ProjectForm, *, is_new: bool):
-    """Apply Save Draft vs Publish based on which submit button was clicked.
+def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
+    """Pick the project's visibility based on which submit button was clicked.
 
-    Once a project is public, the form will not let the owner flip it back
-    to private. (Staff can still adjust through the Django admin.)
+    Once a project is public, the form will not flip it back to private. A
+    staff user can still adjust through the Django admin.
     """
-    project = form.save(commit=False)
     if is_new:
-        project.created_by = request.user
+        return Project.VISIBILITY_PUBLIC if action == "publish" else Project.VISIBILITY_PRIVATE
+    # Existing project. Allow draft -> public, never public -> draft.
+    if project.visibility != Project.VISIBILITY_PUBLIC and action == "publish":
+        return Project.VISIBILITY_PUBLIC
+    return project.visibility
 
-    action = request.POST.get("action", "draft")
-    if is_new:
-        if action == "publish":
-            project.visibility = Project.VISIBILITY_PUBLIC
-        else:
-            project.visibility = Project.VISIBILITY_PRIVATE
-    else:
-        # Existing project: never silently demote a public project. A user
-        # publishing a draft is allowed; a user editing an already-public
-        # project always saves as public.
-        if project.visibility != Project.VISIBILITY_PUBLIC and action == "publish":
-            project.visibility = Project.VISIBILITY_PUBLIC
 
-    project.save()
-    form.save_m2m()
-    if is_new:
-        Contribution.objects.get_or_create(
-            project=project,
-            user=request.user,
-            role="author",
-            defaults={"order": 0},
-        )
+def _initial_contributors_for(user) -> list[dict]:
+    """Pre-populate the contributor formset with the submitter's row.
 
-    if action == "publish" and project.is_public:
-        messages.success(request, "Project published.")
-    else:
-        messages.success(request, "Draft saved." if is_new else "Project updated.")
-    return project
+    If the submitter has an ORCID on their profile, that row is fully filled
+    in. Otherwise the row is left mostly blank so the form forces them to
+    enter an ORCID before saving.
+    """
+    try:
+        profile = user.profile
+    except Exception:
+        profile = None
+    return [
+        {
+            "orcid_id": (profile.orcid_placeholder if profile else "") or "",
+            "display_name": (
+                (profile.display_name if profile else "")
+                or user.get_full_name()
+                or user.get_username()
+            ),
+            "role": "Author",
+            "order": 0,
+        }
+    ]
 
 
 @login_required
 def project_new(request):
     if request.method == "POST":
         form = ProjectForm(request.POST)
-        if form.is_valid():
-            project = _handle_form_submission(request, form, is_new=True)
+        formset = ContributionFormSet(request.POST, instance=Project())
+        if form.is_valid() and formset.is_valid():
+            project = form.save(commit=False)
+            project.created_by = request.user
+            project.visibility = _resolve_visibility(
+                project, request.POST.get("action", "draft"), is_new=True
+            )
+            project.save()
+            form.save_m2m()
+            formset.instance = project
+            formset.save()
+            if project.is_public:
+                messages.success(request, "Project published.")
+            else:
+                messages.success(request, "Draft saved.")
             return redirect(project.get_absolute_url())
     else:
         form = ProjectForm()
+        formset = ContributionFormSet(
+            instance=Project(), initial=_initial_contributors_for(request.user)
+        )
     return render(
         request,
         "projects/form.html",
-        {"form": form, "mode": "new", "project": None},
+        {
+            "form": form,
+            "formset": formset,
+            "mode": "new",
+            "project": None,
+        },
     )
 
 
@@ -171,15 +196,29 @@ def project_edit(request, slug: str):
         raise Http404
     if request.method == "POST":
         form = ProjectForm(request.POST, instance=project)
-        if form.is_valid():
-            _handle_form_submission(request, form, is_new=False)
-            return redirect(project.get_absolute_url())
+        formset = ContributionFormSet(request.POST, instance=project)
+        if form.is_valid() and formset.is_valid():
+            saved = form.save(commit=False)
+            saved.visibility = _resolve_visibility(
+                project, request.POST.get("action", "save"), is_new=False
+            )
+            saved.save()
+            form.save_m2m()
+            formset.save()
+            messages.success(request, "Project updated.")
+            return redirect(saved.get_absolute_url())
     else:
         form = ProjectForm(instance=project)
+        formset = ContributionFormSet(instance=project)
     return render(
         request,
         "projects/form.html",
-        {"form": form, "mode": "edit", "project": project},
+        {
+            "form": form,
+            "formset": formset,
+            "mode": "edit",
+            "project": project,
+        },
     )
 
 
@@ -191,14 +230,9 @@ def project_cite(request, slug: str):
     if not project.viewable_by(request.user):
         raise Http404
     fmt = request.GET.get("format", "bibtex").lower()
-    authors = [
-        c.user.get_full_name() or c.user.get_username()
-        for c in project.contributions.all()
-        if c.role in ("author", "maintainer")
-    ] or [
-        c.user.get_full_name() or c.user.get_username()
-        for c in project.contributions.all()
-    ]
+    contribs = list(project.contributions.all())
+    primary = [c for c in contribs if c.role.lower() in ("author", "maintainer")]
+    authors = [c.display_name for c in (primary or contribs)]
     year = project.created_at.year
     doi = project.placeholder_doi or f"10.demo/{project.slug}"
     url = project.canonical_url or request.build_absolute_uri(project.get_absolute_url())

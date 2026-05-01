@@ -4,11 +4,15 @@
 
 {% block content %}
 <article>
+    {% if project.cover_image_url %}
+    <img class="hero-image" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy">
+    {% else %}
     {% with hero=project.images.first %}
     {% if hero %}
     <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
     {% endif %}
     {% endwith %}
+    {% endif %}
 
     <header class="project-header">
         <h1>{{ project.title }}</h1>
@@ -28,7 +32,8 @@
         {% if project.field %}<span>{{ project.field }}</span>{% endif %}
         {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
         {% if project.institution %}
-        <span class="sep">{{ project.institution }}</span>
+        <span class="sep"><a href="{% url 'institutions:detail' project.institution|slugify %}">{{ project.institution
+                }}</a></span>
         {% endif %}
         <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
     </p>
@@ -59,13 +64,19 @@
     <div class="two-col" style="margin-top:1.5rem">
         <section>
             <h2>Contributors</h2>
-            <ul>
+            <ul class="contributor-list">
                 {% for c in project.contributions.all %}
                 <li>
-                    <a href="{% url 'people:detail' c.user.id %}">
-                        {{ c.user.get_full_name|default:c.user.username }}
-                    </a>
-                    <span class="muted">— {{ c.get_role_display }}</span>
+                    {% if c.user_id %}
+                    <a href="{% url 'people:detail' c.user.id %}">{{ c.display_name }}</a>
+                    {% else %}
+                    <span>{{ c.display_name }}</span>
+                    {% endif %}
+                    <span class="muted">— {{ c.role }}</span>
+                    <span class="orcid muted" style="font-size:.8rem">ORCID&nbsp;{{ c.orcid_id }}</span>
+                    {% if c.credit_statement %}
+                    <div class="muted" style="font-size:.9rem;margin-top:.15rem">{{ c.credit_statement }}</div>
+                    {% endif %}
                 </li>
                 {% empty %}
                 <li class="muted">No contributors recorded.</li>
