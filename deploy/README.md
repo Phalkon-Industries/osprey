@@ -24,9 +24,9 @@ sudo usermod -aG docker osprey
 # Read-only deploy key for the repo: generate, register on GitHub, then:
 git clone git@github.com:<org>/osprey.git ~/osprey
 
-sudo mkdir -p /srv/osprey/postgres /etc/osprey
-sudo chown osprey:osprey /srv/osprey/postgres /etc/osprey
-sudo chmod 750 /srv/osprey /srv/osprey/postgres
+sudo mkdir -p /srv/osprey/postgres /srv/osprey/staticfiles /srv/osprey/media /etc/osprey
+sudo chown -R osprey:osprey /srv/osprey /etc/osprey
+sudo chmod 750 /srv/osprey /srv/osprey/postgres /srv/osprey/staticfiles /srv/osprey/media
 sudo chmod 750 /etc/osprey
 
 # Production env file (never committed):
@@ -34,10 +34,16 @@ sudo -u osprey tee /etc/osprey/.env.prod > /dev/null <<'ENV'
 DJANGO_SECRET_KEY=<generate a long random string>
 DJANGO_DEBUG=0
 DJANGO_ALLOWED_HOSTS=osprey.science,www.osprey.science
+DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.science,https://www.osprey.science
+DJANGO_SESSION_COOKIE_SECURE=1
+DJANGO_CSRF_COOKIE_SECURE=1
 POSTGRES_DB=osprey
 POSTGRES_USER=osprey
 POSTGRES_PASSWORD=<long random>
 DATABASE_URL=postgres://osprey:<long random>@db:5432/osprey
+ORCID_USE_SANDBOX=0
+ORCID_CLIENT_ID=<orcid production client id>
+ORCID_CLIENT_SECRET=<orcid production client secret>
 ENV
 sudo chmod 640 /etc/osprey/.env.prod
 
@@ -64,6 +70,76 @@ ssh osprey@osprey.science 'cd ~/osprey && ./deploy.sh'
 ```
 
 No editing on the server. Ever.
+
+## ORCID setup
+
+The app is wired for ORCID through django-allauth. Development defaults to the
+ORCID sandbox; production should use regular `orcid.org` credentials.
+
+### 1. Test with the sandbox
+
+1. Create or sign into a sandbox ORCID account at `https://sandbox.orcid.org/`.
+2. Register a sandbox public API client in the ORCID developer tools.
+3. Add this redirect URI to the sandbox client:
+
+```text
+http://localhost:8000/accounts/orcid/login/callback/
+```
+
+4. Put the sandbox credentials in local `.env`:
+
+```env
+ORCID_USE_SANDBOX=1
+ORCID_CLIENT_ID=<sandbox client id>
+ORCID_CLIENT_SECRET=<sandbox client secret>
+```
+
+5. Restart the Django container and use the login page's ORCID button. The
+  browser should leave OSPREY, go to `sandbox.orcid.org`, and return to
+  `/accounts/orcid/login/callback/`.
+
+Sandbox accounts are separate from real ORCID accounts. A real user's normal
+ORCID login will not work there.
+
+### 2. Move to production ORCID
+
+1. Sign into a real ORCID account at `https://orcid.org/` and register a
+  public API client there.
+2. Add the production callback URL:
+
+```text
+https://osprey.science/accounts/orcid/login/callback/
+```
+
+Add `https://www.osprey.science/accounts/orcid/login/callback/` too if the
+`www` host will accept logins.
+
+3. In `/etc/osprey/.env.prod`, set:
+
+```env
+ORCID_USE_SANDBOX=0
+ORCID_CLIENT_ID=<production client id>
+ORCID_CLIENT_SECRET=<production client secret>
+```
+
+4. Confirm the production env file also has the public host names:
+
+```env
+DJANGO_ALLOWED_HOSTS=osprey.science,www.osprey.science
+DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.science,https://www.osprey.science
+```
+
+5. Deploy and restart the app:
+
+```bash
+ssh osprey@osprey.science 'cd ~/osprey && ./deploy.sh'
+```
+
+6. Test sign-in from a private browser window. The authorize URL should be on
+  `orcid.org`, not `sandbox.orcid.org`.
+
+For the first beta, OSPREY only uses ORCID for sign-in and stores the ORCID iD
+on the profile. It does not write to a user's ORCID record.
 
 ## Backups
 

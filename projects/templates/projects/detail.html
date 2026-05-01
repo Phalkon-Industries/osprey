@@ -5,11 +5,16 @@
 {% block content %}
 <article>
     {% if project.cover_image_url %}
-    <img class="hero-image" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy">
+    <div class="hero-image-frame"
+        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
+        <img class="hero-image" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy">
+    </div>
     {% else %}
     {% with hero=project.images.first %}
     {% if hero %}
-    <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
+    <div class="hero-image-frame"
+        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
+        <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}"></div>
     {% endif %}
     {% endwith %}
     {% endif %}

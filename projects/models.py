@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.validators import RegexValidator
 from django.db import models
 from django.urls import reverse
@@ -101,6 +102,23 @@ class Project(models.Model):
             "(GitHub raw URL, Zenodo, lab website). OSPREY does not host images."
         ),
     )
+    cover_image_focal_x = models.PositiveSmallIntegerField(
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Horizontal focal point for cover-image crops, 0-100%.",
+    )
+    cover_image_focal_y = models.PositiveSmallIntegerField(
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Vertical focal point for cover-image crops, 0-100%.",
+    )
+    cover_image_zoom = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(3)],
+        help_text="Display zoom for cover-image crops. 1 is no extra zoom.",
+    )
     visibility = models.CharField(
         max_length=10,
         choices=VISIBILITY_CHOICES,
@@ -190,6 +208,7 @@ class Contribution(models.Model):
     credit_statement = models.CharField(
         max_length=400,
         blank=True,
+        default="",
         help_text="Optional. A sentence describing what this person did.",
     )
     order = models.PositiveIntegerField(default=0)
@@ -203,7 +222,7 @@ class Contribution(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["orcid_id"]),
+            models.Index(fields=["orcid_id"], name="projects_co_orcid_i_idx"),
         ]
 
     def __str__(self) -> str:

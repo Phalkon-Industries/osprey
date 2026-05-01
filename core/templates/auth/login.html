@@ -1,8 +1,14 @@
 {% extends "base.html" %}
+{% load socialaccount %}
 {% block title %}Sign in — OSPREY{% endblock %}
 {% block content %}
 <h1>Sign in</h1>
 <p class="muted">The demo is invite-only. Reviewers receive credentials by email.</p>
+<p>
+    <a class="button" href="{% provider_login_url 'orcid' %}">Sign in with ORCID</a>
+    <span class="muted" style="display:block;font-size:.85rem;margin-top:.35rem">Uses ORCID sandbox credentials in
+        development.</span>
+</p>
 <form method="post" style="max-width:24rem">
     {% csrf_token %}
     {% if form.errors %}

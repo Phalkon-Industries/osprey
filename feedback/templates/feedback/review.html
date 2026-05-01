@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Feedback inbox — OSPREY{% endblock %}
+{% block content %}
+<div class="project-header">
+    <h1>Feedback inbox</h1>
+    <span class="spacer"></span>
+    <a class="button ghost" href="{% url 'admin:feedback_feedback_changelist' %}">Django admin</a>
+</div>
+
+<form method="get" class="filters feedback-filters">
+    <label>Status<br>
+        <select name="status">
+            <option value="">Any status</option>
+            {% for value, label in status_choices %}<option value="{{ value }}" {% if active_status==value %} selected{%
+                endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </label>
+    <button type="submit">Filter</button>
+</form>
+
+<div class="feedback-list">
+    {% for item in feedback_items %}
+    <article class="feedback-item">
+        <header>
+            <div>
+                <strong>{{ item.user.get_username|default:"unknown user" }}</strong>
+                <span class="muted">{{ item.created_at|date:"Y-m-d H:i" }}</span>
+            </div>
+            <span class="badge">{{ item.get_status_display }}</span>
+        </header>
+        <p>{{ item.message|linebreaksbr }}</p>
+        <dl class="feedback-meta">
+            <dt>Page</dt>
+            <dd>{% if item.page_url %}<a href="{{ item.page_url }}" rel="noopener">{{ item.page_url }}</a>{% else
+                %}<span class="muted">Unknown</span>{% endif %}</dd>
+            <dt>Environment</dt>
+            <dd>{{ item.browser|default:"unknown browser" }} on {{ item.os|default:"unknown OS" }}{% if item.viewport_w
+                and item.viewport_h %}, {{ item.viewport_w }}×{{ item.viewport_h }}{% endif %}</dd>
+        </dl>
+        {% if item.screenshot %}
+        <a class="feedback-shot" href="{{ item.screenshot.url }}" target="_blank" rel="noopener">
+            <img src="{{ item.screenshot.url }}" alt="Screenshot submitted with feedback">
+        </a>
+        {% endif %}
+        <form method="post" class="feedback-triage">
+            {% csrf_token %}
+            <input type="hidden" name="feedback_id" value="{{ item.id }}">
+            <label>Status<br>
+                <select name="status">
+                    {% for value, label in status_choices %}<option value="{{ value }}" {% if item.status==value %}
+                        selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </label>
+            <label>Admin notes<br><textarea name="admin_notes" rows="3">{{ item.admin_notes }}</textarea></label>
+            <button type="submit">Save</button>
+        </form>
+    </article>
+    {% empty %}
+    <p class="muted">No feedback yet.</p>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -314,10 +314,36 @@ header.site .auth {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 header.site .auth a {
     color: var(--fg);
+}
+
+.staff-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding-right: 0.5rem;
+    border-right: 1px solid var(--border);
+}
+
+.staff-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.85rem;
+    padding: 0.28rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.82rem;
+    background: var(--bg-soft);
+}
+
+.staff-links a:hover {
+    border-color: var(--accent);
+    color: var(--accent-strong);
 }
 
 /* ---- Theme toggle ---- */
@@ -545,23 +571,38 @@ button.ghost:hover {
 
 /* ---- Project images ---- */
 
-.thumb {
+.thumb-frame {
+    display: block;
     width: calc(100% + 2.3rem);
     margin: -1rem -1.15rem 0.75rem;
     aspect-ratio: 16 / 9;
-    object-fit: cover;
+    overflow: hidden;
     background: var(--bg-soft);
     border-bottom: 1px solid var(--border);
 }
 
-.hero-image {
+.hero-image-frame {
     width: 100%;
     aspect-ratio: 16 / 7;
-    object-fit: cover;
+    overflow: hidden;
     border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--bg-soft);
     margin-bottom: 1.25rem;
+}
+
+.thumb,
+.hero-image,
+.cover-crop-image,
+.cover-preview-frame img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    object-position: var(--cover-x, 50%) var(--cover-y, 50%);
+    transform: scale(var(--cover-zoom, 1));
+    transform-origin: var(--cover-x, 50%) var(--cover-y, 50%);
+    background: var(--bg-soft);
 }
 
 .gallery {
@@ -600,6 +641,78 @@ button.ghost:hover {
     background: var(--err-bg);
     border-color: var(--err-border);
     color: var(--err-fg);
+}
+
+/* ---- Feedback inbox ---- */
+
+.feedback-filters {
+    align-items: end;
+}
+
+.feedback-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.feedback-item {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.feedback-item header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.feedback-meta {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.25rem 0.75rem;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+
+.feedback-meta dt {
+    color: var(--fg-muted);
+}
+
+.feedback-meta dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.feedback-shot {
+    display: inline-block;
+    margin: 0.5rem 0 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-soft);
+}
+
+.feedback-shot img {
+    display: block;
+    max-width: min(36rem, 100%);
+    max-height: 22rem;
+    object-fit: contain;
+}
+
+.feedback-triage {
+    display: grid;
+    grid-template-columns: minmax(10rem, 14rem) 1fr auto;
+    gap: 0.75rem;
+    align-items: end;
+    margin-top: 0.75rem;
+}
+
+.feedback-triage textarea {
+    min-height: 4.5rem;
 }
 
 /* ---- Project detail ---- */
@@ -889,18 +1002,192 @@ button.ghost:hover,
     margin-top: 0.5rem;
 }
 
+/* Cover crop controls on the project form. */
+.cover-crop-editor {
+    margin: 1rem 0 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-elev);
+}
+
+.cover-crop-editor h2 {
+    margin-top: 0;
+}
+
+.cover-crop-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 1.5fr) minmax(13rem, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.cover-crop-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-soft);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.cover-crop-frame.is-dragging {
+    cursor: grabbing;
+}
+
+.cover-crop-image {
+    pointer-events: none;
+}
+
+.cover-crop-box {
+    position: absolute;
+    inset: 0;
+    border: 2px solid color-mix(in srgb, var(--accent) 80%, #fff);
+    box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+}
+
+.cover-crop-empty {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: var(--fg-muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.cover-crop-frame.is-empty {
+    cursor: default;
+}
+
+.cover-crop-frame.is-empty .cover-crop-empty {
+    display: flex;
+}
+
+.cover-crop-frame.is-empty .cover-crop-box,
+.cover-crop-frame.is-empty img {
+    display: none;
+}
+
+.cover-preview-stack {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.cover-preview-label {
+    color: var(--fg-muted);
+    font-size: 0.82rem;
+    margin-bottom: 0.25rem;
+}
+
+.cover-preview-frame {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-soft);
+    overflow: hidden;
+}
+
+.cover-preview-frame.is-empty::before {
+    content: "Add a cover image URL to preview cropping.";
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 8rem;
+    padding: 1rem;
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.cover-preview-frame.is-empty img {
+    display: none;
+}
+
+.cover-preview-frame.card-ratio {
+    aspect-ratio: 16 / 9;
+}
+
+.cover-preview-frame.hero-ratio {
+    aspect-ratio: 16 / 7;
+}
+
+.cover-crop-controls {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.9rem;
+}
+
+.cover-crop-controls label {
+    flex: 1 1 16rem;
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+
+.cover-crop-controls input[type="range"] {
+    width: 100%;
+}
+
+.cover-position-readout {
+    font-size: 0.82rem;
+    padding-bottom: 0.45rem;
+}
+
+.cover-hidden-fields {
+    display: none;
+}
+
 /* Contributor formset rows on the project form. */
 .contributor-formset .contributor-row {
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 0.75rem 1rem 1rem;
+    padding: 0;
     margin: 0.75rem 0;
     background: var(--bg-card, transparent);
+    display: grid;
+    grid-template-columns: 5rem 1fr;
+    overflow: hidden;
+}
+
+.contributor-formset .contributor-row[hidden] {
+    display: none !important;
+}
+
+.contributor-controls {
+    border-right: 1px solid var(--border);
+    background: var(--bg-soft);
+    padding: 0.75rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.contributor-controls button {
+    width: 100%;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.8rem;
+}
+
+.contributor-controls button:disabled,
+.contributor-row .delete-row:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.contributor-fields {
+    padding: 0.75rem 1rem 1rem;
 }
 
 .contributor-grid {
     display: grid;
-    grid-template-columns: minmax(11rem, auto) 1fr 1fr 4.5rem;
+    grid-template-columns: minmax(11rem, auto) 1fr 1fr;
     gap: 0.5rem 0.75rem;
     align-items: end;
 }
@@ -924,13 +1211,14 @@ button.ghost:hover,
     margin-top: 0.6rem;
 }
 
+.contributor-row .delete-field {
+    display: none;
+}
+
 .contributor-row .delete-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+    display: inline-block;
     margin-top: 0.6rem;
     font-size: 0.85rem;
-    color: var(--muted);
 }
 
 .project-form input[type="text"],
@@ -943,6 +1231,20 @@ button.ghost:hover,
 }
 
 @media (max-width: 700px) {
+    .cover-crop-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .contributor-formset .contributor-row {
+        grid-template-columns: 1fr;
+    }
+
+    .contributor-controls {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        flex-direction: row;
+    }
+
     .contributor-grid {
         grid-template-columns: 1fr 1fr;
     }

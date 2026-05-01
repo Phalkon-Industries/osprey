@@ -149,6 +149,9 @@ class ProjectForm(forms.ModelForm):
             "artifact_type",
             "canonical_url",
             "cover_image_url",
+            "cover_image_focal_x",
+            "cover_image_focal_y",
+            "cover_image_zoom",
             "institution",
         ]
         widgets = {
@@ -178,6 +181,11 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "https://raw.githubusercontent.com/you/repo/main/cover.png",
                 }
             ),
+            "cover_image_focal_x": forms.HiddenInput(),
+            "cover_image_focal_y": forms.HiddenInput(),
+            "cover_image_zoom": forms.NumberInput(
+                attrs={"type": "range", "min": 1, "max": 3, "step": 0.05}
+            ),
         }
         labels = {
             "summary": "Short description",
@@ -185,6 +193,9 @@ class ProjectForm(forms.ModelForm):
             "artifact_type": "Project type",
             "canonical_url": "Where the files live",
             "cover_image_url": "Cover image URL",
+            "cover_image_focal_x": "Horizontal crop",
+            "cover_image_focal_y": "Vertical crop",
+            "cover_image_zoom": "Zoom",
         }
         help_texts = {
             "field": _examples_text(FIELD_SUGGESTIONS),
@@ -198,6 +209,9 @@ class ProjectForm(forms.ModelForm):
                 "Optional. A direct link to an image (PNG/JPG) hosted elsewhere. "
                 "For GitHub, use the 'raw' URL. Shown on cards and the project page."
             ),
+            "cover_image_focal_x": "Saved horizontal crop position.",
+            "cover_image_focal_y": "Saved vertical crop position.",
+            "cover_image_zoom": "Zoom in when important detail is too small in the crop.",
         }
 
     def __init__(self, *args, **kwargs):
@@ -286,7 +300,7 @@ class ContributionForm(forms.ModelForm):
             "credit_statement": forms.TextInput(
                 attrs={"placeholder": "Optional. What this person did."}
             ),
-            "order": forms.NumberInput(attrs={"size": 3, "style": "width:4rem"}),
+            "order": forms.HiddenInput(),
         }
         labels = {
             "orcid_id": "ORCID iD",
@@ -301,7 +315,7 @@ ContributionFormSet = inlineformset_factory(
     Project,
     Contribution,
     form=ContributionForm,
-    extra=3,
+    extra=0,
     can_delete=True,
     min_num=1,
     validate_min=True,

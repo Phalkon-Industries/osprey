@@ -8,13 +8,53 @@
     {% csrf_token %}
 
     {% for field in form %}
-    {% if field.name != 'license_choice' and field.name != 'license_custom' %}
+    {% if field.name != 'license_choice' and field.name != 'license_custom' and field.name != 'cover_image_focal_x' and
+    field.name != 'cover_image_focal_y' and field.name != 'cover_image_zoom' %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
         {{ field }}
         {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
         {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
     </p>
+    {% if field.name == 'cover_image_url' %}
+    <section class="cover-crop-editor" data-cover-crop-editor>
+        <h2>Cover image crop</h2>
+        <div class="cover-crop-layout">
+            <div>
+                <div class="cover-preview-label">Crop frame</div>
+                <div class="cover-crop-frame" data-cover-drag-frame>
+                    <img class="cover-crop-image" alt="Cover crop editor">
+                    <span class="cover-crop-empty">Add a cover image URL to crop it.</span>
+                    <span class="cover-crop-box" aria-hidden="true"></span>
+                </div>
+            </div>
+            <div class="cover-preview-stack">
+                <div>
+                    <div class="cover-preview-label">Card</div>
+                    <div class="cover-preview-frame card-ratio"><img alt="Cover card preview"></div>
+                </div>
+                <div>
+                    <div class="cover-preview-label">Project page</div>
+                    <div class="cover-preview-frame hero-ratio"><img alt="Cover project-page preview"></div>
+                </div>
+            </div>
+        </div>
+        <div class="cover-crop-controls">
+            <label for="{{ form.cover_image_zoom.id_for_label }}">{{ form.cover_image_zoom.label }} <span
+                    data-cover-value="zoom"></span><br>{{ form.cover_image_zoom }}</label>
+            <button type="button" class="ghost" data-cover-center>Center</button>
+            <span class="muted cover-position-readout">Position <span data-cover-value="position"></span></span>
+        </div>
+        <span class="cover-hidden-fields">{{ form.cover_image_focal_x }}{{ form.cover_image_focal_y }}</span>
+        {% if form.cover_image_focal_x.errors or form.cover_image_focal_y.errors or form.cover_image_zoom.errors %}
+        <p style="color:#fca5a5">
+            {{ form.cover_image_focal_x.errors|join:" " }}
+            {{ form.cover_image_focal_y.errors|join:" " }}
+            {{ form.cover_image_zoom.errors|join:" " }}
+        </p>
+        {% endif %}
+    </section>
+    {% endif %}
     {% endif %}
     {% endfor %}
 
@@ -45,30 +85,55 @@
     <p style="color:#fca5a5">{{ formset.non_form_errors|join:" " }}</p>
     {% endif %}
 
-    <div class="contributor-formset">
+    <div class="contributor-formset" data-contributor-formset>
         {% for cform in formset %}
-        <fieldset class="contributor-row">
-            {% for hidden in cform.hidden_fields %}{{ hidden }}{% endfor %}
-            <div class="contributor-grid">
-                <label>ORCID iD<br>{{ cform.orcid_id }}</label>
-                <label>Display name<br>{{ cform.display_name }}</label>
-                <label>Role<br>{{ cform.role }}</label>
-                <label class="order-cell">Order<br>{{ cform.order }}</label>
+        <fieldset class="contributor-row" data-contributor-row>
+            <div class="contributor-controls" aria-label="Contributor row controls">
+                <button type="button" class="ghost" data-contributor-up>Up</button>
+                <button type="button" class="ghost" data-contributor-down>Down</button>
             </div>
-            <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
-            {% if cform.errors %}
-            <p style="color:#fca5a5;margin:.25rem 0 0">
-                {% for fname, errs in cform.errors.items %}
-                <strong>{{ fname }}:</strong> {{ errs|join:" " }}<br>
-                {% endfor %}
-            </p>
-            {% endif %}
-            {% if cform.instance.pk %}
-            <label class="delete-row">{{ cform.DELETE }} Remove this contributor</label>
-            {% endif %}
+            <div class="contributor-fields">
+                {% for hidden in cform.hidden_fields %}{{ hidden }}{% endfor %}
+                <span class="delete-field">{{ cform.DELETE }}</span>
+                <div class="contributor-grid">
+                    <label>ORCID iD<br>{{ cform.orcid_id }}</label>
+                    <label>Display name<br>{{ cform.display_name }}</label>
+                    <label>Role<br>{{ cform.role }}</label>
+                </div>
+                <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
+                {% if cform.errors %}
+                <p style="color:#fca5a5;margin:.25rem 0 0">
+                    {% for fname, errs in cform.errors.items %}
+                    <strong>{{ fname }}:</strong> {{ errs|join:" " }}<br>
+                    {% endfor %}
+                </p>
+                {% endif %}
+                <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
+            </div>
         </fieldset>
         {% endfor %}
     </div>
+    <button type="button" class="ghost" data-add-contributor>Add contributor</button>
+
+    <template id="contributor-empty-form">
+        <fieldset class="contributor-row" data-contributor-row>
+            <div class="contributor-controls" aria-label="Contributor row controls">
+                <button type="button" class="ghost" data-contributor-up>Up</button>
+                <button type="button" class="ghost" data-contributor-down>Down</button>
+            </div>
+            <div class="contributor-fields">
+                {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                <span class="delete-field">{{ formset.empty_form.DELETE }}</span>
+                <div class="contributor-grid">
+                    <label>ORCID iD<br>{{ formset.empty_form.orcid_id }}</label>
+                    <label>Display name<br>{{ formset.empty_form.display_name }}</label>
+                    <label>Role<br>{{ formset.empty_form.role }}</label>
+                </div>
+                <label class="contributor-credit">Credit statement<br>{{ formset.empty_form.credit_statement }}</label>
+                <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
+            </div>
+        </fieldset>
+    </template>
 
     <div class="form-actions">
         {% if mode == 'edit' and project.is_public %}
@@ -102,6 +167,177 @@
         }
         sel.addEventListener('change', sync);
         sync();
+    })();
+
+    (function () {
+        var editor = document.querySelector('[data-cover-crop-editor]');
+        if (!editor) return;
+        var url = document.getElementById('id_cover_image_url');
+        var x = document.getElementById('id_cover_image_focal_x');
+        var y = document.getElementById('id_cover_image_focal_y');
+        var zoom = document.getElementById('id_cover_image_zoom');
+        var dragFrame = editor.querySelector('[data-cover-drag-frame]');
+        var frames = editor.querySelectorAll('.cover-preview-frame, .cover-crop-frame');
+        var images = editor.querySelectorAll('img');
+        var valuePosition = editor.querySelector('[data-cover-value="position"]');
+        var valueZoom = editor.querySelector('[data-cover-value="zoom"]');
+        var centerBtn = editor.querySelector('[data-cover-center]');
+        var dragging = false;
+        var startPointer = { x: 0, y: 0 };
+        var startCrop = { x: 50, y: 50 };
+        if (!url || !x || !y || !zoom || !dragFrame || !centerBtn || !valuePosition || !valueZoom) return;
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function numberValue(el, fallback) {
+            var value = parseFloat(el.value);
+            return Number.isFinite(value) ? value : fallback;
+        }
+
+        function syncCover() {
+            var src = url.value.trim();
+            var cropX = clamp(numberValue(x, 50), 0, 100);
+            var cropY = clamp(numberValue(y, 50), 0, 100);
+            var cropZoom = clamp(numberValue(zoom, 1), 1, 3);
+            x.value = String(Math.round(cropX));
+            y.value = String(Math.round(cropY));
+            zoom.value = String(cropZoom);
+            frames.forEach(function (frame) {
+                frame.style.setProperty('--cover-x', cropX + '%');
+                frame.style.setProperty('--cover-y', cropY + '%');
+                frame.style.setProperty('--cover-zoom', cropZoom || '1');
+                frame.classList.toggle('is-empty', !src);
+            });
+            images.forEach(function (img) {
+                if (src) img.src = src;
+                else img.removeAttribute('src');
+            });
+            valuePosition.textContent = Math.round(cropX) + '%, ' + Math.round(cropY) + '%';
+            valueZoom.textContent = Number(cropZoom || 1).toFixed(2) + 'x';
+        }
+
+        function setCropFromDrag(event) {
+            var rect = dragFrame.getBoundingClientRect();
+            var zoomFactor = numberValue(zoom, 1);
+            var dx = event.clientX - startPointer.x;
+            var dy = event.clientY - startPointer.y;
+            x.value = String(clamp(startCrop.x - (dx / rect.width) * (100 / zoomFactor), 0, 100));
+            y.value = String(clamp(startCrop.y - (dy / rect.height) * (100 / zoomFactor), 0, 100));
+            syncCover();
+        }
+
+        url.addEventListener('input', syncCover);
+        zoom.addEventListener('input', syncCover);
+        centerBtn.addEventListener('click', function () {
+            x.value = '50';
+            y.value = '50';
+            zoom.value = '1';
+            syncCover();
+        });
+        dragFrame.addEventListener('pointerdown', function (event) {
+            if (!url.value.trim()) return;
+            dragging = true;
+            startPointer = { x: event.clientX, y: event.clientY };
+            startCrop = { x: numberValue(x, 50), y: numberValue(y, 50) };
+            dragFrame.classList.add('is-dragging');
+            try {
+                dragFrame.setPointerCapture(event.pointerId);
+            } catch (e) {
+                // Some synthetic events do not have an active pointer.
+            }
+        });
+        dragFrame.addEventListener('pointermove', function (event) {
+            if (dragging) setCropFromDrag(event);
+        });
+        function endDrag() {
+            dragging = false;
+            dragFrame.classList.remove('is-dragging');
+        }
+        dragFrame.addEventListener('pointerup', endDrag);
+        dragFrame.addEventListener('pointercancel', endDrag);
+        syncCover();
+    })();
+
+    (function () {
+        var root = document.querySelector('[data-contributor-formset]');
+        var addBtn = document.querySelector('[data-add-contributor]');
+        var template = document.getElementById('contributor-empty-form');
+        if (!root || !addBtn || !template) return;
+        var total = document.querySelector('input[name$="-TOTAL_FORMS"]');
+        if (!total) return;
+
+        function allRows() {
+            return Array.prototype.slice.call(root.querySelectorAll('[data-contributor-row]'));
+        }
+        function deleteInput(row) {
+            return row.querySelector('input[name$="-DELETE"]');
+        }
+        function orderInput(row) {
+            return row.querySelector('input[name$="-order"]');
+        }
+        function activeRows() {
+            return allRows().filter(function (row) {
+                var del = deleteInput(row);
+                return !(del && del.checked);
+            });
+        }
+        function refresh() {
+            var active = activeRows();
+            active.forEach(function (row, idx) {
+                row.hidden = false;
+                var order = orderInput(row);
+                if (order) order.value = idx;
+                var up = row.querySelector('[data-contributor-up]');
+                var down = row.querySelector('[data-contributor-down]');
+                var remove = row.querySelector('[data-contributor-remove]');
+                if (up) up.disabled = idx === 0;
+                if (down) down.disabled = idx === active.length - 1;
+                if (remove) remove.disabled = active.length <= 1;
+            });
+            allRows().forEach(function (row) {
+                var del = deleteInput(row);
+                if (del && del.checked) row.hidden = true;
+            });
+        }
+
+        root.addEventListener('click', function (event) {
+            var row = event.target.closest('[data-contributor-row]');
+            if (!row) return;
+            if (event.target.matches('[data-contributor-up]')) {
+                var previous = row.previousElementSibling;
+                while (previous && !previous.matches('[data-contributor-row]')) previous = previous.previousElementSibling;
+                if (previous) root.insertBefore(row, previous);
+                refresh();
+            }
+            if (event.target.matches('[data-contributor-down]')) {
+                var next = row.nextElementSibling;
+                while (next && !next.matches('[data-contributor-row]')) next = next.nextElementSibling;
+                if (next) root.insertBefore(next, row);
+                refresh();
+            }
+            if (event.target.matches('[data-contributor-remove]')) {
+                if (activeRows().length <= 1) return;
+                var del = deleteInput(row);
+                if (del) del.checked = true;
+                row.hidden = true;
+                refresh();
+            }
+        });
+
+        addBtn.addEventListener('click', function () {
+            var index = parseInt(total.value, 10) || 0;
+            var html = template.innerHTML.replace(/__prefix__/g, String(index));
+            root.insertAdjacentHTML('beforeend', html);
+            total.value = String(index + 1);
+            refresh();
+            var newest = allRows()[allRows().length - 1];
+            var firstInput = newest && newest.querySelector('input:not([type="hidden"]), textarea, select');
+            if (firstInput) firstInput.focus();
+        });
+
+        refresh();
     })();
 </script>
 {% endblock %}

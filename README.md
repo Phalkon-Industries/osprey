@@ -37,6 +37,7 @@ core/                   Shared templates, home and about views
 projects/               Projects, contributions, artifact links, lineage
 people/                 Users (auth.User), profiles, institutions
 api/                    Django Ninja API at /api/v1/
+feedback/               In-page feedback widget and staff feedback inbox
 deploy/                 Production runbook and nginx site config
 planning/               Source-of-truth planning documents
 ```
@@ -50,13 +51,16 @@ planning/               Source-of-truth planning documents
   appears on both pages automatically.
 - Export the entire public database as a single JSON document at
   `/api/v1/export/`. That endpoint is the survivability promise made concrete.
+- Capture closed-beta feedback from logged-in users through the floating
+  feedback widget. Staff can review it at `/feedback/review/` or in the
+  Django admin.
 
 ## What the demo does not do
 
-ORCID OAuth, real DOI minting, federation imports from GitHub or Zenodo, the
-wiki layer, and reuse attestations are deliberately out of scope. See
-[planning/demo-architecture.md §1](planning/demo-architecture.md) for the full
-in-scope / out-of-scope list.
+Real DOI minting, federation imports from GitHub or Zenodo, the wiki layer,
+and reuse attestations are deliberately out of scope. ORCID sign-in is being
+wired now as a small beta-onboarding path; see
+[planning/features/orcid-signin.md](planning/features/orcid-signin.md).
 
 ## Deploy
 

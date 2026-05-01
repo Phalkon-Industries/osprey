@@ -18,6 +18,9 @@
         })();
     </script>
     <link rel="stylesheet" href="{% static 'css/osprey.css' %}">
+    {% if user.is_authenticated %}
+    <link rel="stylesheet" href="{% static 'feedback/widget.css' %}">
+    {% endif %}
     {% block extra_head %}{% endblock %}
 </head>
 
@@ -48,6 +51,12 @@
         </span>
         <span class="auth">
             {% if user.is_authenticated %}
+            {% if user.is_staff %}
+            <span class="staff-links" aria-label="Admin links">
+                <a href="{% url 'feedback:review' %}">Feedback</a>
+                <a href="{% url 'admin:index' %}">Database admin</a>
+            </span>
+            {% endif %}
             <span class="muted">{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
                 {% csrf_token %}
@@ -99,6 +108,11 @@
             });
         })();
     </script>
+    {% if user.is_authenticated and request.path|slice:":7" != "/admin/" %}
+    <div id="feedback-widget" data-endpoint="{% url 'feedback:submit' %}" data-csrf="{{ csrf_token }}"></div>
+    <script src="{% static 'feedback/html2canvas-pro.min.js' %}" defer></script>
+    <script src="{% static 'feedback/widget.js' %}" defer></script>
+    {% endif %}
 </body>
 
 </html>

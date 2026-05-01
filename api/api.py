@@ -89,6 +89,9 @@ class ProjectDetail(ProjectSummary):
     readme: str
     canonical_url: str
     cover_image_url: str
+    cover_image_focal_x: int
+    cover_image_focal_y: int
+    cover_image_zoom: float
     created_at: datetime
     contributors: list[ContributionOut]
     artifact_links: list[ArtifactLinkOut]
@@ -135,6 +138,9 @@ def _project_detail(p: Project) -> dict:
             "readme": p.readme,
             "canonical_url": p.canonical_url,
             "cover_image_url": p.cover_image_url,
+            "cover_image_focal_x": p.cover_image_focal_x,
+            "cover_image_focal_y": p.cover_image_focal_y,
+            "cover_image_zoom": float(p.cover_image_zoom),
             "created_at": p.created_at,
             "contributors": [
                 {
@@ -291,6 +297,9 @@ def full_export(request):
                 "placeholder_doi",
                 "canonical_url",
                 "cover_image_url",
+                "cover_image_focal_x",
+                "cover_image_focal_y",
+                "cover_image_zoom",
                 "visibility",
                 "institution",
                 "created_at",
