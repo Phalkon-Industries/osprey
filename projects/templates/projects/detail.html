@@ -14,7 +14,8 @@
     {% if hero %}
     <div class="hero-image-frame"
         style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
-        <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}"></div>
+        <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
+    </div>
     {% endif %}
     {% endwith %}
     {% endif %}
@@ -37,15 +38,13 @@
         {% if project.field %}<span>{{ project.field }}</span>{% endif %}
         {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
         {% if project.institution %}
-        <span class="sep"><a href="{% url 'institutions:detail' project.institution|slugify %}">{{ project.institution
-                }}</a></span>
+        <span class="sep"><a href="{% url 'institutions:detail' project.institution|slugify %}">{{ project.institution }}</a></span>
         {% endif %}
         <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
     </p>
 
     {% if project.readme %}
     <section>
-        <h2>README</h2>
         <div class="prose">{{ project.readme|markdown }}</div>
     </section>
     {% endif %}
@@ -78,7 +77,9 @@
                     <span>{{ c.display_name }}</span>
                     {% endif %}
                     <span class="muted">— {{ c.role }}</span>
-                    <span class="orcid muted" style="font-size:.8rem">ORCID&nbsp;{{ c.orcid_id }}</span>
+                    {% if c.verified_orcid_id %}
+                    <span class="orcid muted" style="font-size:.8rem">ORCID&nbsp;{{ c.verified_orcid_id }}</span>
+                    {% endif %}
                     {% if c.credit_statement %}
                     <div class="muted" style="font-size:.9rem;margin-top:.15rem">{{ c.credit_statement }}</div>
                     {% endif %}
@@ -110,45 +111,60 @@
         </section>
     </div>
 
-    <section>
-        <h2>Citation</h2>
-        <div class="cite-actions">
-            <a href="{% url 'projects:cite' project.slug %}?format=bibtex">BibTeX</a>
-            <a href="{% url 'projects:cite' project.slug %}?format=csl">CSL JSON</a>
-        </div>
-        <p class="muted" style="font-size:.9rem;margin-top:.6rem">
-            DOI placeholder:
-            <code>{{ project.placeholder_doi|default:"10.demo/" }}{% if not project.placeholder_doi %}{{ project.slug }}{% endif %}</code>
-            {% if project.license %} &middot; License: <strong>{{ project.license }}</strong>{% endif %}
+    {% if project.doi %}
+    <section class="project-doi">
+        <h2>Cite this project</h2>
+        <p>
+            <a class="doi-link" href="{% if zenodo_deposit and zenodo_deposit.doi == project.doi and zenodo_deposit.external_url %}{{ zenodo_deposit.external_url }}{% else %}{{ project.doi_url }}{% endif %}" rel="noopener">
+                {% if project.is_zenodo_doi %}
+                <img src="{{ project.zenodo_badge_url }}"
+                     alt="DOI: {{ project.doi }}"
+                     loading="lazy">
+                {% else %}
+                <code>{{ project.doi }}</code>
+                {% endif %}
+            </a>
+        </p>
+        <p class="muted small">
+            DOI resolves to the upstream record. Citation export
+            (BibTeX, RIS, formatted) is on the roadmap; for now, follow the DOI link
+            and use the upstream service's "Cite" button.
         </p>
     </section>
+    {% endif %}
 
-    <section>
-        <h2>Cited by</h2>
-        {% if project.citations.all %}
-        <ul>
-            {% for c in project.citations.all %}
-            <li>
-                {{ c.text }}
-                {% if c.year %} <span class="muted">({{ c.year }})</span>{% endif %}
-                {% if c.doi %} &middot; <a href="https://doi.org/{{ c.doi }}" rel="noopener">{{ c.doi }}</a>{% endif %}
-                {% if c.url %} &middot; <a href="{{ c.url }}" rel="noopener">link</a>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
+    {% if can_edit %}
+    <section class="project-zenodo">
+        <h2>{{ zenodo_mode_label }}</h2>
+        {% if zenodo_deposit %}
+        <p class="muted small">
+            State: {{ zenodo_deposit.get_state_display }}
+            {% if zenodo_deposit.doi %}&middot; DOI {{ zenodo_deposit.doi }}{% endif %}
+            {% if zenodo_deposit.external_url %}&middot; <a href="{{ zenodo_deposit.external_url }}" rel="noopener">Open record</a>{% endif %}
+        </p>
+        {% if zenodo_deposit.last_error %}
+        <p style="color:#fca5a5">{{ zenodo_deposit.last_error }}</p>
+        {% endif %}
         {% else %}
-        <p class="muted">No citations recorded yet.</p>
+        <p class="muted small">No Zenodo draft has been created for this project yet.</p>
+        {% endif %}
+
+        {% if zenodo_configured %}
+        <form method="post" action="{% url 'projects:zenodo_sync' project.slug %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="ghost">Sync draft to Zenodo</button>
+        </form>
+        {% if zenodo_deposit and zenodo_deposit.state == 'draft' %}
+        <form method="post" action="{% url 'projects:zenodo_publish' project.slug %}" style="display:inline;margin-left:.5rem">
+            {% csrf_token %}
+            <button type="submit">Publish on Zenodo</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <p class="muted small">Set <code>ZENODO_ACCESS_TOKEN</code> in the environment to enable sandbox deposit testing.</p>
         {% endif %}
     </section>
-
-    <section>
-        <h2>Lineage</h2>
-        {% if lineage_svg %}
-        <div class="lineage">{{ lineage_svg|safe }}</div>
-        {% else %}
-        <p class="muted">No lineage relationships recorded for this project.</p>
-        {% endif %}
-    </section>
+    {% endif %}
 
     {% if project.tags.all %}
     <section>

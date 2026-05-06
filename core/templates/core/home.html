@@ -2,13 +2,13 @@
 {% block title %}OSPREY — Open Science Platform for Research and Engineering{% endblock %}
 {% block content %}
 <section class="hero">
-    <h1>A credit and lineage layer for research engineering.</h1>
+    <h1>A credit layer for research engineering.</h1>
     <p class="lede">
         OSPREY makes the second user of an instrument, a script, or a board design
         easy to find, easy to credit, and easy to build on. This is the demo build.
         Browse the <a href="{% url 'projects:list' %}">projects</a> seeded from the
-        WHOI pilot, follow the lineage between them, or pull the whole record as
-        plain JSON from <a href="/api/v1/export/">/api/v1/export/</a>.
+        WHOI pilot, or pull the public record as plain JSON from
+        <a href="/api/v1/export/">/api/v1/export/</a>.
     </p>
 </section>
 
@@ -39,8 +39,7 @@
             {% if authors %}
             <p class="byline">
                 by
-                {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor
-                %}
+                {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor %}
                 {% if total > 3 %}<span class="muted"> +{{ total|add:"-3" }}</span>{% endif %}
             </p>
             {% endif %}

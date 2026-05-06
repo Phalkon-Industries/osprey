@@ -6,10 +6,12 @@
 
 <form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form">
     {% csrf_token %}
+    {% if form.non_field_errors %}
+    <p style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
+    {% endif %}
 
     {% for field in form %}
-    {% if field.name != 'license_choice' and field.name != 'license_custom' and field.name != 'cover_image_focal_x' and
-    field.name != 'cover_image_focal_y' and field.name != 'cover_image_zoom' %}
+    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'license_custom' %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
         {{ field }}
@@ -63,22 +65,23 @@
         {{ form.license_choice }}
         <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
             <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.</span>
-        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
-            }}</span>{% endif %}
+        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" " }}</span>{% endif %}
     </p>
     <p id="license-custom-row">
         <label for="{{ form.license_custom.id_for_label }}">Custom license</label><br>
         {{ form.license_custom }}
-        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" "
-            }}</span>{% endif %}
+        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" " }}</span>{% endif %}
     </p>
 
     <h2 style="margin-top:1.5rem">Contributors</h2>
     <p class="muted" style="font-size:.9rem">
-        Each contributor needs an ORCID iD. People who don't have one can be
-        acknowledged in the README. Roles are free text (e.g. Author,
-        Maintainer, Hardware).
+        Your ORCID-signed-in account is attached when you publish. Other people
+        can be listed by name for now; verified contributor claims will be
+        invitation-based.
     </p>
+    <datalist id="contributor-role-suggestions">
+        {% for role in role_suggestions %}<option value="{{ role }}"></option>{% endfor %}
+    </datalist>
 
     {{ formset.management_form }}
     {% if formset.non_form_errors %}
@@ -96,7 +99,6 @@
                 {% for hidden in cform.hidden_fields %}{{ hidden }}{% endfor %}
                 <span class="delete-field">{{ cform.DELETE }}</span>
                 <div class="contributor-grid">
-                    <label>ORCID iD<br>{{ cform.orcid_id }}</label>
                     <label>Display name<br>{{ cform.display_name }}</label>
                     <label>Role<br>{{ cform.role }}</label>
                 </div>
@@ -125,7 +127,6 @@
                 {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
                 <span class="delete-field">{{ formset.empty_form.DELETE }}</span>
                 <div class="contributor-grid">
-                    <label>ORCID iD<br>{{ formset.empty_form.orcid_id }}</label>
                     <label>Display name<br>{{ formset.empty_form.display_name }}</label>
                     <label>Role<br>{{ formset.empty_form.role }}</label>
                 </div>

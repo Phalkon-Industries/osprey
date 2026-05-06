@@ -5,8 +5,12 @@
 <h1>Edit your profile</h1>
 <p class="muted" style="max-width:42rem">
     These details show up on your profile page and on projects you're listed
-    on. Everything is optional except a username.
+    on. ORCID is connected through ORCID sign-in, not typed into this form.
 </p>
+{% if verified_orcid %}
+<p class="muted" style="max-width:42rem">Connected ORCID: {{ verified_orcid }}</p>
+{% endif %}
+<p class="muted" style="max-width:42rem">User tag: @{{ user.username }} (permanent for now)</p>
 
 <form method="post" enctype="multipart/form-data" style="max-width:42rem">
     {% csrf_token %}
@@ -21,4 +25,17 @@
     <button type="submit">Save profile</button>
     <a class="button ghost" href="{% url 'people:detail' user.pk %}" style="margin-left:.5rem">Cancel</a>
 </form>
+
+<section style="max-width:42rem;margin-top:2rem;border-top:1px solid var(--border);padding-top:1rem">
+    <h2>Deactivate account</h2>
+    <p class="muted">
+        This signs you out and marks the account inactive. Your public profile
+        page stays in place for project credit. Signing in with the same ORCID
+        can reactivate the account.
+    </p>
+    <form method="post" action="{% url 'people:deactivate' %}">
+        {% csrf_token %}
+        <button type="submit" class="ghost">Deactivate account</button>
+    </form>
+</section>
 {% endblock %}

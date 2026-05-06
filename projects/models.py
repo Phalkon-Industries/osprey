@@ -30,25 +30,6 @@ LINEAGE_RELATION_CHOICES = [
 ]
 
 
-# Free text on the form, but these surface as a `<datalist>` for hints.
-CONTRIBUTION_ROLE_SUGGESTIONS = [
-    "Author",
-    "Maintainer",
-    "Project lead",
-    "Designer",
-    "Software",
-    "Firmware",
-    "Hardware",
-    "Documentation",
-    "Data analysis",
-    "Reviewer",
-    "Advisor",
-    "Funding",
-    "Contributor",
-    "Other (explain in credit statement)",
-]
-
-
 class Tag(models.Model):
     name = models.CharField(max_length=80, unique=True)
 
@@ -89,10 +70,15 @@ class Project(models.Model):
         blank=True,
         help_text="SPDX identifier or short name (e.g. MIT, CERN-OHL-S-2.0, CC-BY-4.0).",
     )
-    placeholder_doi = models.CharField(
-        max_length=80,
+    doi = models.CharField(
+        max_length=120,
         blank=True,
-        help_text="Spoofed DOI of the form 10.demo/<slug> until DataCite is wired up.",
+        help_text=(
+            "Optional. The project's DOI as a bare identifier (e.g. "
+            "10.5281/zenodo.1234567). If you've deposited this work on "
+            "Zenodo, OSF, Figshare, or an institutional repository, paste "
+            "the DOI here. Leave blank if you don't have one yet."
+        ),
     )
     canonical_url = models.URLField(blank=True)
     cover_image_url = models.URLField(
@@ -175,11 +161,104 @@ class Project(models.Model):
             return True
         return self.contributions.filter(user=user).exists() or self.created_by_id == user.id
 
+    @property
+    def doi_url(self) -> str:
+        """Return https://doi.org/<doi> when a DOI is set, else empty string."""
+        doi = (self.doi or "").strip()
+        if not doi:
+            return ""
+        # Tolerate users pasting the full URL by accident.
+        for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+            if doi.lower().startswith(prefix):
+                doi = doi[len(prefix):]
+                break
+        return f"https://doi.org/{doi}"
+
+    @property
+    def is_zenodo_doi(self) -> bool:
+        """True if the DOI looks like a Zenodo DOI (production or sandbox)."""
+        doi = (self.doi or "").strip().lower()
+        return doi.startswith("10.5281/zenodo.") or doi.startswith("10.5072/zenodo.")
+
+    @property
+    def zenodo_badge_url(self) -> str:
+        """Return the right Zenodo DOI badge URL for production or sandbox."""
+        doi = (self.doi or "").strip()
+        if not doi:
+            return ""
+        host = "https://sandbox.zenodo.org" if doi.lower().startswith("10.5072/zenodo.") else "https://zenodo.org"
+        return f"{host}/badge/DOI/{doi}.svg"
+
+
+class ProjectDeposit(models.Model):
+    """A project deposit managed through an external repository API."""
+
+    PROVIDER_ZENODO = "zenodo"
+    PROVIDER_CHOICES = [(PROVIDER_ZENODO, "Zenodo")]
+
+    STATE_DRAFT = "draft"
+    STATE_PUBLISHED = "published"
+    STATE_ERROR = "error"
+    STATE_CHOICES = [
+        (STATE_DRAFT, "Draft"),
+        (STATE_PUBLISHED, "Published"),
+        (STATE_ERROR, "Error"),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="deposits")
+    provider = models.CharField(max_length=40, choices=PROVIDER_CHOICES, default=PROVIDER_ZENODO)
+    sandbox = models.BooleanField(default=True)
+    deposition_id = models.CharField(max_length=80, blank=True)
+    bucket_url = models.URLField(blank=True)
+    record_id = models.CharField(max_length=80, blank=True)
+    concept_id = models.CharField(max_length=80, blank=True)
+    doi = models.CharField(max_length=120, blank=True)
+    concept_doi = models.CharField(max_length=120, blank=True)
+    state = models.CharField(max_length=20, choices=STATE_CHOICES, default=STATE_DRAFT)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_project_deposits",
+    )
+    last_response = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "provider", "sandbox"],
+                name="unique_project_deposit_per_provider_mode",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["provider", "sandbox", "state"], name="projects_deposit_state_idx"),
+        ]
+
+    def __str__(self) -> str:
+        mode = "sandbox" if self.sandbox else "production"
+        return f"{self.project} on {self.get_provider_display()} ({mode})"
+
+    @property
+    def external_url(self) -> str:
+        base = "https://sandbox.zenodo.org" if self.sandbox else "https://zenodo.org"
+        if self.record_id:
+            return f"{base}/records/{self.record_id}"
+        if self.deposition_id:
+            return f"{base}/deposit/{self.deposition_id}"
+        return ""
+
 
 class Contribution(models.Model):
-    """A credit row on a project. ORCID is mandatory; user FK fills in
-    automatically when a Profile with the matching ORCID exists or is
-    created later.
+    """A credit row on a project.
+
+    ORCID iDs are only populated from authenticated ORCID sign-in. Named
+    contributors can be listed before they have claimed or verified a row.
     """
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="contributions")
@@ -189,12 +268,14 @@ class Contribution(models.Model):
         null=True,
         blank=True,
         related_name="contributions",
-        help_text="Filled in once a user with this ORCID iD exists on OSPREY.",
+        help_text="Filled in when a named contributor row is claimed or attached.",
     )
     orcid_id = models.CharField(
         max_length=19,
         validators=[ORCID_VALIDATOR],
-        help_text="ORCID iD of the contributor. Required.",
+        blank=True,
+        default="",
+        help_text="Verified ORCID iD, populated from ORCID sign-in rather than manual entry.",
     )
     display_name = models.CharField(
         max_length=200,
@@ -202,7 +283,7 @@ class Contribution(models.Model):
     )
     role = models.CharField(
         max_length=80,
-        default="Author",
+        default="Project lead",
         help_text="Free text. Pick from the suggestions or write your own.",
     )
     credit_statement = models.CharField(
@@ -219,6 +300,7 @@ class Contribution(models.Model):
             models.UniqueConstraint(
                 fields=["project", "orcid_id"],
                 name="unique_contribution_per_project",
+                condition=~models.Q(orcid_id=""),
             )
         ]
         indexes = [
@@ -227,6 +309,19 @@ class Contribution(models.Model):
 
     def __str__(self) -> str:
         return f"{self.display_name} ({self.role}) on {self.project}"
+
+    @property
+    def verified_orcid_id(self) -> str:
+        if not self.orcid_id or not self.user_id:
+            return ""
+        account = self.user.socialaccount_set.filter(provider="orcid").first()
+        if account is None:
+            return ""
+        identifier = (account.extra_data or {}).get("orcid-identifier") or {}
+        account_orcid = (identifier.get("path") or "").strip()
+        if account_orcid == self.orcid_id:
+            return self.orcid_id
+        return ""
 
     def save(self, *args, **kwargs):
         if self.orcid_id and self.user_id is None:

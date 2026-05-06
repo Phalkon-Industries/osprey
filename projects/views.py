@@ -3,17 +3,27 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
+
+from allauth.socialaccount.models import SocialAccount
 
 from .forms import (
     FIELD_SUGGESTIONS,
     PROJECT_TYPE_SUGGESTIONS,
+    ROLE_SUGGESTIONS,
     ContributionFormSet,
     ProjectForm,
 )
-from .lineage import render_lineage_svg
-from .models import Project
+from .models import Contribution, Project, ProjectDeposit
+from .zenodo import (
+    ZenodoError,
+    publish_project_deposit,
+    sync_project_to_zenodo,
+    zenodo_configured,
+    zenodo_mode_label,
+)
 
 
 def _visible_projects_for(user):
@@ -93,22 +103,23 @@ def project_detail(request, slug: str):
             "contributions__user",
             "tags",
             "images",
-            "citations",
-            "lineage_parents__parent",
-            "lineage_children__child",
+            "deposits",
         ),
         slug=slug,
     )
     if not project.viewable_by(request.user):
         raise Http404
-    lineage_svg = render_lineage_svg(project)
     return render(
         request,
         "projects/detail.html",
         {
             "project": project,
-            "lineage_svg": lineage_svg,
             "can_edit": project.editable_by(request.user),
+            "zenodo_configured": zenodo_configured(),
+            "zenodo_mode_label": zenodo_mode_label(),
+            "zenodo_deposit": project.deposits.filter(
+                provider=ProjectDeposit.PROVIDER_ZENODO
+            ).first(),
         },
     )
 
@@ -130,9 +141,8 @@ def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
 def _initial_contributors_for(user) -> list[dict]:
     """Pre-populate the contributor formset with the submitter's row.
 
-    If the submitter has an ORCID on their profile, that row is fully filled
-    in. Otherwise the row is left mostly blank so the form forces them to
-    enter an ORCID before saving.
+    ORCID is attached later from the authenticated sign-in account, not from
+    this form row.
     """
     try:
         profile = user.profile
@@ -140,33 +150,93 @@ def _initial_contributors_for(user) -> list[dict]:
         profile = None
     return [
         {
-            "orcid_id": (profile.orcid_placeholder if profile else "") or "",
             "display_name": (
                 (profile.display_name if profile else "")
                 or user.get_full_name()
                 or user.get_username()
             ),
-            "role": "Author",
+            "role": "Project lead",
             "order": 0,
         }
     ]
 
 
+def _verified_orcid_for(user) -> str:
+    if user is None or not user.is_authenticated:
+        return ""
+    account = SocialAccount.objects.filter(user=user, provider="orcid").first()
+    if account is None:
+        return ""
+    identifier = (account.extra_data or {}).get("orcid-identifier") or {}
+    account_orcid = (identifier.get("path") or "").strip()
+    if account_orcid:
+        return account_orcid
+    try:
+        profile_orcid = user.profile.orcid_placeholder
+    except Exception:
+        profile_orcid = ""
+    if profile_orcid:
+        return profile_orcid
+    return ""
+
+
+def _display_name_for(user) -> str:
+    try:
+        profile_name = user.profile.display_name
+    except Exception:
+        profile_name = ""
+    return profile_name or user.get_full_name() or user.get_username()
+
+
+def _attach_verified_submitter(project: Project, user, orcid_id: str) -> None:
+    if not orcid_id:
+        return
+    display_name = _display_name_for(user)
+    contribution = project.contributions.filter(user=user).first()
+    if contribution is None:
+        contribution = project.contributions.filter(orcid_id=orcid_id).first()
+    if contribution is None:
+        contribution = project.contributions.filter(
+            user__isnull=True,
+            display_name__iexact=display_name,
+        ).first()
+    if contribution is None:
+        contribution = Contribution(
+            project=project,
+            display_name=display_name,
+            role="Project lead",
+            order=project.contributions.count(),
+        )
+    contribution.user = user
+    contribution.orcid_id = orcid_id
+    if not contribution.display_name:
+        contribution.display_name = display_name
+    if not contribution.role:
+        contribution.role = "Project lead"
+    contribution.save()
+
+
 @login_required
 def project_new(request):
     if request.method == "POST":
+        action = request.POST.get("action", "draft")
+        verified_orcid = _verified_orcid_for(request.user)
         form = ProjectForm(request.POST)
         formset = ContributionFormSet(request.POST, instance=Project())
-        if form.is_valid() and formset.is_valid():
+        can_publish = action != "publish" or bool(verified_orcid)
+        if not can_publish:
+            form.add_error(None, "Sign in with ORCID before publishing a project.")
+        if form.is_valid() and formset.is_valid() and can_publish:
             project = form.save(commit=False)
             project.created_by = request.user
             project.visibility = _resolve_visibility(
-                project, request.POST.get("action", "draft"), is_new=True
+                project, action, is_new=True
             )
             project.save()
             form.save_m2m()
             formset.instance = project
             formset.save()
+            _attach_verified_submitter(project, request.user, verified_orcid)
             if project.is_public:
                 messages.success(request, "Project published.")
             else:
@@ -185,6 +255,7 @@ def project_new(request):
             "formset": formset,
             "mode": "new",
             "project": None,
+            "role_suggestions": ROLE_SUGGESTIONS,
         },
     )
 
@@ -195,16 +266,22 @@ def project_edit(request, slug: str):
     if not project.editable_by(request.user):
         raise Http404
     if request.method == "POST":
+        action = request.POST.get("action", "save")
+        verified_orcid = _verified_orcid_for(request.user)
         form = ProjectForm(request.POST, instance=project)
         formset = ContributionFormSet(request.POST, instance=project)
-        if form.is_valid() and formset.is_valid():
+        can_publish = action != "publish" or bool(verified_orcid)
+        if not can_publish:
+            form.add_error(None, "Sign in with ORCID before publishing a project.")
+        if form.is_valid() and formset.is_valid() and can_publish:
             saved = form.save(commit=False)
             saved.visibility = _resolve_visibility(
-                project, request.POST.get("action", "save"), is_new=False
+                project, action, is_new=False
             )
             saved.save()
             form.save_m2m()
             formset.save()
+            _attach_verified_submitter(saved, request.user, verified_orcid)
             messages.success(request, "Project updated.")
             return redirect(saved.get_absolute_url())
     else:
@@ -218,46 +295,43 @@ def project_edit(request, slug: str):
             "formset": formset,
             "mode": "edit",
             "project": project,
+            "role_suggestions": ROLE_SUGGESTIONS,
         },
     )
 
 
-def project_cite(request, slug: str):
-    project = get_object_or_404(
-        Project.objects.prefetch_related("contributions__user"),
-        slug=slug,
-    )
-    if not project.viewable_by(request.user):
+@login_required
+@require_POST
+def project_zenodo_sync(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    if not project.editable_by(request.user):
         raise Http404
-    fmt = request.GET.get("format", "bibtex").lower()
-    contribs = list(project.contributions.all())
-    primary = [c for c in contribs if c.role.lower() in ("author", "maintainer")]
-    authors = [c.display_name for c in (primary or contribs)]
-    year = project.created_at.year
-    doi = project.placeholder_doi or f"10.demo/{project.slug}"
-    url = project.canonical_url or request.build_absolute_uri(project.get_absolute_url())
+    try:
+        deposit = sync_project_to_zenodo(project, request.user)
+    except ZenodoError as exc:
+        messages.error(request, f"Zenodo sync failed: {exc}")
+    else:
+        messages.success(
+            request,
+            f"{zenodo_mode_label()} draft synced. Reserved DOI: {deposit.doi or 'not returned yet'}.",
+        )
+    return redirect(project.get_absolute_url())
 
-    if fmt == "csl":
-        payload = {
-            "type": "article",
-            "id": project.slug,
-            "title": project.title,
-            "author": [{"literal": a} for a in authors],
-            "issued": {"date-parts": [[year]]},
-            "DOI": doi,
-            "URL": url,
-        }
-        return JsonResponse(payload, json_dumps_params={"indent": 2})
 
-    bib_authors = " and ".join(authors) if authors else "OSPREY contributor"
-    entry = (
-        f"@misc{{{project.slug},\n"
-        f"  title = {{{project.title}}},\n"
-        f"  author = {{{bib_authors}}},\n"
-        f"  year = {{{year}}},\n"
-        f"  doi = {{{doi}}},\n"
-        f"  url = {{{url}}},\n"
-        f"  note = {{OSPREY demo record}}\n"
-        f"}}\n"
-    )
-    return HttpResponse(entry, content_type="text/plain; charset=utf-8")
+@login_required
+@require_POST
+def project_zenodo_publish(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    if not project.editable_by(request.user):
+        raise Http404
+    deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+    if deposit is None:
+        messages.error(request, "Create a Zenodo draft before publishing.")
+        return redirect(project.get_absolute_url())
+    try:
+        deposit = publish_project_deposit(deposit)
+    except ZenodoError as exc:
+        messages.error(request, f"Zenodo publish failed: {exc}")
+    else:
+        messages.success(request, f"{zenodo_mode_label()} record published: {deposit.doi}.")
+    return redirect(project.get_absolute_url())

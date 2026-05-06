@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% load osprey_md %}
-{% block title %}{{ person.profile.display_name|default:person.get_full_name|default:person.username }} — OSPREY{%
-endblock %}
+{% block title %}{{ person.profile.display_name|default:person.get_full_name|default:person.username }} — OSPREY{% endblock %}
 
 {% block content %}
 <article class="profile">
@@ -18,14 +17,12 @@ endblock %}
         <div style="flex:1;min-width:14rem">
             <h1 style="margin:0">
                 {{ person.profile.display_name|default:person.get_full_name|default:person.username }}
+                {% if not person.is_active %}<span class="badge private" style="font-size:.85rem;vertical-align:middle">inactive</span>{% endif %}
             </h1>
             <p class="muted" style="margin:.25rem 0">
                 @{{ person.username }}
-                {% if person.profile.institution %}&middot; <a
-                    href="{% url 'institutions:detail' person.profile.institution|slugify %}">{{
-                    person.profile.institution }}</a>{% endif %}
-                {% if person.profile.orcid_placeholder %}&middot; ORCID {{ person.profile.orcid_placeholder }}{% endif
-                %}
+                {% if person.profile.institution %}&middot; <a href="{% url 'institutions:detail' person.profile.institution|slugify %}">{{ person.profile.institution }}</a>{% endif %}
+                {% if verified_orcid %}&middot; ORCID {{ verified_orcid }}{% endif %}
             </p>
         </div>
         {% if is_self %}
@@ -48,8 +45,7 @@ endblock %}
             <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
                 <h3>
                     <span>{{ project.title }}</span>
-                    {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{%
-                    endif %}
+                    {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
                 </h3>
                 <p class="summary">{{ project.summary|truncatewords:18 }}</p>
                 <div class="meta">

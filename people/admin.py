@@ -8,3 +8,4 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "display_name", "institution", "orcid_placeholder")
     list_select_related = ("user",)
     search_fields = ("user__username", "display_name", "institution", "orcid_placeholder")
+    readonly_fields = ("orcid_placeholder",)

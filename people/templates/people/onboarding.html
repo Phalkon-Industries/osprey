@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Welcome to OSPREY{% endblock %}
+{% block content %}
+<h1>Welcome to OSPREY</h1>
+<p class="muted" style="max-width:42rem">
+    A quick first pass at your profile. ORCID gave us your name; pick a user
+    tag and confirm the rest. After saving, the tag is permanent for now, so
+    take a second to make sure you like it.
+</p>
+{% if verified_orcid %}
+<p class="muted" style="max-width:42rem">Connected ORCID: {{ verified_orcid }}</p>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" style="max-width:42rem">
+    {% csrf_token %}
+    {% for field in form %}
+    <p>
+        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
+        {{ field }}
+        {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
+        {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
+    </p>
+    {% endfor %}
+    <button type="submit">Save and continue</button>
+</form>
+{% endblock %}

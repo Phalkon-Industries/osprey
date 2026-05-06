@@ -33,8 +33,8 @@ sudo chmod 750 /etc/osprey
 sudo -u osprey tee /etc/osprey/.env.prod > /dev/null <<'ENV'
 DJANGO_SECRET_KEY=<generate a long random string>
 DJANGO_DEBUG=0
-DJANGO_ALLOWED_HOSTS=osprey.science,www.osprey.science
-DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.science,https://www.osprey.science
+DJANGO_ALLOWED_HOSTS=osprey.phalkon.io
+DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.phalkon.io
 DJANGO_SESSION_COOKIE_SECURE=1
 DJANGO_CSRF_COOKIE_SECURE=1
 POSTGRES_DB=osprey
@@ -47,6 +47,10 @@ ORCID_CLIENT_SECRET=<orcid production client secret>
 ENV
 sudo chmod 640 /etc/osprey/.env.prod
 
+# Production Docker does not use ~/osprey/.env. deploy.sh passes
+# /etc/osprey/.env.prod to Docker Compose with --env-file, and the prod compose
+# override also injects it into the containers that need those variables.
+
 # nginx site:
 sudo cp ~/osprey/deploy/nginx.conf /etc/nginx/sites-available/osprey
 sudo ln -s /etc/nginx/sites-available/osprey /etc/nginx/sites-enabled/osprey
@@ -54,7 +58,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
 # Issue TLS cert (also installs auto-renew cron):
-sudo certbot --nginx -d osprey.science -d www.osprey.science
+sudo certbot --nginx -d osprey.phalkon.io
 
 # First deploy:
 cd ~/osprey && ./deploy.sh
@@ -66,73 +70,97 @@ From a dev machine:
 
 ```bash
 git push
-ssh osprey@osprey.science 'cd ~/osprey && ./deploy.sh'
+ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./deploy.sh'
 ```
 
 No editing on the server. Ever.
 
 ## ORCID setup
 
-The app is wired for ORCID through django-allauth. Development defaults to the
-ORCID sandbox; production should use regular `orcid.org` credentials.
+The app is wired for ORCID through django-allauth. The longer design and setup
+notes live in [planning/features/orcid-signin.md](../planning/features/orcid-signin.md).
+The key point: ORCID iDs are collected through ORCID sign-in, not typed into
+OSPREY forms.
 
-### 1. Test with the sandbox
+### How Docker sees the env file
 
-1. Create or sign into a sandbox ORCID account at `https://sandbox.orcid.org/`.
-2. Register a sandbox public API client in the ORCID developer tools.
-3. Add this redirect URI to the sandbox client:
+There are two different env-file ideas in Docker Compose, and this is where the
+setup can get confusing:
+
+- `docker compose --env-file /etc/osprey/.env.prod ...` tells the Compose CLI
+  what variables to use while it reads the compose files. This is how
+  `${POSTGRES_PASSWORD}` and friends get resolved for the database service.
+- `env_file: /etc/osprey/.env.prod` in `docker-compose.prod.yml` injects those
+  variables into a running container.
+
+Production needs the server file at `/etc/osprey/.env.prod`. It does not need a
+repo-local `.env` file. Local development still uses the repo-local `.env` file
+because [docker-compose.yml](../docker-compose.yml) names that file directly.
+
+`deploy.sh` already runs Compose with the production env file:
+
+```bash
+docker compose --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml ...
+```
+
+### Local ORCID test
+
+ORCID may reject `localhost` redirect URIs. For repeat local testing, use the
+Cloudflare tunnel hostname and register this full callback URL with ORCID:
 
 ```text
-http://localhost:8000/accounts/orcid/login/callback/
+https://ospreydev.phalkon.io/accounts/orcid/login/callback/
 ```
 
-4. Put the sandbox credentials in local `.env`:
+The tunnel should point that public hostname at local Django, usually
+`http://localhost:8000`, not `https://localhost:8000`. Cloudflare provides the
+public HTTPS endpoint; the local Django development server speaks HTTP. Put
+matching credentials in local `.env` and include the tunnel hostname in
+`DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS`:
 
 ```env
-ORCID_USE_SANDBOX=1
-ORCID_CLIENT_ID=<sandbox client id>
-ORCID_CLIENT_SECRET=<sandbox client secret>
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,ospreydev.phalkon.io
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:8000,https://ospreydev.phalkon.io
+ORCID_USE_SANDBOX=0
+ORCID_CLIENT_ID=<orcid application id>
+ORCID_CLIENT_SECRET=<orcid secret>
 ```
 
-5. Restart the Django container and use the login page's ORCID button. The
-  browser should leave OSPREY, go to `sandbox.orcid.org`, and return to
-  `/accounts/orcid/login/callback/`.
+Use `ORCID_USE_SANDBOX=1` only with sandbox credentials. Production ORCID
+credentials are okay for beta sign-in testing because OSPREY asks only for
+authentication and does not write to anyone's ORCID record.
 
-Sandbox accounts are separate from real ORCID accounts. A real user's normal
-ORCID login will not work there.
-
-### 2. Move to production ORCID
+### Production ORCID
 
 1. Sign into a real ORCID account at `https://orcid.org/` and register a
-  public API client there.
+   public API client there.
 2. Add the production callback URL:
 
 ```text
-https://osprey.science/accounts/orcid/login/callback/
+https://osprey.phalkon.io/accounts/orcid/login/callback/
 ```
 
-Add `https://www.osprey.science/accounts/orcid/login/callback/` too if the
-`www` host will accept logins.
+Only add other callback URLs if those hostnames will actually serve OSPREY.
 
 3. In `/etc/osprey/.env.prod`, set:
 
 ```env
 ORCID_USE_SANDBOX=0
-ORCID_CLIENT_ID=<production client id>
-ORCID_CLIENT_SECRET=<production client secret>
+ORCID_CLIENT_ID=<production application id>
+ORCID_CLIENT_SECRET=<production secret>
 ```
 
 4. Confirm the production env file also has the public host names:
 
 ```env
-DJANGO_ALLOWED_HOSTS=osprey.science,www.osprey.science
-DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.science,https://www.osprey.science
+DJANGO_ALLOWED_HOSTS=osprey.phalkon.io
+DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.phalkon.io
 ```
 
 5. Deploy and restart the app:
 
 ```bash
-ssh osprey@osprey.science 'cd ~/osprey && ./deploy.sh'
+ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./deploy.sh'
 ```
 
 6. Test sign-in from a private browser window. The authorize URL should be on
@@ -146,7 +174,7 @@ on the profile. It does not write to a user's ORCID record.
 Add a cron job for the `osprey` user:
 
 ```cron
-15 4 * * * cd /home/osprey/osprey && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db pg_dump -U osprey osprey | gzip > /home/osprey/backups/osprey-$(date +\%Y\%m\%d).sql.gz
+15 4 * * * cd /home/osprey/osprey && docker compose --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml exec -T db pg_dump -U osprey osprey | gzip > /home/osprey/backups/osprey-$(date +\%Y\%m\%d).sql.gz
 ```
 
 Then sync `~/backups/` off-VPS (Backblaze B2, Tailscale rsync, etc.).
@@ -155,6 +183,6 @@ Then sync `~/backups/` off-VPS (Backblaze B2, Tailscale rsync, etc.).
 
 ```bash
 gunzip -c /path/to/dump.sql.gz | \
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db \
+  docker compose --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml exec -T db \
     psql -U osprey -d osprey
 ```

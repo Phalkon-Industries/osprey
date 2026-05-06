@@ -1,5 +1,11 @@
 services:
   db:
+    env_file:
+      - /etc/osprey/.env.prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in /etc/osprey/.env.prod}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in /etc/osprey/.env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in /etc/osprey/.env.prod}
     volumes:
       - /srv/osprey/postgres:/var/lib/postgresql/data
     restart: unless-stopped

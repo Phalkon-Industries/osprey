@@ -132,6 +132,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
+ACCOUNT_SIGNUP_REDIRECT_URL = "/people/me/welcome/"
 
 SITE_ID = int(os.environ.get("DJANGO_SITE_ID", "1"))
 
@@ -146,7 +147,7 @@ SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_STORE_TOKENS = False
 
-ORCID_USE_SANDBOX = _env_bool("ORCID_USE_SANDBOX", default=True)
+ORCID_USE_SANDBOX = _env_bool("ORCID_USE_SANDBOX", default=False)
 SOCIALACCOUNT_PROVIDERS = {
     "orcid": {
         "BASE_DOMAIN": "sandbox.orcid.org" if ORCID_USE_SANDBOX else "orcid.org",
@@ -157,6 +158,14 @@ SOCIALACCOUNT_PROVIDERS = {
         },
     }
 }
+
+ZENODO_USE_SANDBOX = _env_bool("ZENODO_USE_SANDBOX", default=True)
+ZENODO_ACCESS_TOKEN = os.environ.get("ZENODO_ACCESS_TOKEN", "")
+ZENODO_API_BASE_URL = os.environ.get(
+    "ZENODO_API_BASE_URL",
+    "https://sandbox.zenodo.org" if ZENODO_USE_SANDBOX else "https://zenodo.org",
+).rstrip("/")
+ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

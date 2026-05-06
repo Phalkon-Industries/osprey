@@ -11,8 +11,7 @@
     <label>Status<br>
         <select name="status">
             <option value="">Any status</option>
-            {% for value, label in status_choices %}<option value="{{ value }}" {% if active_status==value %} selected{%
-                endif %}>{{ label }}</option>{% endfor %}
+            {% for value, label in status_choices %}<option value="{{ value }}" {% if active_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
     </label>
     <button type="submit">Filter</button>
@@ -31,11 +30,9 @@
         <p>{{ item.message|linebreaksbr }}</p>
         <dl class="feedback-meta">
             <dt>Page</dt>
-            <dd>{% if item.page_url %}<a href="{{ item.page_url }}" rel="noopener">{{ item.page_url }}</a>{% else
-                %}<span class="muted">Unknown</span>{% endif %}</dd>
+            <dd>{% if item.page_url %}<a href="{{ item.page_url }}" rel="noopener">{{ item.page_url }}</a>{% else %}<span class="muted">Unknown</span>{% endif %}</dd>
             <dt>Environment</dt>
-            <dd>{{ item.browser|default:"unknown browser" }} on {{ item.os|default:"unknown OS" }}{% if item.viewport_w
-                and item.viewport_h %}, {{ item.viewport_w }}×{{ item.viewport_h }}{% endif %}</dd>
+            <dd>{{ item.browser|default:"unknown browser" }} on {{ item.os|default:"unknown OS" }}{% if item.viewport_w and item.viewport_h %}, {{ item.viewport_w }}×{{ item.viewport_h }}{% endif %}</dd>
         </dl>
         {% if item.screenshot %}
         <a class="feedback-shot" href="{{ item.screenshot.url }}" target="_blank" rel="noopener">
@@ -47,8 +44,7 @@
             <input type="hidden" name="feedback_id" value="{{ item.id }}">
             <label>Status<br>
                 <select name="status">
-                    {% for value, label in status_choices %}<option value="{{ value }}" {% if item.status==value %}
-                        selected{% endif %}>{{ label }}</option>{% endfor %}
+                    {% for value, label in status_choices %}<option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
             </label>
             <label>Admin notes<br><textarea name="admin_notes" rows="3">{{ item.admin_notes }}</textarea></label>

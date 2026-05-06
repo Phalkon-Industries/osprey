@@ -69,7 +69,7 @@ Top-level Django project:
 
 - `osprey/` — Django settings, root URLconf.
 - `core/` — base templates, home/about/license-guide views, theme cookie, shared CSS at `core/static/css/osprey.css`.
-- `projects/` — `Project`, `Contribution`, `Tag`, `TagAssignment`, `ArtifactLink`, `ProjectImage`, `Citation`, `LineageEdge`. Project list/detail/new/edit views and templates. Markdown templatetag at `projects/templatetags/osprey_md.py` (allows external `http(s)` images).
+- `projects/` — `Project`, `Contribution`, `Tag`, `TagAssignment`, `ArtifactLink`, `ProjectImage`. Project list/detail/new/edit views and templates. Markdown templatetag at `projects/templatetags/osprey_md.py` (allows external `http(s)` images). Old `Citation` and `LineageEdge` models may still exist in migrations/models, but the demo UI/API does not expose them right now.
 - `people/` — `Profile` (one-to-one with `auth.User`), profile edit view, person detail view, institution detail view (free-text institutions, slug-matched).
 - `api/` — django-ninja API at `/api/v1/`, including a `/api/v1/export/` JSON dump for the survivable-data principle.
 - `feedback/` — floating in-page feedback widget (logged-in only). Captures message, page URL, browser, OS, viewport, optional annotated screenshot. Reviewed in Django admin.
@@ -86,10 +86,14 @@ Top-level Django project:
 
 ### Auth and identity
 
-- Django built-in auth still works for local/demo accounts. ORCID sign-in is being wired with django-allauth at `/accounts/orcid/login/`.
-- ORCID config lives in env vars: `ORCID_USE_SANDBOX`, `ORCID_CLIENT_ID`, `ORCID_CLIENT_SECRET`. Development defaults to ORCID sandbox.
-- Per-user `Profile` adds `display_name`, `bio`, `avatar`, `institution` (free text), `orcid_placeholder` (self-asserted for manual profiles; populated from ORCID for social sign-ins).
-- Contribution rows (`projects.Contribution`) carry an ORCID iD (required), `display_name`, free-text `role`, optional `credit_statement`, optional `user` FK. When a `Profile.orcid_placeholder` is set, `Profile.save()` back-fills any matching `Contribution.user` so future credits land on the right account.
+- User-facing accounts are ORCID-only. ORCID sign-in uses django-allauth at `/accounts/orcid/login/`. Staff access is granted to ORCID-backed users.
+- ORCID config lives in env vars: `ORCID_USE_SANDBOX`, `ORCID_CLIENT_ID`, `ORCID_CLIENT_SECRET`. Production ORCID is acceptable for real sign-in-only beta testing once the callback URI is registered; sandbox remains available for fake-account testing.
+- Production URL is `https://osprey.phalkon.io/`. ORCID may reject `localhost` redirect URIs, so local ORCID testing needs a public HTTPS tunnel or real dev hostname.
+- ORCID iDs must not be manually entered. They are collected only through ORCID OAuth. The current long-form source is [planning/features/orcid-signin.md](../planning/features/orcid-signin.md).
+- Per-user `Profile` adds `display_name`, `bio`, `avatar`, `institution` (free text), `orcid_placeholder` (old field name; should be populated from ORCID sign-in, not manual profile editing).
+- Local `auth.User.username` is the public @ user tag. New ORCID accounts get a full-name-based tag (e.g. `@jonathanapfeifer`); a four-digit suffix is appended only when the bare tag is already taken. The suggested tag can be adjusted exactly once, on the first-login onboarding page at `/people/me/welcome/`. Saving onboarding locks the tag, and the regular `/people/me/edit/` page never offers it as an editable field.
+- User-facing account deletion should deactivate the account, not hard-delete it, so public credit records and profile pages survive. A later sign-in with the same ORCID can reactivate the account.
+- Contribution rows (`projects.Contribution`) carry `display_name`, free-text `role`, optional `credit_statement`, optional `user` FK, and optional `orcid_id`. Blank ORCID is allowed for named/unverified contributors. Publishing requires the submitter to be ORCID verified.
 
 ### Institutions
 
@@ -127,7 +131,7 @@ The VS Code HTML formatter sometimes splits Django tags across two lines, which 
 sg docker -c 'docker compose exec -T --user 1000:1000 -w /app web python manage.py <command>'
 ```
 
-Common ones: `check`, `migrate`, `makemigrations <app>`, `shell`, `createsuperuser`, `collectstatic`.
+Common ones: `check`, `migrate`, `makemigrations <app>`, `shell`, `collectstatic`.
 
 ### Seed data
 
@@ -135,7 +139,7 @@ Common ones: `check`, `migrate`, `makemigrations <app>`, `shell`, `createsuperus
 sg docker -c 'docker compose exec -T --user 1000:1000 -w /app web python manage.py shell < scripts/smoke_seed.py'
 ```
 
-Seed creates `alice` and `bob` (password `ospreydemo`), one parent and one child Pump project at WHOI, a few tags, contributors, lineage edge.
+Seed creates `alice` and `bob` with unusable passwords, one parent and one child Pump project at WHOI, a few tags, contributors, artifact links, and demo images.
 
 ### Migration patterns
 
@@ -152,9 +156,9 @@ sg docker -c 'docker compose exec -T -w /app web chown -R 1000:1000 media'
 ## Coding principles
 
 - **Survivable, thin, boring.** Stable well-understood tools. No exotic dependencies the next maintainer would have to learn.
-- **Federation over hosting.** OSPREY is a curation/credit/lineage layer on top of GitHub/Codeberg/Zenodo. The demo should not become a primary file host. Cover images are URLs, not uploads.
+- **Federation over hosting.** OSPREY is a curation and credit layer on top of GitHub/Codeberg/Zenodo. The demo should not become a primary file host. Cover images are URLs, not uploads.
 - **Survivable data.** Anything OSPREY stores must be exportable as plain data via `/api/v1/export/`. A successor community should be able to reconstruct from a public export plus the upstream repositories.
-- **DOIs:** real ones come from DataCite or Zenodo. Demo uses `placeholder_doi` of the form `10.demo/<slug>`.
+- **DOIs/citations/lineage:** real DOI minting, citation export, and lineage graphs are paused in the demo UI/API until the design has better example projects. Do not reintroduce placeholder DOI surfaces without checking [planning/demo-architecture.md](../planning/demo-architecture.md).
 - **Founder's coding background:** strong in CS and electrical engineering, embedded systems, CO₂ sensors. New to full-stack web development. Explain web-specific concepts (deployment, CORS, sessions, ORMs, migrations, reverse proxies, certificate management) when they come up.
 
 ## Things to push back on

@@ -1,15 +1,28 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
+from django.views.decorators.http import require_POST
 
 from projects.models import Project
 
 from .forms import ProfileForm
 from .models import Profile
+
+
+def _verified_orcid_for(user) -> str:
+    account = user.socialaccount_set.filter(provider="orcid").first()
+    if account is None:
+        return ""
+    identifier = (account.extra_data or {}).get("orcid-identifier") or {}
+    account_orcid = (identifier.get("path") or "").strip()
+    if account_orcid:
+        return account_orcid
+    return getattr(user.profile, "orcid_placeholder", "")
 
 
 def person_detail(request, pk: int):
@@ -27,6 +40,7 @@ def person_detail(request, pk: int):
     person.refresh_from_db()
 
     is_self = request.user.is_authenticated and request.user.pk == person.pk
+    verified_orcid = _verified_orcid_for(person)
 
     contributions = (
         person.contributions.select_related("project").order_by("project__title")
@@ -49,6 +63,7 @@ def person_detail(request, pk: int):
             "contributions": contributions,
             "is_self": is_self,
             "own_projects": own_projects,
+            "verified_orcid": verified_orcid,
         },
     )
 
@@ -62,6 +77,9 @@ def my_profile(request):
 @login_required
 def profile_edit(request):
     profile, _ = Profile.objects.get_or_create(user=request.user)
+    if not profile.usertag_locked:
+        return redirect("people:onboarding")
+    verified_orcid = _verified_orcid_for(request.user)
     if request.method == "POST":
         form = ProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
@@ -70,7 +88,49 @@ def profile_edit(request):
             return redirect("people:detail", pk=request.user.pk)
     else:
         form = ProfileForm(instance=profile)
-    return render(request, "people/edit.html", {"form": form, "profile": profile})
+    return render(
+        request,
+        "people/edit.html",
+        {"form": form, "profile": profile, "verified_orcid": verified_orcid},
+    )
+
+
+@login_required
+def profile_onboarding(request):
+    """First-login setup. The only place the user tag is editable."""
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if profile.usertag_locked:
+        return redirect("people:edit")
+    verified_orcid = _verified_orcid_for(request.user)
+    if request.method == "POST":
+        form = ProfileForm(
+            request.POST, request.FILES, instance=profile, allow_usertag=True
+        )
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Welcome to OSPREY. Your profile is set.")
+            return redirect("people:detail", pk=request.user.pk)
+    else:
+        form = ProfileForm(instance=profile, allow_usertag=True)
+    return render(
+        request,
+        "people/onboarding.html",
+        {"form": form, "profile": profile, "verified_orcid": verified_orcid},
+    )
+
+
+@login_required
+@require_POST
+def account_deactivate(request):
+    user = request.user
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    logout(request)
+    messages.info(
+        request,
+        "Your account has been deactivated. The public profile remains, and ORCID sign-in can reactivate it.",
+    )
+    return redirect("home")
 
 
 def institution_detail(request, slug: str):

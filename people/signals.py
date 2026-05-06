@@ -3,9 +3,10 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from allauth.account.signals import user_signed_up
-from allauth.socialaccount.models import SocialAccount
 from allauth.socialaccount.signals import social_account_added, social_account_updated
+from allauth.socialaccount.models import SocialAccount
 
+from .identity import extract_orcid, extract_orcid_names, generate_user_tag
 from .models import Profile
 
 
@@ -16,30 +17,33 @@ def ensure_profile(sender, instance, created, **kwargs):
         Profile.objects.get_or_create(user=instance)
 
 
-def _extract_orcid(extra_data: dict) -> str:
-    identifier = extra_data.get("orcid-identifier") or {}
-    return (identifier.get("path") or "").strip()
-
-
-def _extract_display_name(extra_data: dict) -> str:
-    person = extra_data.get("person") or {}
-    name = person.get("name") or {}
-    given = ((name.get("given-names") or {}).get("value") or "").strip()
-    family = ((name.get("family-name") or {}).get("value") or "").strip()
-    return " ".join(part for part in [given, family] if part)
-
-
 def _sync_orcid_profile(user) -> None:
     account = SocialAccount.objects.filter(user=user, provider="orcid").first()
     if account is None:
         return
-    orcid_id = _extract_orcid(account.extra_data or {})
+    extra_data = account.extra_data or {}
+    orcid_id = extract_orcid(extra_data)
     if not orcid_id:
         return
+    names = extract_orcid_names(extra_data)
     profile, _ = Profile.objects.get_or_create(user=user)
+    previous_username = user.get_username()
     profile.orcid_placeholder = orcid_id
-    if not profile.display_name:
-        profile.display_name = _extract_display_name(account.extra_data or {}) or user.get_username()
+    if names["first_name"] and not user.first_name:
+        user.first_name = names["first_name"][:150]
+    if names["last_name"] and not user.last_name:
+        user.last_name = names["last_name"][:150]
+    if not profile.usertag_locked:
+        user.username = generate_user_tag(
+            names["display_name"] or user.get_full_name() or user.get_username(),
+            orcid_id=orcid_id,
+            user_id=user.pk,
+        )
+    user.save()
+    if not profile.usertag_locked and names["display_name"]:
+        profile.display_name = names["display_name"]
+    elif not profile.display_name or profile.display_name in {previous_username, user.get_username()}:
+        profile.display_name = names["display_name"] or user.get_full_name() or user.get_username()
     profile.save()
 
 

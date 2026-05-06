@@ -35,6 +35,10 @@ class Profile(models.Model):
         blank=True,
         help_text="Institution or lab name. Free text for now.",
     )
+    usertag_locked = models.BooleanField(
+        default=False,
+        help_text="Whether the user's local @ tag has been finalized.",
+    )
 
     def __str__(self) -> str:
         return self.display_name or self.user.get_username()

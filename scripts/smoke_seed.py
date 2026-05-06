@@ -11,9 +11,7 @@ from django.core.files.base import ContentFile
 from people.models import Profile
 from projects.models import (
     ArtifactLink,
-    Citation,
     Contribution,
-    LineageEdge,
     Project,
     ProjectImage,
     Tag,
@@ -21,33 +19,32 @@ from projects.models import (
 )
 
 User = get_user_model()
-
 WHOI = "WHOI"
 
-alice, created = User.objects.get_or_create(
+alice, _ = User.objects.get_or_create(
     username="alice",
     defaults={"first_name": "Alice", "last_name": "Pfeifer", "email": "alice@example.org"},
 )
-if created:
-    alice.set_password("demo")
-    alice.save()
+if alice.has_usable_password():
+    alice.set_unusable_password()
+    alice.save(update_fields=["password"])
 Profile.objects.filter(user=alice).update(
     display_name="Alice Pfeifer",
     institution=WHOI,
-    orcid_placeholder="0000-0001-0000-0001",
+    orcid_placeholder="",
 )
 
-bob, created = User.objects.get_or_create(
+bob, _ = User.objects.get_or_create(
     username="bob",
     defaults={"first_name": "Bob", "last_name": "Hall", "email": "bob@example.org"},
 )
-if created:
-    bob.set_password("demo")
-    bob.save()
+if bob.has_usable_password():
+    bob.set_unusable_password()
+    bob.save(update_fields=["password"])
 Profile.objects.filter(user=bob).update(
     display_name="Bob Hall",
     institution=WHOI,
-    orcid_placeholder="0000-0001-0000-0002",
+    orcid_placeholder="",
 )
 
 tag_pump, _ = Tag.objects.get_or_create(name="pump")
@@ -101,7 +98,7 @@ includes a hardware revision byte.
 ## Deployment notes
 
 The v2 has been deployed three times so far, all from the R/V Tioga off
-Woods Hole. Logs and bench data live in the upstream repository.
+Martha's Vineyard.
 """
 
 parent, _ = Project.objects.get_or_create(
@@ -114,7 +111,6 @@ parent, _ = Project.objects.get_or_create(
         "artifact_type": "hardware",
         "field": "oceanography",
         "license": "CERN-OHL-S-2.0",
-        "placeholder_doi": "10.demo/whoi-pump-v1",
         "canonical_url": "https://github.com/example/whoi-pump-v1",
         "institution": WHOI,
         "visibility": Project.VISIBILITY_PUBLIC,
@@ -138,7 +134,6 @@ child, _ = Project.objects.get_or_create(
         "artifact_type": "hardware",
         "field": "oceanography",
         "license": "CERN-OHL-S-2.0",
-        "placeholder_doi": "10.demo/whoi-pump-v2",
         "canonical_url": "https://github.com/example/whoi-pump-v2",
         "institution": WHOI,
         "visibility": Project.VISIBILITY_PUBLIC,
@@ -154,29 +149,29 @@ Project.objects.filter(pk=child.pk).update(
 
 Contribution.objects.update_or_create(
     project=parent,
-    orcid_id="0000-0001-0000-0001",
-    defaults={"user": alice, "display_name": "Alice Researcher", "role": "Author", "order": 0},
+    display_name="Alice Researcher",
+    defaults={"user": alice, "orcid_id": "", "role": "Project lead", "order": 0},
 )
 Contribution.objects.update_or_create(
     project=parent,
-    orcid_id="0000-0001-0000-0002",
-    defaults={"user": bob, "display_name": "Bob Engineer", "role": "Contributor", "order": 1},
+    display_name="Bob Engineer",
+    defaults={"user": bob, "orcid_id": "", "role": "Hardware design", "order": 1},
 )
 Contribution.objects.update_or_create(
     project=parent,
-    orcid_id="0000-0009-9999-9999",
+    display_name="Carol Lab Lead",
     defaults={
         "user": None,
-        "display_name": "Carol Stub (no OSPREY account yet)",
-        "role": "Advisor",
-        "credit_statement": "Stub credit. Auto-links if Carol later registers with this ORCID iD.",
+        "orcid_id": "",
+        "role": "Principal investigator",
+        "credit_statement": "Ran the lab effort and supported the field deployment.",
         "order": 2,
     },
 )
 Contribution.objects.update_or_create(
     project=child,
-    orcid_id="0000-0001-0000-0001",
-    defaults={"user": alice, "display_name": "Alice Researcher", "role": "Author", "order": 0},
+    display_name="Alice Researcher",
+    defaults={"user": alice, "orcid_id": "", "role": "Maintainer", "order": 0},
 )
 
 ArtifactLink.objects.get_or_create(
@@ -199,15 +194,8 @@ TagAssignment.objects.get_or_create(project=parent, tag=tag_pump)
 TagAssignment.objects.get_or_create(project=child, tag=tag_pump)
 TagAssignment.objects.get_or_create(project=child, tag=tag_co2)
 
-LineageEdge.objects.get_or_create(
-    parent=parent,
-    child=child,
-    relation="derived_from",
-    defaults={"note": "Same pump head, redesigned electronics."},
-)
-
-# A demo image (a tiny solid-color PNG generated in-memory) and a citation,
-# so the gallery and "Cited by" sections render with content.
+# A demo image (a tiny solid-color PNG generated in-memory) so the gallery
+# renders with content.
 def _placeholder_png(color: tuple[int, int, int]) -> bytes:
     from PIL import Image
 
@@ -233,22 +221,10 @@ if not child.images.exists():
         order=0,
     )
 
-Citation.objects.get_or_create(
-    project=parent,
-    text="Pfeifer, A. et al. Field deployment of the WHOI Pump v1. (demo citation)",
-    defaults={
-        "year": 2024,
-        "doi": "10.demo/citation-001",
-        "url": "https://example.org/papers/whoi-pump-v1",
-    },
-)
-
 print("=== Seeded ===")
 print(f"users:           {User.objects.count()}")
 print(f"projects:        {Project.objects.count()} (public: {Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).count()})")
 print(f"contributions:   {Contribution.objects.count()}")
 print(f"artifact_links:  {ArtifactLink.objects.count()}")
-print(f"lineage_edges:   {LineageEdge.objects.count()}")
 print(f"tags:            {Tag.objects.count()}")
 print(f"images:          {ProjectImage.objects.count()}")
-print(f"citations:       {Citation.objects.count()}")

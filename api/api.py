@@ -3,7 +3,6 @@
 Endpoints under /api/v1/:
     GET /projects/                list + filter
     GET /projects/{slug}/         detail
-    GET /lineage/{slug}/          local lineage subgraph
     GET /export/                  full database dump
     GET /schema/                  auto-generated OpenAPI (provided by Ninja)
 """
@@ -22,10 +21,9 @@ from ninja import NinjaAPI, Schema
 from people.models import Profile
 from projects.models import (
     ArtifactLink,
-    Citation,
     Contribution,
-    LineageEdge,
     Project,
+    ProjectDeposit,
     ProjectImage,
     Tag,
     TagAssignment,
@@ -41,7 +39,7 @@ api = NinjaAPI(title="OSPREY demo API", version="1.0.0")
 class ContributionOut(Schema):
     user_id: Optional[int] = None
     username: Optional[str] = None
-    orcid_id: str
+    orcid_id: str = ""
     display_name: str
     role: str
     credit_statement: str = ""
@@ -65,8 +63,8 @@ class ProjectSummary(Schema):
     field: str
     artifact_type: str
     license: str
+    doi: str
     institution: Optional[str] = None
-    placeholder_doi: str
     visibility: str
     updated_at: datetime
 
@@ -75,13 +73,6 @@ class ProjectImageOut(Schema):
     url: str
     caption: str
     order: int
-
-
-class CitationOut(Schema):
-    text: str
-    url: str
-    doi: str
-    year: Optional[int] = None
 
 
 class ProjectDetail(ProjectSummary):
@@ -97,19 +88,6 @@ class ProjectDetail(ProjectSummary):
     artifact_links: list[ArtifactLinkOut]
     tags: list[TagOut]
     images: list[ProjectImageOut]
-    citations: list[CitationOut]
-
-
-class LineageEdgeOut(Schema):
-    parent_slug: str
-    child_slug: str
-    relation: str
-
-
-class LineageOut(Schema):
-    project: str
-    nodes: list[ProjectSummary]
-    edges: list[LineageEdgeOut]
 
 
 # ---- Helpers -----------------------------------------------------------------
@@ -123,11 +101,26 @@ def _project_summary(p: Project) -> dict:
         "field": p.field,
         "artifact_type": p.artifact_type,
         "license": p.license,
+        "doi": p.doi,
         "institution": p.institution or None,
-        "placeholder_doi": p.placeholder_doi or f"10.demo/{p.slug}",
         "visibility": p.visibility,
         "updated_at": p.updated_at,
     }
+
+
+def _verified_profile_orcid(user) -> str:
+    account = user.socialaccount_set.filter(provider="orcid").first()
+    if account is None:
+        return ""
+    identifier = (account.extra_data or {}).get("orcid-identifier") or {}
+    account_orcid = (identifier.get("path") or "").strip()
+    if account_orcid:
+        return account_orcid
+    try:
+        profile_orcid = user.profile.orcid_placeholder
+    except Profile.DoesNotExist:
+        profile_orcid = ""
+    return profile_orcid
 
 
 def _project_detail(p: Project) -> dict:
@@ -146,7 +139,7 @@ def _project_detail(p: Project) -> dict:
                 {
                     "user_id": c.user_id,
                     "username": c.user.get_username() if c.user_id else None,
-                    "orcid_id": c.orcid_id,
+                    "orcid_id": c.verified_orcid_id,
                     "display_name": c.display_name,
                     "role": c.role,
                     "credit_statement": c.credit_statement,
@@ -162,10 +155,6 @@ def _project_detail(p: Project) -> dict:
             "images": [
                 {"url": img.image.url, "caption": img.caption, "order": img.order}
                 for img in p.images.all()
-            ],
-            "citations": [
-                {"text": c.text, "url": c.url, "doi": c.doi, "year": c.year}
-                for c in p.citations.all()
             ],
         }
     )
@@ -207,49 +196,12 @@ def list_projects(
 def project_detail(request, slug: str):
     p = get_object_or_404(
         Project.objects.prefetch_related(
-            "artifact_links", "contributions__user", "tags", "images", "citations"
+            "artifact_links", "contributions__user", "tags", "images"
         ),
         slug=slug,
         visibility=Project.VISIBILITY_PUBLIC,
     )
     return _project_detail(p)
-
-
-@api.get("/lineage/{slug}/", response=LineageOut)
-def lineage(request, slug: str, depth: int = 2):
-    project = get_object_or_404(Project, slug=slug)
-    seen_ids: set[int] = {project.pk}
-    edges: set[tuple[int, int, str]] = set()
-    frontier = {project.pk}
-    for _ in range(max(0, depth)):
-        if not frontier:
-            break
-        related = LineageEdge.objects.filter(
-            Q(parent_id__in=frontier) | Q(child_id__in=frontier)
-        ).select_related("parent", "child")
-        next_frontier: set[int] = set()
-        for e in related:
-            edges.add((e.parent_id, e.child_id, e.relation))
-            for pk in (e.parent_id, e.child_id):
-                if pk not in seen_ids:
-                    seen_ids.add(pk)
-                    next_frontier.add(pk)
-        frontier = next_frontier
-
-    nodes = Project.objects.filter(pk__in=seen_ids)
-    slug_by_id = {n.pk: n.slug for n in nodes}
-    return {
-        "project": project.slug,
-        "nodes": [_project_summary(n) for n in nodes],
-        "edges": [
-            {
-                "parent_slug": slug_by_id.get(parent_id, ""),
-                "child_slug": slug_by_id.get(child_id, ""),
-                "relation": relation,
-            }
-            for parent_id, child_id, relation in edges
-        ],
-    }
 
 
 @api.get("/export/")
@@ -274,9 +226,7 @@ def full_export(request):
                 "username": u.get_username(),
                 "display_name": getattr(getattr(u, "profile", None), "display_name", "")
                 or u.get_full_name(),
-                "orcid_placeholder": getattr(
-                    getattr(u, "profile", None), "orcid_placeholder", ""
-                ),
+                "orcid_placeholder": _verified_profile_orcid(u),
                 "institution": getattr(
                     getattr(u, "profile", None), "institution", ""
                 ),
@@ -294,7 +244,7 @@ def full_export(request):
                 "artifact_type",
                 "field",
                 "license",
-                "placeholder_doi",
+                "doi",
                 "canonical_url",
                 "cover_image_url",
                 "cover_image_focal_x",
@@ -306,27 +256,42 @@ def full_export(request):
                 "updated_at",
             )
         ),
-        "contributions": list(
-            Contribution.objects.filter(project_id__in=public_project_ids).values(
-                "id",
-                "project_id",
-                "user_id",
-                "orcid_id",
-                "display_name",
-                "role",
-                "credit_statement",
-                "order",
-            )
-        ),
+        "contributions": [
+            {
+                "id": c.id,
+                "project_id": c.project_id,
+                "user_id": c.user_id,
+                "orcid_id": c.verified_orcid_id,
+                "display_name": c.display_name,
+                "role": c.role,
+                "credit_statement": c.credit_statement,
+                "order": c.order,
+            }
+            for c in Contribution.objects.filter(
+                project_id__in=public_project_ids
+            ).select_related("user")
+        ],
         "artifact_links": list(
             ArtifactLink.objects.filter(project_id__in=public_project_ids).values(
                 "id", "project_id", "kind", "url", "label"
             )
         ),
-        "lineage_edges": list(
-            LineageEdge.objects.filter(
-                parent_id__in=public_project_ids, child_id__in=public_project_ids
-            ).values("id", "parent_id", "child_id", "relation", "note")
+        "project_deposits": list(
+            ProjectDeposit.objects.filter(project_id__in=public_project_ids).values(
+                "id",
+                "project_id",
+                "provider",
+                "sandbox",
+                "deposition_id",
+                "record_id",
+                "concept_id",
+                "doi",
+                "concept_doi",
+                "state",
+                "created_at",
+                "updated_at",
+                "published_at",
+            )
         ),
         "tags": list(Tag.objects.values("id", "name")),
         "tag_assignments": list(
@@ -337,11 +302,6 @@ def full_export(request):
         "project_images": list(
             ProjectImage.objects.filter(project_id__in=public_project_ids).values(
                 "id", "project_id", "image", "caption", "order"
-            )
-        ),
-        "citations": list(
-            Citation.objects.filter(project_id__in=public_project_ids).values(
-                "id", "project_id", "text", "url", "doi", "year", "order"
             )
         ),
     }

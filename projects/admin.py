@@ -2,10 +2,9 @@ from django.contrib import admin
 
 from .models import (
     ArtifactLink,
-    Citation,
     Contribution,
-    LineageEdge,
     Project,
+    ProjectDeposit,
     ProjectImage,
     Tag,
     TagAssignment,
@@ -16,6 +15,8 @@ class ContributionInline(admin.TabularInline):
     model = Contribution
     extra = 1
     autocomplete_fields = ("user",)
+    readonly_fields = ("orcid_id",)
+    fields = ("user", "orcid_id", "display_name", "role", "credit_statement", "order")
 
 
 class ArtifactLinkInline(admin.TabularInline):
@@ -35,10 +36,26 @@ class ProjectImageInline(admin.TabularInline):
     fields = ("image", "caption", "order")
 
 
-class CitationInline(admin.TabularInline):
-    model = Citation
-    extra = 1
-    fields = ("text", "url", "doi", "year", "order")
+class ProjectDepositInline(admin.TabularInline):
+    model = ProjectDeposit
+    extra = 0
+    readonly_fields = (
+        "provider",
+        "sandbox",
+        "deposition_id",
+        "record_id",
+        "concept_id",
+        "doi",
+        "concept_doi",
+        "state",
+        "updated_at",
+        "published_at",
+    )
+    fields = readonly_fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Project)
@@ -60,7 +77,7 @@ class ProjectAdmin(admin.ModelAdmin):
         ArtifactLinkInline,
         TagAssignmentInline,
         ProjectImageInline,
-        CitationInline,
+        ProjectDepositInline,
     ]
 
 
@@ -69,15 +86,40 @@ class TagAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
 
-
-@admin.register(LineageEdge)
-class LineageEdgeAdmin(admin.ModelAdmin):
-    list_display = ("child", "relation", "parent")
-    list_filter = ("relation",)
-    autocomplete_fields = ("parent", "child")
-
-
 admin.site.register(ArtifactLink)
-admin.site.register(Contribution)
 admin.site.register(ProjectImage)
-admin.site.register(Citation)
+
+
+@admin.register(Contribution)
+class ContributionAdmin(admin.ModelAdmin):
+    list_display = ("display_name", "project", "role", "user", "orcid_id")
+    list_filter = ("role",)
+    search_fields = ("display_name", "role", "credit_statement", "orcid_id")
+    autocomplete_fields = ("project", "user")
+    readonly_fields = ("orcid_id",)
+    fields = ("project", "user", "orcid_id", "display_name", "role", "credit_statement", "order")
+
+
+@admin.register(ProjectDeposit)
+class ProjectDepositAdmin(admin.ModelAdmin):
+    list_display = ("project", "provider", "sandbox", "state", "doi", "record_id", "updated_at")
+    list_filter = ("provider", "sandbox", "state")
+    search_fields = ("project__title", "project__slug", "deposition_id", "record_id", "doi")
+    readonly_fields = (
+        "project",
+        "provider",
+        "sandbox",
+        "deposition_id",
+        "bucket_url",
+        "record_id",
+        "concept_id",
+        "doi",
+        "concept_doi",
+        "state",
+        "created_by",
+        "last_response",
+        "last_error",
+        "created_at",
+        "updated_at",
+        "published_at",
+    )

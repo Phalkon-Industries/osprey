@@ -4,6 +4,7 @@ Profile editing lives in people/forms.py.
 """
 from __future__ import annotations
 
+import re
 import secrets
 
 from django import forms
@@ -38,6 +39,20 @@ PROJECT_TYPE_SUGGESTIONS = [
     "Protocol or method",
     "Documentation",
     "Analysis pipeline",
+]
+
+ROLE_SUGGESTIONS = [
+    "Project lead",
+    "Principal investigator",
+    "Maintainer",
+    "Hardware design",
+    "Firmware",
+    "Software",
+    "Field testing",
+    "Data collection",
+    "Fabrication",
+    "Documentation",
+    "Analysis",
 ]
 
 
@@ -148,6 +163,7 @@ class ProjectForm(forms.ModelForm):
             "field",
             "artifact_type",
             "canonical_url",
+            "doi",
             "cover_image_url",
             "cover_image_focal_x",
             "cover_image_focal_y",
@@ -181,6 +197,11 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "https://raw.githubusercontent.com/you/repo/main/cover.png",
                 }
             ),
+            "doi": forms.TextInput(
+                attrs={
+                    "placeholder": "e.g. 10.5281/zenodo.1234567",
+                }
+            ),
             "cover_image_focal_x": forms.HiddenInput(),
             "cover_image_focal_y": forms.HiddenInput(),
             "cover_image_zoom": forms.NumberInput(
@@ -192,6 +213,7 @@ class ProjectForm(forms.ModelForm):
             "readme": "README",
             "artifact_type": "Project type",
             "canonical_url": "Where the files live",
+            "doi": "DOI",
             "cover_image_url": "Cover image URL",
             "cover_image_focal_x": "Horizontal crop",
             "cover_image_focal_y": "Vertical crop",
@@ -205,6 +227,11 @@ class ProjectForm(forms.ModelForm):
                 "hosted elsewhere; OSPREY does not host README images."
             ),
             "canonical_url": "Upstream repository or archive (GitHub, Codeberg, Zenodo).",
+            "doi": (
+                "Optional. Paste a DOI from Zenodo, OSF, Figshare, or any "
+                "DOI-minting repository. OSPREY-facilitated DOI minting is "
+                "in planning; for now, get a DOI elsewhere and paste it here."
+            ),
             "cover_image_url": (
                 "Optional. A direct link to an image (PNG/JPG) hosted elsewhere. "
                 "For GitHub, use the 'raw' URL. Shown on cards and the project page."
@@ -245,6 +272,26 @@ class ProjectForm(forms.ModelForm):
             cleaned["resolved_license"] = choice
         return cleaned
 
+    def clean_doi(self) -> str:
+        """Accept a bare DOI; tolerate pasted URLs and 'doi:' prefixes."""
+        raw = (self.cleaned_data.get("doi") or "").strip()
+        if not raw:
+            return ""
+        # Strip common prefixes a user might paste.
+        normalized = raw
+        for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"):
+            if normalized.lower().startswith(prefix):
+                normalized = normalized[len(prefix):]
+                break
+        # DOI shape: 10.<registrant>/<suffix>. The suffix can contain almost
+        # anything printable; we just check the registrant prefix.
+        if not re.match(r"^10\.\d{4,9}/\S+$", normalized):
+            raise forms.ValidationError(
+                "That doesn't look like a DOI. Expected something like "
+                "10.5281/zenodo.1234567."
+            )
+        return normalized
+
     def save(self, commit: bool = True) -> Project:
         project = super().save(commit=False)
         project.license = self.cleaned_data.get("resolved_license", "") or ""
@@ -282,20 +329,16 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ["orcid_id", "display_name", "role", "credit_statement", "order"]
+        fields = ["display_name", "role", "credit_statement", "order"]
         widgets = {
-            "orcid_id": forms.TextInput(
-                attrs={
-                    "placeholder": "0000-0000-0000-000X",
-                    "pattern": r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]",
-                    "size": 22,
-                }
-            ),
             "display_name": forms.TextInput(
                 attrs={"placeholder": "Name as shown on the project page"}
             ),
             "role": forms.TextInput(
-                attrs={"placeholder": "e.g. Author, Maintainer, Hardware"}
+                attrs={
+                    "list": "contributor-role-suggestions",
+                    "placeholder": "e.g. Project lead, Principal investigator, Maintainer",
+                }
             ),
             "credit_statement": forms.TextInput(
                 attrs={"placeholder": "Optional. What this person did."}
@@ -303,7 +346,6 @@ class ContributionForm(forms.ModelForm):
             "order": forms.HiddenInput(),
         }
         labels = {
-            "orcid_id": "ORCID iD",
             "display_name": "Display name",
             "role": "Role",
             "credit_statement": "Credit statement",

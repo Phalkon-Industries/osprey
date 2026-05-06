@@ -6,9 +6,11 @@ cd /home/osprey/osprey
 
 git pull --ff-only
 
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build web
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm web \
+COMPOSE=(docker compose --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml)
+
+"${COMPOSE[@]}" build web
+"${COMPOSE[@]}" run --rm web \
     python manage.py migrate --noinput
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm web \
+"${COMPOSE[@]}" run --rm web \
     python manage.py collectstatic --noinput
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+"${COMPOSE[@]}" up -d

@@ -38,6 +38,7 @@
         <nav>
             <a href="{% url 'projects:list' %}">Projects</a>
             <a href="{% url 'about' %}">About</a>
+            <a href="{% url 'roadmap' %}">Roadmap</a>
             {% if user.is_authenticated %}
             <a href="{% url 'projects:new' %}">Submit</a>
             <a href="{% url 'people:me' %}">Your profile</a>
@@ -57,7 +58,7 @@
                 <a href="{% url 'admin:index' %}">Database admin</a>
             </span>
             {% endif %}
-            <span class="muted">{{ user.get_username }}</span>
+            <span class="muted">@{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
                 {% csrf_token %}
                 <button type="submit" class="ghost" style="padding:.3rem .65rem;font-size:.85rem">Sign out</button>
