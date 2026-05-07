@@ -133,6 +133,25 @@ sg docker -c 'docker compose exec -T --user 1000:1000 -w /app web python manage.
 
 Common ones: `check`, `migrate`, `makemigrations <app>`, `shell`, `collectstatic`.
 
+### Local tests and TDD
+
+Use a test-driven development flow for Django application changes. Before
+implementing a feature or behavior change, add or update the focused tests that
+describe the intended behavior. Run the focused test or app test first when that
+is practical, then implement the code, rerun the focused test, and finish with
+the local suite before calling the work done.
+
+Default local suite:
+
+```bash
+sg docker -c './scripts/test_local.sh'
+```
+
+For narrow work, run the smallest relevant test target during the loop, for
+example `python manage.py test projects.tests.ProjectViewTests` inside the web
+container. The fuller local testing plan lives in
+[planning/testing-plan.md](../planning/testing-plan.md).
+
 ### Seed data
 
 ```bash

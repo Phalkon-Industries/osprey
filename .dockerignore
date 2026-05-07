@@ -8,5 +8,8 @@ planning/
 !planning/features/
 node_modules/
 .venv/
+.coverage
+htmlcov/
+test-results/
 staticfiles/
 media/

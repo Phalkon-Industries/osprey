@@ -1,0 +1,22 @@
+[run]
+branch = True
+source = .
+omit =
+    manage.py
+    */admin.py
+    */apps.py
+    */asgi.py
+    */migrations/*
+    */tests.py
+    */wsgi.py
+    api/views.py
+    */__pycache__/*
+    staticfiles/*
+
+[report]
+show_missing = True
+skip_empty = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError

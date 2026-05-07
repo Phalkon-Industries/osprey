@@ -162,28 +162,38 @@ class Project(models.Model):
         return self.contributions.filter(user=user).exists() or self.created_by_id == user.id
 
     @property
+    def normalized_doi(self) -> str:
+        """Return the bare DOI after stripping common pasted prefixes."""
+        doi = (self.doi or "").strip()
+        for prefix in (
+            "https://doi.org/",
+            "http://doi.org/",
+            "https://dx.doi.org/",
+            "http://dx.doi.org/",
+            "doi:",
+        ):
+            if doi.lower().startswith(prefix):
+                return doi[len(prefix):]
+        return doi
+
+    @property
     def doi_url(self) -> str:
         """Return https://doi.org/<doi> when a DOI is set, else empty string."""
-        doi = (self.doi or "").strip()
+        doi = self.normalized_doi
         if not doi:
             return ""
-        # Tolerate users pasting the full URL by accident.
-        for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-            if doi.lower().startswith(prefix):
-                doi = doi[len(prefix):]
-                break
         return f"https://doi.org/{doi}"
 
     @property
     def is_zenodo_doi(self) -> bool:
         """True if the DOI looks like a Zenodo DOI (production or sandbox)."""
-        doi = (self.doi or "").strip().lower()
+        doi = self.normalized_doi.lower()
         return doi.startswith("10.5281/zenodo.") or doi.startswith("10.5072/zenodo.")
 
     @property
     def zenodo_badge_url(self) -> str:
         """Return the right Zenodo DOI badge URL for production or sandbox."""
-        doi = (self.doi or "").strip()
+        doi = self.normalized_doi
         if not doi:
             return ""
         host = "https://sandbox.zenodo.org" if doi.lower().startswith("10.5072/zenodo.") else "https://zenodo.org"

@@ -11,6 +11,9 @@ services:
     restart: unless-stopped
 
   web:
+    build:
+      args:
+        INSTALL_PLAYWRIGHT: "0"
     command: gunicorn osprey.wsgi:application --bind 0.0.0.0:8000 --workers 3
     volumes:
       - /srv/osprey/staticfiles:/app/staticfiles

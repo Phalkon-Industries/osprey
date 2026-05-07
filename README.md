@@ -86,6 +86,18 @@ The command prints the deposition id, DOI, and sandbox URL. Do not use a real
 Zenodo token with `ZENODO_USE_SANDBOX=1`; sandbox and production accounts are
 separate.
 
+## Local test suite
+
+Run the local suite before pushing and after feature-sized changes:
+
+```bash
+sg docker -c './scripts/test_local.sh'
+```
+
+That runs Django's system checks, verifies there are no missing migrations,
+executes the Django test suite under coverage, and prints a coverage report.
+The fuller testing plan is in [planning/testing-plan.md](planning/testing-plan.md).
+
 If your host UID is not 1000, prefix `run` and `exec` commands with
 `--user $(id -u):$(id -g)` so files created inside the container are owned by
 your host user.
