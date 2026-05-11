@@ -141,6 +141,13 @@ describe the intended behavior. Run the focused test or app test first when that
 is practical, then implement the code, rerun the focused test, and finish with
 the local suite before calling the work done.
 
+**Always run the full local suite before declaring a task complete.** Do not
+hand work back saying "tests pass" based only on a focused test run, and do
+not skip the suite because the change "looks small." Template edits in
+particular can be silently mangled by the VS Code HTML formatter after a
+focused run, so the final command before declaring done must be the full
+suite below. If the suite fails, fix the failure before responding.
+
 Default local suite:
 
 ```bash

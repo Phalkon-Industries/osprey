@@ -3,30 +3,36 @@
 
 {% block content %}
 <h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
+<p class="muted" style="font-size:.9rem">
+    Fields marked <span class="req" aria-label="required">*</span> are required.
+    Everything else is optional.
+</p>
 
-<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form">
+<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form>
     {% csrf_token %}
     {% if form.non_field_errors %}
     <p style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
     {% endif %}
 
     {% for field in form %}
-    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'license_custom' %}
+    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'license_custom' and field.name != 'cover_image_zoom' %}
     <p>
-        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
+        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required %} <span
+                class="req" aria-label="required">*</span>{% else %} <span class="muted"
+                style="font-weight:normal;font-size:.85rem">(optional)</span>{% endif %}</label><br>
         {{ field }}
         {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
         {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
     </p>
-    {% if field.name == 'cover_image_url' %}
-    <section class="cover-crop-editor" data-cover-crop-editor>
+    {% if field.name == 'cover_image' %}
+    <section class="cover-crop-editor" data-cover-crop-editor data-existing-url="{{ form.instance.cover_image_display_url|default_if_none:'' }}">
         <h2>Cover image crop</h2>
         <div class="cover-crop-layout">
             <div>
                 <div class="cover-preview-label">Crop frame</div>
                 <div class="cover-crop-frame" data-cover-drag-frame>
                     <img class="cover-crop-image" alt="Cover crop editor">
-                    <span class="cover-crop-empty">Add a cover image URL to crop it.</span>
+                    <span class="cover-crop-empty">Upload a cover image to position it.</span>
                     <span class="cover-crop-box" aria-hidden="true"></span>
                 </div>
             </div>
@@ -42,8 +48,7 @@
             </div>
         </div>
         <div class="cover-crop-controls">
-            <label for="{{ form.cover_image_zoom.id_for_label }}">{{ form.cover_image_zoom.label }} <span
-                    data-cover-value="zoom"></span><br>{{ form.cover_image_zoom }}</label>
+            <label for="{{ form.cover_image_zoom.id_for_label }}">{{ form.cover_image_zoom.label }} <span data-cover-value="zoom"></span><br>{{ form.cover_image_zoom }}</label>
             <button type="button" class="ghost" data-cover-center>Center</button>
             <span class="muted cover-position-readout">Position <span data-cover-value="position"></span></span>
         </div>
@@ -61,16 +66,47 @@
     {% endfor %}
 
     <p>
-        <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong></label><br>
+        <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong> <span class="req"
+                aria-label="required">*</span></label><br>
         {{ form.license_choice }}
         <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
             <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.</span>
-        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" " }}</span>{% endif %}
+        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
+            }}</span>{% endif %}
     </p>
     <p id="license-custom-row">
         <label for="{{ form.license_custom.id_for_label }}">Custom license</label><br>
         {{ form.license_custom }}
-        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" " }}</span>{% endif %}
+        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" "
+            }}</span>{% endif %}
+    </p>
+
+    <h2 style="margin-top:1.5rem">Project files</h2>
+    <p class="muted" style="font-size:.9rem">
+        Optional. Attach a single <code>.zip</code> archive of the project
+        (firmware, gerbers, datasets, source). On publish OSPREY uploads
+        it to your Zenodo deposit, injects an OSPREY metadata sidecar
+        (<code>osprey-project.json</code> and <code>CITATION.cff</code>)
+        into the archive, and Zenodo hosts the file. OSPREY does not
+        serve project downloads itself.
+    </p>
+    {% if form.instance.pk and form.instance.attachments.all %}
+    <ul class="attachment-list">
+        {% for att in form.instance.attachments.all %}
+        <li>
+            <strong>{{ att.filename|default:att.label }}</strong>
+            {% if att.published_to_zenodo %}<span class="muted small">&middot; on Zenodo</span>{% else %}<span class="muted small">&middot; draft</span>{% endif %}
+            {% if not att.published_to_zenodo %}
+            <label class="muted small"><input type="checkbox" name="attachment_delete" value="{{ att.pk }}"> remove</label>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    <p>
+        <label for="id_attachment_files"><strong>Attach project archive</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(optional, .zip only)</span></label><br>
+        <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed">
+        <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally.</span>
     </p>
 
     <h2 style="margin-top:1.5rem">Contributors</h2>
@@ -138,11 +174,11 @@
 
     <div class="form-actions">
         {% if mode == 'edit' and project.is_public %}
-        <button type="submit" name="action" value="save">Save changes</button>
+        <button type="submit" name="action" value="save" data-submit-button>Save changes</button>
         <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
         {% else %}
-        <button type="submit" name="action" value="draft" class="ghost">Save draft</button>
-        <button type="submit" name="action" value="publish">Publish</button>
+        <button type="submit" name="action" value="draft" class="ghost" data-submit-button>Save draft</button>
+        <button type="submit" name="action" value="publish" data-publish-button data-submit-button>Publish</button>
         {% if mode == 'edit' %}
         <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
         {% endif %}
@@ -152,13 +188,141 @@
     {% if mode == 'new' or not project.is_public %}
     <p class="muted" style="font-size:.85rem;margin-top:1rem">
         A draft is private and only visible to you. Publishing makes the
-        project public, and once published it can't be flipped back to a
-        draft from this form.
+        project public, mints a DOI on Zenodo, and once published the
+        project can't be flipped back to a draft.
     </p>
     {% endif %}
 </form>
 
+<div class="publish-overlay" data-publish-overlay hidden>
+    <div class="publish-overlay-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <p><strong>Working on it&hellip;</strong></p>
+        <p class="muted small" data-publish-overlay-msg>Saving the project on OSPREY.</p>
+        <div class="upload-progress" data-upload-progress hidden>
+            <div class="upload-progress-bar" data-upload-progress-bar></div>
+        </div>
+        <p class="muted small" data-upload-progress-text hidden></p>
+    </div>
+</div>
+
 <script>
+    (function () {
+        // Prevent Enter from implicitly submitting the form except when focus
+        // is already on a submit button. Textareas keep normal newline behavior.
+        var form = document.querySelector('[data-project-form]');
+        if (form) {
+            // Hidden input shadows the activated submit button's value so the
+            // server still sees `action=publish` even after we disable the
+            // submit buttons (some browsers drop a disabled button's value
+            // from the form data).
+            var actionShadow = document.createElement('input');
+            actionShadow.type = 'hidden';
+            actionShadow.name = 'action';
+            actionShadow.value = '';
+            form.appendChild(actionShadow);
+
+            form.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter') return;
+                var t = event.target;
+                if (!t) return;
+                if (t.tagName === 'TEXTAREA') return;
+                if (t.tagName === 'BUTTON' && t.type === 'submit') return;
+                event.preventDefault();
+            });
+            // Confirm before submitting via the Publish button.
+            var publishBtn = form.querySelector('[data-publish-button]');
+            if (publishBtn) {
+                publishBtn.addEventListener('click', function (event) {
+                    var ok = window.confirm(
+                        'Publish this project? OSPREY will mint a DOI on Zenodo ' +
+                        'and the project will become public. Once published, ' +
+                        'the project can\u2019t be made private again.'
+                    );
+                    if (!ok) {
+                        event.preventDefault();
+                        return;
+                    }
+                    actionShadow.value = publishBtn.value || 'publish';
+                    form.dataset.activeAction = 'publish';
+                });
+            }
+            var draftButtons = form.querySelectorAll('[data-submit-button]:not([data-publish-button])');
+            draftButtons.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    actionShadow.value = btn.value || 'save';
+                    form.dataset.activeAction = btn.value || 'save';
+                });
+            });
+            var overlay = document.querySelector('[data-publish-overlay]');
+            var overlayMsg = document.querySelector('[data-publish-overlay-msg]');
+            var progressWrap = document.querySelector('[data-upload-progress]');
+            var progressBar = document.querySelector('[data-upload-progress-bar]');
+            var progressText = document.querySelector('[data-upload-progress-text]');
+            form.addEventListener('submit', function (event) {
+                // Disable every submit button so a double-click can't fire
+                // multiple posts (which previously duplicated contributors
+                // and attached files), and surface a working indicator.
+                var buttons = form.querySelectorAll('[data-submit-button]');
+                buttons.forEach(function (btn) {
+                    btn.disabled = true;
+                    btn.setAttribute('aria-busy', 'true');
+                });
+                if (overlay) {
+                    overlay.hidden = false;
+                    if (overlayMsg) {
+                        var action = form.dataset.activeAction || '';
+                        if (action === 'publish') {
+                            overlayMsg.textContent = 'Uploading to OSPREY, then to Zenodo. This can take a minute. Don\u2019t close the tab.';
+                        } else {
+                            overlayMsg.textContent = 'Saving the project on OSPREY.';
+                        }
+                    }
+                }
+                // If the browser supports XHR upload progress and the form
+                // has a real file payload, intercept and show a progress
+                // bar for the browser->OSPREY transfer. The Zenodo push
+                // happens server-side after the upload completes.
+                var fileInput = form.querySelector('input[type=file][name=attachment_files]');
+                var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+                if (!hasFile || !window.XMLHttpRequest || !window.FormData) return;
+                event.preventDefault();
+                var fd = new FormData(form);
+                var xhr = new XMLHttpRequest();
+                xhr.open(form.method || 'POST', form.action || window.location.href, true);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.upload.addEventListener('progress', function (e) {
+                    if (!e.lengthComputable || !progressWrap) return;
+                    progressWrap.hidden = false;
+                    if (progressText) progressText.hidden = false;
+                    var pct = Math.round((e.loaded / e.total) * 100);
+                    if (progressBar) progressBar.style.width = pct + '%';
+                    if (progressText) {
+                        var mb = (e.loaded / 1048576).toFixed(1);
+                        var totalMb = (e.total / 1048576).toFixed(1);
+                        progressText.textContent = 'Uploading to OSPREY: ' + pct + '% (' + mb + ' / ' + totalMb + ' MB)';
+                    }
+                });
+                xhr.upload.addEventListener('load', function () {
+                    if (overlayMsg && form.dataset.activeAction === 'publish') {
+                        overlayMsg.textContent = 'Pushing to Zenodo and minting your DOI\u2026';
+                    } else if (overlayMsg) {
+                        overlayMsg.textContent = 'Finishing up\u2026';
+                    }
+                    if (progressText) progressText.textContent = 'Upload complete. OSPREY is finishing the publish.';
+                });
+                xhr.addEventListener('load', function () {
+                    var url = xhr.responseURL || window.location.href;
+                    window.location.href = url;
+                });
+                xhr.addEventListener('error', function () {
+                    if (overlayMsg) overlayMsg.textContent = 'Upload failed. Please try again.';
+                });
+                xhr.send(fd);
+            });
+        }
+    })();
+
     (function () {
         var sel = document.getElementById('id_license_choice');
         var custom = document.getElementById('license-custom-row');
@@ -173,7 +337,7 @@
     (function () {
         var editor = document.querySelector('[data-cover-crop-editor]');
         if (!editor) return;
-        var url = document.getElementById('id_cover_image_url');
+        var fileInput = document.getElementById('id_cover_image');
         var x = document.getElementById('id_cover_image_focal_x');
         var y = document.getElementById('id_cover_image_focal_y');
         var zoom = document.getElementById('id_cover_image_zoom');
@@ -186,7 +350,10 @@
         var dragging = false;
         var startPointer = { x: 0, y: 0 };
         var startCrop = { x: 50, y: 50 };
-        if (!url || !x || !y || !zoom || !dragFrame || !centerBtn || !valuePosition || !valueZoom) return;
+        // Source for preview images: starts as the existing saved cover (when
+        // editing), updated when the user picks a new file.
+        var currentSrc = editor.getAttribute('data-existing-url') || '';
+        if (!fileInput || !x || !y || !zoom || !dragFrame || !centerBtn || !valuePosition || !valueZoom) return;
 
         function clamp(value, min, max) {
             return Math.max(min, Math.min(max, value));
@@ -198,7 +365,7 @@
         }
 
         function syncCover() {
-            var src = url.value.trim();
+            var src = currentSrc;
             var cropX = clamp(numberValue(x, 50), 0, 100);
             var cropY = clamp(numberValue(y, 50), 0, 100);
             var cropZoom = clamp(numberValue(zoom, 1), 1, 3);
@@ -229,7 +396,20 @@
             syncCover();
         }
 
-        url.addEventListener('input', syncCover);
+        fileInput.addEventListener('change', function () {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                currentSrc = e.target.result;
+                // Reset crop to centered when a new image is picked.
+                x.value = '50';
+                y.value = '50';
+                zoom.value = '1';
+                syncCover();
+            };
+            reader.readAsDataURL(file);
+        });
         zoom.addEventListener('input', syncCover);
         centerBtn.addEventListener('click', function () {
             x.value = '50';
@@ -238,7 +418,7 @@
             syncCover();
         });
         dragFrame.addEventListener('pointerdown', function (event) {
-            if (!url.value.trim()) return;
+            if (!currentSrc) return;
             dragging = true;
             startPointer = { x: event.clientX, y: event.clientY };
             startCrop = { x: numberValue(x, 50), y: numberValue(y, 50) };

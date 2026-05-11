@@ -1,0 +1,32 @@
+{
+    // Django templates use {% ... %} tags that the built-in HTML formatter
+    // happily splits across lines, which Django can't parse. Two defenses:
+    //
+    // 1. Treat templates/**/*.html as django-html so the HTML formatter is
+    //    not the default formatter for these files.
+    // 2. Disable format-on-save for both html and django-html in this
+    //    workspace, so an accidental save never silently mangles a template.
+    //
+    // If you really want to format an HTML file, run "Format Document With..."
+    // and pick a formatter explicitly.
+    "files.associations": {
+        "**/templates/**/*.html": "django-html"
+    },
+    "emmet.includeLanguages": {
+        "django-html": "html"
+    },
+    "[html]": {
+        "editor.formatOnSave": false,
+        "editor.formatOnPaste": false
+    },
+    "[django-html]": {
+        "editor.formatOnSave": false,
+        "editor.formatOnPaste": false
+    },
+    // Belt-and-suspenders: even if a formatter is invoked, never let the
+    // HTML formatter wrap or rewrap attributes / lines, which is what
+    // produces the broken {% endfor %} splits.
+    "html.format.wrapLineLength": 0,
+    "html.format.wrapAttributes": "preserve",
+    "html.format.unformatted": "script,style,pre,textarea,p,span,a,code,em,strong,h1,h2,h3,h4,h5,h6,li,td,th,dt,dd"
+}

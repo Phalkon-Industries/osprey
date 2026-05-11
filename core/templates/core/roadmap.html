@@ -1,24 +1,12 @@
 {% extends "base.html" %}
 {% load osprey_md %}
 
-{% block title %}{{ title }} — OSPREY roadmap{% endblock %}
+{% block title %}{{ title }} — OSPREY{% endblock %}
 
 {% block content %}
 <section class="roadmap-page" style="max-width:48rem">
-    <p style="margin-bottom:1rem">
-        <a href="{% url 'roadmap' %}">&larr; Roadmap index</a>
-    </p>
-
     <article class="roadmap-body">
         {{ body_md|markdown }}
     </article>
-
-    <hr style="margin:2rem 0;border:0;border-top:1px solid var(--border, #ddd)">
-
-    <p style="color:var(--muted);font-size:0.9rem">
-        These are planning documents. They describe what I want to build,
-        not what's shipped. Source lives in
-        <code>planning/features/{{ slug }}.md</code> in the OSPREY repo.
-    </p>
 </section>
 {% endblock %}

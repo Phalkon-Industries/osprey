@@ -4,10 +4,11 @@
 
 {% block content %}
 <article>
-    {% if project.cover_image_url %}
+    {% if project.cover_image_display_url %}
     <div class="hero-image-frame"
         style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
-        <img class="hero-image" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy">
+        <img class="hero-image" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
+            loading="lazy">
     </div>
     {% else %}
     {% with hero=project.images.first %}
@@ -91,11 +92,11 @@
         </section>
 
         <section>
-            <h2>Where the files live</h2>
+            <h2>Repositories</h2>
             <ul>
                 {% if project.canonical_url %}
                 <li>
-                    <span class="pill">canonical</span>
+                    <span class="pill">{{ project.canonical_url_label }}</span>
                     <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a>
                 </li>
                 {% endif %}
@@ -105,64 +106,91 @@
                     <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
                 </li>
                 {% empty %}
-                {% if not project.canonical_url %}<li class="muted">No file links yet.</li>{% endif %}
+                {% if not project.canonical_url %}<li class="muted">No repository links yet.</li>{% endif %}
                 {% endfor %}
             </ul>
+            {% if project.attachments.all %}
+            {% with zenodo_record=zenodo_deposit.external_url %}
+            <h3 style="margin-top:1rem">Project files</h3>
+            <ul>
+                {% for att in project.attachments.all %}
+                <li>
+                    {% if att.published_to_zenodo and zenodo_record %}
+                    <a href="{{ zenodo_record }}" rel="noopener">{{ att.filename }}</a>
+                    <span class="muted small">&middot; on Zenodo</span>
+                    {% elif att.file %}
+                    <a href="{{ att.file.url }}">{{ att.filename }}</a>
+                    <span class="muted small">&middot; draft (will be moved to Zenodo on publish)</span>
+                    {% else %}
+                    {{ att.filename }}
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endwith %}
+            {% endif %}
         </section>
     </div>
 
-    {% if project.doi %}
+    {% if project.doi or zenodo_deposit %}
     <section class="project-doi">
         <h2>Cite this project</h2>
+        {% with latest=zenodo_deposit.latest_version %}
+        {% with concept=zenodo_deposit.concept_doi|default:project.doi %}
+        {% if concept %}
+        {% if project.is_zenodo_doi or zenodo_deposit %}
         <p>
-            <a class="doi-link" href="{% if zenodo_deposit and zenodo_deposit.doi == project.doi and zenodo_deposit.external_url %}{{ zenodo_deposit.external_url }}{% else %}{{ project.doi_url }}{% endif %}" rel="noopener">
-                {% if project.is_zenodo_doi %}
-                <img src="{{ project.zenodo_badge_url }}"
-                     alt="DOI: {{ project.doi }}"
-                     loading="lazy">
-                {% else %}
-                <code>{{ project.doi }}</code>
-                {% endif %}
-            </a>
+            <a class="doi-badge" href="https://doi.org/{{ concept }}" rel="noopener"><img src="{{ project.zenodo_badge_url|default:'' }}" alt="DOI {{ concept }}" loading="lazy"></a>
         </p>
+        {% endif %}
+        <p>
+            <strong>Project DOI</strong> (always points at the latest version):
+            <a class="doi-link" href="https://doi.org/{{ concept }}" rel="noopener"><code>{{ concept }}</code></a>
+        </p>
+        {% endif %}
+        {% if latest and latest.doi %}
+        <p>
+            <strong>Latest version DOI</strong> (v{{ latest.version_index }}):
+            <a class="doi-link" href="https://doi.org/{{ latest.doi }}" rel="noopener"><code>{{ latest.doi }}</code></a>
+            &middot; <a href="{% url 'projects:versions' project.slug %}">All versions</a>
+        </p>
+        {% elif zenodo_deposit and zenodo_deposit.doi and zenodo_deposit.doi != concept %}
+        <p>
+            <strong>Latest version DOI</strong>:
+            <a class="doi-link" href="https://doi.org/{{ zenodo_deposit.doi }}" rel="noopener"><code>{{ zenodo_deposit.doi }}</code></a>
+            &middot; <a href="{% url 'projects:versions' project.slug %}">All versions</a>
+        </p>
+        {% elif zenodo_deposit and zenodo_deposit.state == 'published' %}
+        <p><a href="{% url 'projects:versions' project.slug %}">All versions</a></p>
+        {% endif %}
+        {% endwith %}
+        {% endwith %}
+        {% if citation_text %}
+        <div class="cite-as" data-cite-as>
+            <label for="cite-as-text"><strong>Cite as</strong></label>
+            <div class="cite-as-row">
+                <textarea id="cite-as-text" rows="4" readonly>{{ citation_text }}</textarea>
+                <button type="button" class="ghost" data-cite-copy>Copy</button>
+            </div>
+            <span class="muted small" data-cite-status></span>
+        </div>
+        {% endif %}
         <p class="muted small">
-            DOI resolves to the upstream record. Citation export
-            (BibTeX, RIS, formatted) is on the roadmap; for now, follow the DOI link
-            and use the upstream service's "Cite" button.
+            Cite the project DOI for the work as a whole. Cite a version DOI when
+            you need to point at exactly one snapshot.
         </p>
     </section>
     {% endif %}
 
-    {% if can_edit %}
+    {% if can_edit and zenodo_deposit and zenodo_deposit.state == 'published' %}
     <section class="project-zenodo">
-        <h2>{{ zenodo_mode_label }}</h2>
-        {% if zenodo_deposit %}
+        <h2>New version</h2>
         <p class="muted small">
-            State: {{ zenodo_deposit.get_state_display }}
-            {% if zenodo_deposit.doi %}&middot; DOI {{ zenodo_deposit.doi }}{% endif %}
-            {% if zenodo_deposit.external_url %}&middot; <a href="{{ zenodo_deposit.external_url }}" rel="noopener">Open record</a>{% endif %}
+            Made significant changes? Publish a new version to mint a fresh
+            DOI for the snapshot. The project DOI will keep pointing at the
+            latest version.
         </p>
-        {% if zenodo_deposit.last_error %}
-        <p style="color:#fca5a5">{{ zenodo_deposit.last_error }}</p>
-        {% endif %}
-        {% else %}
-        <p class="muted small">No Zenodo draft has been created for this project yet.</p>
-        {% endif %}
-
-        {% if zenodo_configured %}
-        <form method="post" action="{% url 'projects:zenodo_sync' project.slug %}" style="display:inline">
-            {% csrf_token %}
-            <button type="submit" class="ghost">Sync draft to Zenodo</button>
-        </form>
-        {% if zenodo_deposit and zenodo_deposit.state == 'draft' %}
-        <form method="post" action="{% url 'projects:zenodo_publish' project.slug %}" style="display:inline;margin-left:.5rem">
-            {% csrf_token %}
-            <button type="submit">Publish on Zenodo</button>
-        </form>
-        {% endif %}
-        {% else %}
-        <p class="muted small">Set <code>ZENODO_ACCESS_TOKEN</code> in the environment to enable sandbox deposit testing.</p>
-        {% endif %}
+        <a class="button ghost" href="{% url 'projects:zenodo_new_version' project.slug %}">Create a new version</a>
     </section>
     {% endif %}
 
@@ -175,4 +203,35 @@
     </section>
     {% endif %}
 </article>
+<script>
+    (function () {
+        var blocks = document.querySelectorAll('[data-cite-as]');
+        blocks.forEach(function (block) {
+            var btn = block.querySelector('[data-cite-copy]');
+            var ta = block.querySelector('textarea');
+            var status = block.querySelector('[data-cite-status]');
+            if (!btn || !ta) return;
+            btn.addEventListener('click', function () {
+                ta.select();
+                ta.setSelectionRange(0, 99999);
+                var ok = false;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(ta.value).then(function () {
+                        if (status) status.textContent = 'Copied to clipboard.';
+                    }, function () {
+                        document.execCommand('copy');
+                        if (status) status.textContent = 'Copied to clipboard.';
+                    });
+                    ok = true;
+                } else {
+                    try {
+                        document.execCommand('copy');
+                        ok = true;
+                    } catch (e) { ok = false; }
+                }
+                if (ok && status) status.textContent = 'Copied to clipboard.';
+            });
+        });
+    })();
+</script>
 {% endblock %}

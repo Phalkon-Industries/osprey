@@ -4,7 +4,6 @@ Profile editing lives in people/forms.py.
 """
 from __future__ import annotations
 
-import re
 import secrets
 
 from django import forms
@@ -14,6 +13,7 @@ from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
 from .models import Contribution, Project, Tag
+from .cover_images import MAX_DOWNLOAD_BYTES, process_cover_image
 
 
 FIELD_SUGGESTIONS = [
@@ -67,16 +67,17 @@ def _examples_text(items: list[str], n: int = 4) -> str:
 # offered. Users can also pick "Other" and type a custom OSI / OSHWA /
 # Creative Commons identifier.
 RECOMMENDED_LICENSES = [
+    ("AGPL-3.0", "AGPL 3.0 — strong copyleft, recommended for code that runs as a service"),
     ("MIT", "MIT — permissive code"),
     ("Apache-2.0", "Apache 2.0 — permissive code, with patent grant"),
-    ("GPL-3.0-or-later", "GPL 3.0 or later — copyleft code"),
+    ("GPL-3.0", "GPL 3.0 — copyleft code"),
     ("CERN-OHL-S-2.0", "CERN-OHL-S 2.0 — reciprocal open hardware"),
     ("CC-BY-4.0", "CC BY 4.0 — docs / data, attribution"),
 ]
 
 OTHER_LICENSES = [
     ("BSD-3-Clause", "BSD 3-Clause — permissive code"),
-    ("LGPL-3.0-or-later", "LGPL 3.0 or later — weak copyleft library"),
+    ("LGPL-3.0", "LGPL 3.0 — weak copyleft library"),
     ("MPL-2.0", "MPL 2.0 — file-level copyleft code"),
     ("CERN-OHL-W-2.0", "CERN-OHL-W 2.0 — weakly reciprocal open hardware"),
     ("CERN-OHL-P-2.0", "CERN-OHL-P 2.0 — permissive open hardware"),
@@ -163,8 +164,7 @@ class ProjectForm(forms.ModelForm):
             "field",
             "artifact_type",
             "canonical_url",
-            "doi",
-            "cover_image_url",
+            "cover_image",
             "cover_image_focal_x",
             "cover_image_focal_y",
             "cover_image_zoom",
@@ -192,16 +192,6 @@ class ProjectForm(forms.ModelForm):
             "institution": forms.TextInput(
                 attrs={"placeholder": "Your institution or lab. Free text."}
             ),
-            "cover_image_url": forms.URLInput(
-                attrs={
-                    "placeholder": "https://raw.githubusercontent.com/you/repo/main/cover.png",
-                }
-            ),
-            "doi": forms.TextInput(
-                attrs={
-                    "placeholder": "e.g. 10.5281/zenodo.1234567",
-                }
-            ),
             "cover_image_focal_x": forms.HiddenInput(),
             "cover_image_focal_y": forms.HiddenInput(),
             "cover_image_zoom": forms.NumberInput(
@@ -212,9 +202,8 @@ class ProjectForm(forms.ModelForm):
             "summary": "Short description",
             "readme": "README",
             "artifact_type": "Project type",
-            "canonical_url": "Where the files live",
-            "doi": "DOI",
-            "cover_image_url": "Cover image URL",
+            "canonical_url": "Project repository",
+            "cover_image": "Cover image upload",
             "cover_image_focal_x": "Horizontal crop",
             "cover_image_focal_y": "Vertical crop",
             "cover_image_zoom": "Zoom",
@@ -226,15 +215,10 @@ class ProjectForm(forms.ModelForm):
                 "Markdown is supported. For inline images, link to files "
                 "hosted elsewhere; OSPREY does not host README images."
             ),
-            "canonical_url": "Upstream repository or archive (GitHub, Codeberg, Zenodo).",
-            "doi": (
-                "Optional. Paste a DOI from Zenodo, OSF, Figshare, or any "
-                "DOI-minting repository. OSPREY-facilitated DOI minting is "
-                "in planning; for now, get a DOI elsewhere and paste it here."
-            ),
-            "cover_image_url": (
-                "Optional. A direct link to an image (PNG/JPG) hosted elsewhere. "
-                "For GitHub, use the 'raw' URL. Shown on cards and the project page."
+            "canonical_url": "Public source repository (GitHub, Codeberg, GitLab). The link shown on the project page.",
+            "cover_image": (
+                "Optional. Upload a PNG/JPG/WebP. Max 10 MiB. OSPREY downscales "
+                "the image and re-encodes it as WebP without quality loss."
             ),
             "cover_image_focal_x": "Saved horizontal crop position.",
             "cover_image_focal_y": "Saved vertical crop position.",
@@ -272,31 +256,26 @@ class ProjectForm(forms.ModelForm):
             cleaned["resolved_license"] = choice
         return cleaned
 
-    def clean_doi(self) -> str:
-        """Accept a bare DOI; tolerate pasted URLs and 'doi:' prefixes."""
-        raw = (self.cleaned_data.get("doi") or "").strip()
-        if not raw:
-            return ""
-        # Strip common prefixes a user might paste.
-        normalized = raw
-        for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"):
-            if normalized.lower().startswith(prefix):
-                normalized = normalized[len(prefix):]
-                break
-        # DOI shape: 10.<registrant>/<suffix>. The suffix can contain almost
-        # anything printable; we just check the registrant prefix.
-        if not re.match(r"^10\.\d{4,9}/\S+$", normalized):
-            raise forms.ValidationError(
-                "That doesn't look like a DOI. Expected something like "
-                "10.5281/zenodo.1234567."
-            )
-        return normalized
+    def clean_cover_image(self):
+        upload = self.cleaned_data.get("cover_image")
+        if not upload:
+            return upload
+        size = getattr(upload, "size", None)
+        if size is not None and size > MAX_DOWNLOAD_BYTES:
+            mib = MAX_DOWNLOAD_BYTES / (1024 * 1024)
+            raise forms.ValidationError(f"Cover image must be {mib:.0f} MiB or smaller.")
+        return upload
 
     def save(self, commit: bool = True) -> Project:
         project = super().save(commit=False)
         project.license = self.cleaned_data.get("resolved_license", "") or ""
         if not project.slug:
             project.slug = _generate_slug(project.title)
+        # Re-encode cover image (upload or URL) before persisting.
+        try:
+            process_cover_image(project)
+        except Exception:  # pragma: no cover - defensive; processor logs
+            pass
         if commit:
             project.save()
             self.save_m2m()
@@ -362,3 +341,32 @@ ContributionFormSet = inlineformset_factory(
     min_num=1,
     validate_min=True,
 )
+
+
+class NewVersionForm(forms.Form):
+    """Form shown when starting a new published Zenodo version."""
+
+    changelog = forms.CharField(
+        label="What changed in this version",
+        widget=forms.Textarea(attrs={"rows": 6}),
+        help_text=(
+            "Required. Describe what is different from the previous version. "
+            "Plain text or Markdown. Shown on the project's versions page and "
+            "included in the Zenodo record's notes."
+        ),
+    )
+    repo_link = forms.URLField(
+        label="Repository link for this version (optional)",
+        required=False,
+        help_text=(
+            "Optional. A specific URL for this version, for example a GitHub "
+            "release tag or a Codeberg tag. Stored on the version row and "
+            "advertised in the Zenodo record's related identifiers."
+        ),
+    )
+
+    def clean_changelog(self) -> str:
+        value = (self.cleaned_data.get("changelog") or "").strip()
+        if not value:
+            raise forms.ValidationError("A changelog is required when publishing a new version.")
+        return value

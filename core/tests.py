@@ -2,13 +2,10 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.http import Http404
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from projects.models import Project
-
-from .views import _read_feature_doc
 
 try:
     from playwright.sync_api import Error as PlaywrightError
@@ -34,18 +31,15 @@ class CoreViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], reverse("home"))
 
-    def test_roadmap_entry_renders_feature_doc(self):
-        response = self.client.get(reverse("roadmap_entry", args=["dois"]))
+    def test_roadmap_renders_curated_markdown(self):
+        response = self.client.get(reverse("roadmap"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "DOIs on OSPREY")
+        self.assertContains(response, "OSPREY roadmap")
 
-    def test_feature_doc_link_rewriting_and_path_guard(self):
-        readme = _read_feature_doc("README")
-
-        self.assertIn("/roadmap/project-submission/", readme)
-        with self.assertRaises(Http404):
-            _read_feature_doc("../vision")
+    def test_old_roadmap_entry_url_is_gone(self):
+        response = self.client.get("/roadmap/anything/")
+        self.assertEqual(response.status_code, 404)
 
 
 @override_settings(ALLOWED_HOSTS=["localhost", "127.0.0.1", "testserver"])
@@ -77,7 +71,7 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 for path, expected_text in [
                     ("/", "OSPREY"),
                     ("/projects/", "Browser Pump"),
-                    ("/roadmap/", "Feature plans"),
+                    ("/roadmap/", "OSPREY roadmap"),
                     ("/api/v1/export/", "browser-pump"),
                 ]:
                     response = page.goto(f"{self.live_server_url}{path}")

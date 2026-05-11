@@ -24,6 +24,7 @@ from projects.models import (
     Contribution,
     Project,
     ProjectDeposit,
+    ProjectDepositVersion,
     ProjectImage,
     Tag,
     TagAssignment,
@@ -236,6 +237,7 @@ def full_export(request):
         "projects": list(
             Project.objects.filter(id__in=public_project_ids).values(
                 "id",
+                "public_id",
                 "slug",
                 "title",
                 "summary",
@@ -290,6 +292,21 @@ def full_export(request):
                 "state",
                 "created_at",
                 "updated_at",
+                "published_at",
+            )
+        ),
+        "project_deposit_versions": list(
+            ProjectDepositVersion.objects.filter(
+                deposit__project_id__in=public_project_ids
+            ).values(
+                "id",
+                "deposit_id",
+                "version_index",
+                "deposition_id",
+                "record_id",
+                "doi",
+                "changelog",
+                "repo_link",
                 "published_at",
             )
         ),

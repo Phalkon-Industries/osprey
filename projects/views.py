@@ -5,7 +5,6 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
 
 from allauth.socialaccount.models import SocialAccount
 
@@ -14,16 +13,75 @@ from .forms import (
     PROJECT_TYPE_SUGGESTIONS,
     ROLE_SUGGESTIONS,
     ContributionFormSet,
+    NewVersionForm,
     ProjectForm,
 )
-from .models import Contribution, Project, ProjectDeposit
+from .models import Contribution, Project, ProjectAttachment, ProjectDeposit
 from .zenodo import (
     ZenodoError,
-    publish_project_deposit,
-    sync_project_to_zenodo,
+    publish_new_version_now,
+    publish_project_now,
+    start_new_version_for_deposit,
+    update_published_metadata,
     zenodo_configured,
     zenodo_mode_label,
 )
+
+
+MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024  # 500 MiB per attached file
+
+
+def _looks_like_zip(upload) -> bool:
+    name = (getattr(upload, "name", "") or "").lower()
+    if name.endswith(".zip"):
+        return True
+    ctype = (getattr(upload, "content_type", "") or "").lower()
+    return ctype in {"application/zip", "application/x-zip-compressed", "multipart/x-zip"}
+
+
+def _process_attachments(request, project: Project) -> None:
+    """Apply the project's single zip-archive upload and any draft deletes.
+
+    Only one attachment per project is supported via the form: any
+    not-yet-published draft attachment is replaced by the latest upload.
+    Already-published-to-Zenodo attachments cannot be deleted here; they
+    would have to be removed on Zenodo directly. Non-zip uploads are
+    rejected with a flash message.
+    """
+    delete_ids = request.POST.getlist("attachment_delete")
+    if delete_ids:
+        ProjectAttachment.objects.filter(
+            project=project,
+            pk__in=delete_ids,
+            published_to_zenodo=False,
+        ).delete()
+    uploads = request.FILES.getlist("attachment_files")
+    if not uploads:
+        return
+    upload = uploads[0]
+    size = getattr(upload, "size", 0)
+    if size and size > MAX_ATTACHMENT_BYTES:
+        messages.warning(
+            request,
+            f"Skipped {upload.name}: file exceeds 500 MiB limit.",
+        )
+        return
+    if not _looks_like_zip(upload):
+        messages.warning(
+            request,
+            f"Skipped {upload.name}: only .zip archives are accepted.",
+        )
+        return
+    # Replace any previous draft archive so the project keeps one zip at a time.
+    ProjectAttachment.objects.filter(
+        project=project, published_to_zenodo=False
+    ).delete()
+    ProjectAttachment.objects.create(
+        project=project,
+        file=upload,
+        filename=upload.name,
+        size_bytes=size,
+    )
 
 
 def _visible_projects_for(user):
@@ -109,6 +167,9 @@ def project_detail(request, slug: str):
     )
     if not project.viewable_by(request.user):
         raise Http404
+    deposit = project.deposits.filter(
+        provider=ProjectDeposit.PROVIDER_ZENODO
+    ).first()
     return render(
         request,
         "projects/detail.html",
@@ -117,11 +178,67 @@ def project_detail(request, slug: str):
             "can_edit": project.editable_by(request.user),
             "zenodo_configured": zenodo_configured(),
             "zenodo_mode_label": zenodo_mode_label(),
-            "zenodo_deposit": project.deposits.filter(
-                provider=ProjectDeposit.PROVIDER_ZENODO
-            ).first(),
+            "zenodo_deposit": deposit,
+            "citation_text": _build_citation_text(project, deposit),
         },
     )
+
+
+def _build_citation_text(project: Project, deposit) -> str:
+    """Build a single-line APA-ish citation string for the copy-to-clipboard block.
+
+    Format follows what Zenodo emits, with both OSPREY and Zenodo named:
+        Authors. (Year). Title (Version vN). OSPREY · Zenodo. https://doi.org/<doi>
+    """
+    contributors = list(project.contributions.all()[:5])
+    if contributors:
+        names = []
+        for c in contributors:
+            name = (c.display_name or "").strip()
+            if not name:
+                continue
+            names.append(name)
+        if len(names) == 0:
+            authors = "OSPREY contributors"
+        elif len(names) == 1:
+            authors = names[0]
+        elif len(names) == 2:
+            authors = f"{names[0]} & {names[1]}"
+        else:
+            authors = ", ".join(names[:-1]) + f", & {names[-1]}"
+    else:
+        authors = "OSPREY contributors"
+    when = deposit.published_at if deposit and deposit.published_at else project.updated_at
+    year = when.year if when else ""
+    title = (project.title or "").strip()
+    # Resolve the version label to display in parentheses.
+    version_label = ""
+    if deposit is not None:
+        latest = deposit.latest_version
+        if latest is not None and getattr(latest, "version_index", None):
+            version_label = f"v{latest.version_index}"
+    # Prefer the version-specific DOI when one exists so the citation
+    # pins to a specific snapshot; fall back to the concept DOI.
+    doi = ""
+    if deposit is not None:
+        latest = deposit.latest_version
+        if latest is not None and getattr(latest, "doi", ""):
+            doi = latest.doi
+        elif deposit.doi:
+            doi = deposit.doi
+        elif deposit.concept_doi:
+            doi = deposit.concept_doi
+    if not doi and project.doi:
+        doi = project.normalized_doi
+    if year:
+        head = f"{authors} ({year})."
+    else:
+        head = f"{authors}."
+    title_part = f"{title} (Version {version_label})." if version_label else f"{title}."
+    parts = [head, title_part, "OSPREY \u00b7 Zenodo."]
+    if doi:
+        parts.append(f"https://doi.org/{doi}")
+    return " ".join(p for p in parts if p)
 
 
 def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
@@ -221,7 +338,7 @@ def project_new(request):
     if request.method == "POST":
         action = request.POST.get("action", "draft")
         verified_orcid = _verified_orcid_for(request.user)
-        form = ProjectForm(request.POST)
+        form = ProjectForm(request.POST, request.FILES)
         formset = ContributionFormSet(request.POST, instance=Project())
         can_publish = action != "publish" or bool(verified_orcid)
         if not can_publish:
@@ -237,8 +354,22 @@ def project_new(request):
             formset.instance = project
             formset.save()
             _attach_verified_submitter(project, request.user, verified_orcid)
-            if project.is_public:
-                messages.success(request, "Project published.")
+            _process_attachments(request, project)
+            if action == "publish":
+                try:
+                    publish_project_now(project, request.user)
+                except ZenodoError as exc:
+                    project.visibility = Project.VISIBILITY_PRIVATE
+                    project.save(update_fields=["visibility"])
+                    messages.error(
+                        request,
+                        f"Could not publish on Zenodo: {exc}. Saved as a draft.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Project published on {zenodo_mode_label()}.",
+                    )
             else:
                 messages.success(request, "Draft saved.")
             return redirect(project.get_absolute_url())
@@ -268,13 +399,14 @@ def project_edit(request, slug: str):
     if request.method == "POST":
         action = request.POST.get("action", "save")
         verified_orcid = _verified_orcid_for(request.user)
-        form = ProjectForm(request.POST, instance=project)
+        form = ProjectForm(request.POST, request.FILES, instance=project)
         formset = ContributionFormSet(request.POST, instance=project)
         can_publish = action != "publish" or bool(verified_orcid)
         if not can_publish:
             form.add_error(None, "Sign in with ORCID before publishing a project.")
         if form.is_valid() and formset.is_valid() and can_publish:
             saved = form.save(commit=False)
+            was_public = project.visibility == Project.VISIBILITY_PUBLIC
             saved.visibility = _resolve_visibility(
                 project, action, is_new=False
             )
@@ -282,7 +414,39 @@ def project_edit(request, slug: str):
             form.save_m2m()
             formset.save()
             _attach_verified_submitter(saved, request.user, verified_orcid)
-            messages.success(request, "Project updated.")
+            _process_attachments(request, saved)
+            if action == "publish" and not was_public:
+                try:
+                    publish_project_now(saved, request.user)
+                except ZenodoError as exc:
+                    saved.visibility = Project.VISIBILITY_PRIVATE
+                    saved.save(update_fields=["visibility"])
+                    messages.error(
+                        request,
+                        f"Could not publish on Zenodo: {exc}. Saved as a draft.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Project published on {zenodo_mode_label()}.",
+                    )
+            elif was_public and zenodo_configured():
+                # Existing public project: push metadata edits back to the
+                # published Zenodo record so the two stay in sync.
+                try:
+                    update_published_metadata(saved)
+                except ZenodoError as exc:
+                    messages.warning(
+                        request,
+                        f"Saved on OSPREY, but could not update Zenodo metadata: {exc}",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Project updated. Metadata synced to {zenodo_mode_label()}.",
+                    )
+            else:
+                messages.success(request, "Project updated.")
             return redirect(saved.get_absolute_url())
     else:
         form = ProjectForm(instance=project)
@@ -301,37 +465,153 @@ def project_edit(request, slug: str):
 
 
 @login_required
-@require_POST
-def project_zenodo_sync(request, slug: str):
-    project = get_object_or_404(Project, slug=slug)
-    if not project.editable_by(request.user):
-        raise Http404
-    try:
-        deposit = sync_project_to_zenodo(project, request.user)
-    except ZenodoError as exc:
-        messages.error(request, f"Zenodo sync failed: {exc}")
-    else:
-        messages.success(
-            request,
-            f"{zenodo_mode_label()} draft synced. Reserved DOI: {deposit.doi or 'not returned yet'}.",
-        )
-    return redirect(project.get_absolute_url())
+def project_zenodo_new_version(request, slug: str):
+    """Start a new Zenodo version. Supports save-as-draft and publish.
 
-
-@login_required
-@require_POST
-def project_zenodo_publish(request, slug: str):
+    Save draft only writes locally: the new archive is stored as a
+    `ProjectAttachment(published_to_zenodo=False)` and the changelog +
+    repo_link are stashed on the existing deposit row. No Zenodo call is
+    made, so the request returns immediately even on flaky networks.
+    Publish picks up that pending data and pushes everything to Zenodo
+    in one go.
+    """
     project = get_object_or_404(Project, slug=slug)
     if not project.editable_by(request.user):
         raise Http404
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
-    if deposit is None:
-        messages.error(request, "Create a Zenodo draft before publishing.")
+    if deposit is None or deposit.state != ProjectDeposit.STATE_PUBLISHED:
+        messages.error(
+            request,
+            "Publish the project before starting a new version.",
+        )
         return redirect(project.get_absolute_url())
-    try:
-        deposit = publish_project_deposit(deposit)
-    except ZenodoError as exc:
-        messages.error(request, f"Zenodo publish failed: {exc}")
+    verified_orcid = _verified_orcid_for(request.user)
+    if not verified_orcid:
+        messages.error(request, "Sign in with ORCID before publishing a new version.")
+        return redirect(project.get_absolute_url())
+    pending_attachment = project.attachments.filter(
+        published_to_zenodo=False
+    ).exclude(file="").first()
+    if request.method == "POST":
+        action = request.POST.get("action", "draft")
+        form = NewVersionForm(request.POST, request.FILES)
+        upload = request.FILES.get("archive")
+        # An archive is required unless one is already pending locally.
+        if upload is None and pending_attachment is None:
+            form.add_error("archive", "Upload a new .zip archive for this version.")
+        elif upload is not None and not _looks_like_zip(upload):
+            form.add_error("archive", "Only .zip archives are accepted.")
+        elif upload is not None and getattr(upload, "size", 0) > MAX_ATTACHMENT_BYTES:
+            form.add_error("archive", "Archive exceeds 500 MiB limit.")
+        if form.is_valid():
+            if upload is not None:
+                # Replace any prior draft attachment so only the new
+                # archive is queued for the new version.
+                ProjectAttachment.objects.filter(
+                    project=project, published_to_zenodo=False
+                ).delete()
+                ProjectAttachment.objects.create(
+                    project=project,
+                    file=upload,
+                    filename=upload.name,
+                    size_bytes=getattr(upload, "size", 0),
+                )
+            if action == "publish":
+                try:
+                    publish_new_version_now(
+                        deposit,
+                        changelog=form.cleaned_data["changelog"],
+                        repo_link=form.cleaned_data.get("repo_link", ""),
+                        user=request.user,
+                    )
+                except ZenodoError as exc:
+                    messages.error(request, f"Could not publish new version: {exc}")
+                else:
+                    messages.success(
+                        request,
+                        f"New version published on {zenodo_mode_label()}.",
+                    )
+                    return redirect(project.get_absolute_url())
+            else:
+                # Save draft: open a Zenodo new-version draft, push the
+                # archive + sidecars, then leave it unpublished so the
+                # user can review on Zenodo and come back to publish.
+                try:
+                    start_new_version_for_deposit(
+                        deposit,
+                        changelog=form.cleaned_data["changelog"],
+                        repo_link=form.cleaned_data.get("repo_link", ""),
+                        user=request.user,
+                    )
+                except ZenodoError as exc:
+                    messages.error(request, f"Could not save new version draft: {exc}")
+                else:
+                    messages.success(
+                        request,
+                        f"New version saved as a {zenodo_mode_label()} draft. "
+                        "Review on Zenodo, then come back and publish.",
+                    )
+                    return redirect(project.get_absolute_url())
     else:
-        messages.success(request, f"{zenodo_mode_label()} record published: {deposit.doi}.")
+        initial = {}
+        if deposit.pending_changelog:
+            initial["changelog"] = deposit.pending_changelog
+        if deposit.repo_link:
+            initial["repo_link"] = deposit.repo_link
+        form = NewVersionForm(initial=initial)
+    return render(
+        request,
+        "projects/zenodo_new_version.html",
+        {
+            "project": project,
+            "form": form,
+            "zenodo_deposit": deposit,
+            "zenodo_mode_label": zenodo_mode_label(),
+            "pending_attachment": pending_attachment,
+        },
+    )
+
+
+def project_versions(request, slug: str):
+    """Public list of every published version of a project."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.viewable_by(request.user):
+        raise Http404
+    deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+    versions = []
+    if deposit is not None:
+        versions = list(deposit.versions.all())
+        # Legacy: a published deposit pre-dating the version-history feature
+        # has no rows. Synthesize a v1 entry from the deposit itself so the
+        # page is never empty for a published project.
+        if not versions and deposit.state == ProjectDeposit.STATE_PUBLISHED:
+            versions = [
+                {
+                    "version_index": 1,
+                    "doi": deposit.doi,
+                    "record_id": deposit.record_id,
+                    "external_url": deposit.external_url,
+                    "published_at": deposit.published_at,
+                    "changelog": "",
+                    "repo_link": "",
+                    "synthetic": True,
+                }
+            ]
+    return render(
+        request,
+        "projects/versions.html",
+        {
+            "project": project,
+            "zenodo_deposit": deposit,
+            "versions": versions,
+            "can_edit": project.editable_by(request.user),
+        },
+    )
+
+
+def project_permalink(request, public_id):
+    """Permanent OSPREY project URL. Redirects to the current slug-based page."""
+    project = get_object_or_404(Project, public_id=public_id)
+    if not project.viewable_by(request.user):
+        raise Http404
     return redirect(project.get_absolute_url())

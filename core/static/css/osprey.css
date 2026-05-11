@@ -223,6 +223,50 @@ a:hover {
     color: var(--fg-muted);
 }
 
+.req {
+    color: #f87171;
+    font-weight: bold;
+    margin-left: 0.15rem;
+}
+
+.doi-badge img {
+    height: 20px;
+    vertical-align: middle;
+}
+
+.cite-as {
+    margin-top: 0.75rem;
+}
+
+.cite-as-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+    margin-top: 0.25rem;
+}
+
+.cite-as textarea {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    line-height: 1.4;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-soft);
+    color: var(--fg);
+    border: 1px solid var(--border, #444);
+    border-radius: 4px;
+    resize: vertical;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cite-as button {
+    align-self: flex-start;
+}
+
 code,
 pre {
     font-family: var(--font-mono);
@@ -1248,4 +1292,73 @@ button.ghost:hover,
     .contributor-grid {
         grid-template-columns: 1fr 1fr;
     }
+}
+
+/* Publish working-indicator overlay */
+.publish-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 1000;
+}
+
+.publish-overlay[hidden] {
+    display: none;
+}
+
+.publish-overlay-card {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border, #444);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    max-width: 26rem;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.publish-overlay-card .spinner {
+    width: 32px;
+    height: 32px;
+    margin: 0.25rem auto 0.75rem;
+    border-radius: 50%;
+    border: 3px solid var(--border, #444);
+    border-top-color: var(--accent, #6cb6ff);
+    animation: osprey-spin 0.8s linear infinite;
+}
+
+@keyframes osprey-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.callout {
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border, #444);
+    border-left: 3px solid var(--accent, #6cb6ff);
+    border-radius: 4px;
+    background: var(--bg-soft);
+}
+
+.upload-progress {
+    width: 100%;
+    height: 8px;
+    margin-top: 0.75rem;
+    background: var(--bg-soft, #1e1e1e);
+    border: 1px solid var(--border, #444);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent, #6cb6ff);
+    transition: width 0.15s linear;
 }

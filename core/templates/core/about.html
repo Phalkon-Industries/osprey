@@ -7,49 +7,62 @@
 
     <p style="font-size:1.1rem;color:var(--muted)">
         OSPREY (Open Science Platform for Research and Engineering) is a
-        public-benefit commons for open research engineering.
+        public-benefit catalog for open-source research engineering
+        projects.
     </p>
 
-    <h2>What this site does</h2>
+    <h2>What it's for</h2>
     <p>
-        OSPREY catalogs open source research engineering projects (hardware, firmware,
-        protocols, datasets, analysis pipelines) with enough metadata that
-        other researchers can find and reuse them. The current demo focuses on
-        project pages, contributor credit, ORCID-verified submitters, artifact
-        links, and a plain JSON export of the public record.
+        A lot of research depends on custom hardware
+        designs and specialized software that never gets formally
+        published anywhere. Labs build them, use them, and move on.
+        The next lab then goes and ends up re-engineering the same thing a year later. OSPREY is a place for these
+        works to live in a findable, citable form and hopefully prevent these re-engineering efforts.
     </p>
-
-
-    <h2>Why I'm building it</h2>
     <p>
-        Useful research engineering work often goes uncredited and
-        unfindable. Two graduate students in different labs can spend
-        weeks building the same custom instrument and never know about
-        each other; the work then disappears into a single sentence in a
-        paper. OSPREY is an attempt to make that work easier to share,
-        easier to find, and worth the effort to document.
+        If you've built something like a sensor, a flow controller, an
+        analysis script, or a sampling protocol, you can publish it on
+        OSPREY and get a DOI for it. Other researchers can find it, use it
+        cite it in their papers, and build on it. If someone adapts
+        your design for their own research and publishes it back on OSPREY, we record that
+        connection and track cittions so your original contribution stays visible and continues to gain credit.
+    </p>
+    <p>
+        The goal is to make open-sourcing a research engineering design
+        feel worth doing. Right now the incentives mostly aren't there.
+        OSPREY is trying to change that by making it easy to publish and maintain a project, and by making reuse visible and
+        credit tangible.
+    </p>
+    <p>
+        Publishing takes a few minutes. Just fill in the project details,
+        attach your files, and OSPREY deposits everything to
+        <a href="https://zenodo.org" rel="noopener">Zenodo</a> and
+        mints the DOI. Projects are associated with your ORCID so your contribution shows up
+        under your verified identity.
+
+    <h2>Why ORCID?</h2>
+    <p>
+        ORCID is a free, researcher-maintained identifier used across
+        journals, funders, and institutions. Signing in with ORCID
+        means your contributions show up under your verified identity. This setup combined with using zenodo also makes the archive robust.
+        If anything were to happen to OSPREY, the archives and citation records will continue to exist
+        far into the future even without our help, and still be attributable to you.
+    </p>
+    <p>
+        If you don't have an ORCID, registering is free at
+        <a href="https://orcid.org" rel="noopener">orcid.org</a> and
+        takes about two minutes.
     </p>
 
     <h2>Status</h2>
     <p>
-        This site is an early demo. DOI minting, citation exports, and lineage
-        graphs are paused while I gather better example projects. If you have a
-        project you'd be willing to list, or feedback on what's missing, I'd
-        appreciate hearing it.
+        OSPREY is early alpha.  You can check the <a href="{% url 'roadmap' %}">roadmap</a> for current progress and plans.
     </p>
 
     <h2>Who runs it</h2>
     <p>
-        OSPREY is run by Jonathan A Pfeifer through pHalkon Industries LLC
-        as a public-benefit project. The early pilot community is
-        oceanographic engineering, anchored at the Woods Hole Oceanographic
-        Institution.
-    </p>
-
-    <h2>Contact</h2>
-    <p>
-        Reach out through GitHub or by email if you'd like to help build
-        OSPREY, list a project, or talk about how it might fit your lab.
+        OSPREY is built and operated by
+        pHalkon Industries LLC.
     </p>
 </section>
 {% endblock %}

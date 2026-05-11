@@ -127,6 +127,12 @@ STATICFILES_DIRS = [_core_static] if _core_static.exists() else []
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Allow up to 512 MiB project archive uploads. Anything over 2.5 MiB
+# spills to a temp file on disk rather than being held in memory, so
+# raising the cap doesn't blow up worker RSS.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 512 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/login/"
@@ -166,6 +172,14 @@ ZENODO_API_BASE_URL = os.environ.get(
     "https://sandbox.zenodo.org" if ZENODO_USE_SANDBOX else "https://zenodo.org",
 ).rstrip("/")
 ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
+
+# Canonical absolute base URL used in outbound metadata (e.g. Zenodo
+# `related_identifiers`). Falls back to the production hostname so the
+# permalink embedded in a deposit is still resolvable when the deposit is
+# created from a developer machine.
+OSPREY_PUBLIC_BASE_URL = os.environ.get(
+    "OSPREY_PUBLIC_BASE_URL", "https://osprey.phalkon.io"
+).rstrip("/")
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

@@ -3,6 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.validators import RegexValidator
 from django.db import models
 from django.urls import reverse
+import uuid
 
 
 # 16-digit ORCID iD with hyphens, last char digit or X.
@@ -49,6 +50,16 @@ class Project(models.Model):
     ]
 
     slug = models.SlugField(max_length=120, unique=True)
+    public_id = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        unique=True,
+        help_text=(
+            "Permanent OSPREY project identifier. Used in the project permalink "
+            "(/p/<public_id>/) and embedded in Zenodo metadata so external records "
+            "keep pointing at this project even if the slug or title changes."
+        ),
+    )
     title = models.CharField(max_length=300)
     summary = models.CharField(
         max_length=280,
@@ -84,8 +95,18 @@ class Project(models.Model):
     cover_image_url = models.URLField(
         blank=True,
         help_text=(
-            "Optional. Link to a cover image hosted elsewhere "
-            "(GitHub raw URL, Zenodo, lab website). OSPREY does not host images."
+            "Optional. Link to a cover image hosted elsewhere. OSPREY will "
+            "fetch and re-encode it to WebP. Prefer the upload below if you "
+            "have the file locally."
+        ),
+    )
+    cover_image = models.ImageField(
+        upload_to="projects/cover/",
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional. Upload a cover image (PNG/JPG/WebP). Max 10 MiB. "
+            "OSPREY will downscale and re-encode it to WebP automatically."
         ),
     )
     cover_image_focal_x = models.PositiveSmallIntegerField(
@@ -140,6 +161,37 @@ class Project(models.Model):
 
     def get_absolute_url(self) -> str:
         return reverse("projects:detail", args=[self.slug])
+
+    def get_permalink(self) -> str:
+        return reverse("project_permalink", args=[str(self.public_id)])
+
+    @property
+    def cover_image_display_url(self) -> str:
+        """URL of the cover image to render. Prefers the uploaded file."""
+        if self.cover_image:
+            try:
+                return self.cover_image.url
+            except ValueError:
+                return ""
+        return self.cover_image_url or ""
+
+    @property
+    def canonical_url_label(self) -> str:
+        """Short label for the canonical URL pill (GitHub, Codeberg, etc.)."""
+        url = (self.canonical_url or "").lower()
+        if not url:
+            return ""
+        if "github.com" in url:
+            return "GitHub"
+        if "codeberg.org" in url:
+            return "Codeberg"
+        if "gitlab" in url:
+            return "GitLab"
+        if "bitbucket" in url:
+            return "Bitbucket"
+        if "zenodo.org" in url:
+            return "Zenodo"
+        return "Repository"
 
     @property
     def is_public(self) -> bool:
@@ -225,6 +277,22 @@ class ProjectDeposit(models.Model):
     doi = models.CharField(max_length=120, blank=True)
     concept_doi = models.CharField(max_length=120, blank=True)
     state = models.CharField(max_length=20, choices=STATE_CHOICES, default=STATE_DRAFT)
+    pending_changelog = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Changelog text the user supplied for the in-flight new-version draft. "
+            "Cleared on publish; the published value lives on ProjectDepositVersion."
+        ),
+    )
+    repo_link = models.URLField(
+        blank=True,
+        default="",
+        help_text=(
+            "Optional per-version repository URL (e.g. a GitHub release tag) "
+            "for the in-flight draft. Cleared on publish."
+        ),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -257,6 +325,77 @@ class ProjectDeposit(models.Model):
     @property
     def external_url(self) -> str:
         base = "https://sandbox.zenodo.org" if self.sandbox else "https://zenodo.org"
+        if self.record_id:
+            return f"{base}/records/{self.record_id}"
+        if self.deposition_id:
+            return f"{base}/deposit/{self.deposition_id}"
+        return ""
+
+    @property
+    def latest_version(self):
+        return self.versions.order_by("-version_index").first()
+
+    @property
+    def has_pending_new_version(self) -> bool:
+        """True when a new-version draft is in flight after a previous publish."""
+        return (
+            self.state == self.STATE_DRAFT
+            and self.versions.exists()
+            and bool(self.pending_changelog)
+        )
+
+    @property
+    def next_version_index(self) -> int:
+        last = self.latest_version
+        return (last.version_index if last else 0) + 1
+
+
+class ProjectDepositVersion(models.Model):
+    """A published version of a `ProjectDeposit`.
+
+    Each new-version publish records one row here. The current `ProjectDeposit`
+    always tracks the most recent draft/published deposition for a project;
+    the version history lives here.
+    """
+
+    deposit = models.ForeignKey(
+        ProjectDeposit, on_delete=models.CASCADE, related_name="versions"
+    )
+    version_index = models.PositiveIntegerField()
+    deposition_id = models.CharField(max_length=80, blank=True)
+    record_id = models.CharField(max_length=80, blank=True)
+    doi = models.CharField(max_length=120, blank=True)
+    changelog = models.TextField(
+        blank=True,
+        default="",
+        help_text="What changed in this version. Plain text or Markdown.",
+    )
+    repo_link = models.URLField(
+        blank=True,
+        default="",
+        help_text="Optional repository URL pointing at the release for this version.",
+    )
+    published_at = models.DateTimeField()
+    last_response = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-version_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["deposit", "version_index"],
+                name="unique_deposit_version_index",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["deposit", "version_index"], name="projects_dep_version_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.deposit.project} v{self.version_index} ({self.doi or 'no DOI'})"
+
+    @property
+    def external_url(self) -> str:
+        base = "https://sandbox.zenodo.org" if self.deposit.sandbox else "https://zenodo.org"
         if self.record_id:
             return f"{base}/records/{self.record_id}"
         if self.deposition_id:
@@ -358,6 +497,48 @@ class ArtifactLink(models.Model):
 
     def __str__(self) -> str:
         return self.label or self.url
+
+
+def _attachment_upload_path(instance, filename: str) -> str:
+    return f"projects/{instance.project.slug}/files/{filename}"
+
+
+class ProjectAttachment(models.Model):
+    """A file the user attached to a project.
+
+    Files live on OSPREY's media volume only while the project is a draft.
+    On publish, OSPREY uploads each attachment to the Zenodo deposit's file
+    bucket. After a successful Zenodo upload `published_to_zenodo` is set
+    True and the local file is cleared, since Zenodo becomes the host.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="attachments"
+    )
+    file = models.FileField(upload_to=_attachment_upload_path, blank=True)
+    filename = models.CharField(max_length=255, blank=True)
+    size_bytes = models.BigIntegerField(default=0)
+    label = models.CharField(max_length=200, blank=True)
+    published_to_zenodo = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return self.filename or self.label or f"attachment-{self.pk}"
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.filename:
+            # Strip directory components in case the FileField returns a
+            # path on later edits.
+            self.filename = self.file.name.rsplit("/", 1)[-1]
+        if self.file and not self.size_bytes:
+            try:
+                self.size_bytes = self.file.size
+            except (OSError, ValueError):
+                self.size_bytes = 0
+        super().save(*args, **kwargs)
 
 
 class LineageEdge(models.Model):

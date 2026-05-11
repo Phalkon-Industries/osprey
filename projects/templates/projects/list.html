@@ -58,10 +58,11 @@
 <div class="grid">
     {% for project in projects %}
     <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-        {% if project.cover_image_url %}
+        {% if project.cover_image_display_url %}
         <span class="thumb-frame"
             style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                class="thumb" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover" loading="lazy"></span>
+                class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
+                loading="lazy"></span>
         {% else %}
         {% with first_image=project.images.first %}
         {% if first_image %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}New version — {{ project.title }} — OSPREY{% endblock %}
+
+{% block content %}
+<article>
+    <p class="muted small">
+        <a href="{{ project.get_absolute_url }}">&larr; Back to {{ project.title }}</a>
+    </p>
+    <h1>Create a new version</h1>
+    <p>
+        Save a draft to push the archive to {{ zenodo_mode_label }} as a
+        reviewable draft (not yet public), or publish to mint the new
+        version DOI right away. The project DOI keeps pointing at
+        whichever version is latest.
+    </p>
+    {% if zenodo_deposit.latest_version %}
+    {% with latest=zenodo_deposit.latest_version %}
+    <p class="muted small">
+        Most recent version: v{{ latest.version_index }}
+        {% if latest.doi %}&middot; DOI <code>{{ latest.doi }}</code>{% endif %}
+        &middot; published {{ latest.published_at|date:"Y-m-d" }}
+    </p>
+    {% endwith %}
+    {% endif %}
+    {% if pending_attachment or zenodo_deposit.pending_changelog %}
+    <div class="callout">
+        <strong>You have a saved draft for the next version.</strong>
+        {% if pending_attachment %}<br>Pending archive: <code>{{ pending_attachment.filename }}</code>{% endif %}
+        <br><span class="muted small">Edit the changelog and click Publish to push this draft to {{ zenodo_mode_label }}.</span>
+    </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" novalidate data-new-version-form>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+        <div class="form-row">
+            <label for="{{ form.changelog.id_for_label }}"><strong>{{ form.changelog.label }}</strong></label>
+            {{ form.changelog }}
+            {% if form.changelog.help_text %}<p class="muted small">{{ form.changelog.help_text }}</p>{% endif %}
+            {% if form.changelog.errors %}<p class="form-error">{{ form.changelog.errors|join:" " }}</p>{% endif %}
+        </div>
+        <div class="form-row">
+            <label for="id_archive"><strong>New project archive</strong>{% if not pending_attachment %} <span class="req" aria-label="required">*</span>{% endif %}</label>
+            <input type="file" id="id_archive" name="archive" accept=".zip,application/zip,application/x-zip-compressed"{% if not pending_attachment %} required{% endif %}>
+            <p class="muted small">
+                {% if pending_attachment %}Optional. Upload a new <code>.zip</code> to replace the saved draft archive ({{ pending_attachment.filename }}).{% else %}A new <code>.zip</code> archive is required for each new version.{% endif %}
+                Up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally. OSPREY clears the previous version's files from the new Zenodo draft before uploading.
+            </p>
+            {% if form.archive.errors %}<p class="form-error">{{ form.archive.errors|join:" " }}</p>{% endif %}
+        </div>
+        <div class="form-row">
+            <label for="{{ form.repo_link.id_for_label }}">{{ form.repo_link.label }}</label>
+            {{ form.repo_link }}
+            {% if form.repo_link.help_text %}<p class="muted small">{{ form.repo_link.help_text }}</p>{% endif %}
+            {% if form.repo_link.errors %}<p class="form-error">{{ form.repo_link.errors|join:" " }}</p>{% endif %}
+        </div>
+        <div class="form-actions">
+            <button type="submit" name="action" value="draft" class="ghost" data-submit-button>Save draft</button>
+            <button type="submit" name="action" value="publish" data-submit-button data-publish-button>Publish new version</button>
+            <a class="ghost" href="{{ project.get_absolute_url }}">Cancel</a>
+        </div>
+    </form>
+
+    <div class="publish-overlay" data-publish-overlay hidden>
+        <div class="publish-overlay-card">
+            <div class="spinner" aria-hidden="true"></div>
+            <p><strong>Working on it&hellip;</strong></p>
+            <p class="muted small" data-publish-overlay-msg>OSPREY is preparing your new version. Don't close the tab.</p>
+            <div class="upload-progress" data-upload-progress hidden>
+                <div class="upload-progress-bar" data-upload-progress-bar></div>
+            </div>
+            <p class="muted small" data-upload-progress-text hidden></p>
+        </div>
+    </div>
+</article>
+
+<script>
+    (function () {
+        var form = document.querySelector('[data-new-version-form]');
+        if (!form) return;
+        var overlay = document.querySelector('[data-publish-overlay]');
+        var overlayMsg = document.querySelector('[data-publish-overlay-msg]');
+        var progressWrap = document.querySelector('[data-upload-progress]');
+        var progressBar = document.querySelector('[data-upload-progress-bar]');
+        var progressText = document.querySelector('[data-upload-progress-text]');
+        var publishBtn = form.querySelector('[data-publish-button]');
+        // Hidden shadow input keeps the chosen action name available even
+        // after we disable the submit buttons.
+        var actionShadow = document.createElement('input');
+        actionShadow.type = 'hidden';
+        actionShadow.name = 'action';
+        actionShadow.value = '';
+        form.appendChild(actionShadow);
+
+        form.querySelectorAll('[data-submit-button]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                actionShadow.value = btn.value || '';
+                form.dataset.activeAction = btn.value || '';
+            });
+        });
+        if (publishBtn) {
+            publishBtn.addEventListener('click', function (event) {
+                var ok = window.confirm(
+                    'Publish a new version on Zenodo? This mints a new DOI and ' +
+                    'cannot be undone from OSPREY.'
+                );
+                if (!ok) {
+                    event.preventDefault();
+                }
+            });
+        }
+        form.addEventListener('submit', function (event) {
+            var buttons = form.querySelectorAll('[data-submit-button]');
+            buttons.forEach(function (btn) {
+                btn.disabled = true;
+                btn.setAttribute('aria-busy', 'true');
+            });
+            if (overlay) {
+                overlay.hidden = false;
+                if (overlayMsg) {
+                    var action = form.dataset.activeAction || '';
+                    if (action === 'publish') {
+                        overlayMsg.textContent = 'Uploading to OSPREY, then to Zenodo. This can take a minute. Don\u2019t close the tab.';
+                    } else {
+                        overlayMsg.textContent = 'Uploading to OSPREY, then saving a Zenodo draft\u2026';
+                    }
+                }
+            }
+            var fileInput = form.querySelector('input[type=file][name=archive]');
+            var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+            if (!hasFile || !window.XMLHttpRequest || !window.FormData) return;
+            event.preventDefault();
+            var fd = new FormData(form);
+            var xhr = new XMLHttpRequest();
+            xhr.open(form.method || 'POST', form.action || window.location.href, true);
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.upload.addEventListener('progress', function (e) {
+                if (!e.lengthComputable || !progressWrap) return;
+                progressWrap.hidden = false;
+                if (progressText) progressText.hidden = false;
+                var pct = Math.round((e.loaded / e.total) * 100);
+                if (progressBar) progressBar.style.width = pct + '%';
+                if (progressText) {
+                    var mb = (e.loaded / 1048576).toFixed(1);
+                    var totalMb = (e.total / 1048576).toFixed(1);
+                    progressText.textContent = 'Uploading to OSPREY: ' + pct + '% (' + mb + ' / ' + totalMb + ' MB)';
+                }
+            });
+            xhr.upload.addEventListener('load', function () {
+                if (overlayMsg) {
+                    overlayMsg.textContent = (form.dataset.activeAction === 'publish')
+                        ? 'Pushing to Zenodo and minting your new version DOI\u2026'
+                        : 'Pushing to Zenodo and saving the draft\u2026';
+                }
+                if (progressText) progressText.textContent = 'Upload complete. OSPREY is talking to Zenodo.';
+            });
+            xhr.addEventListener('load', function () {
+                var url = xhr.responseURL || window.location.href;
+                window.location.href = url;
+            });
+            xhr.addEventListener('error', function () {
+                if (overlayMsg) overlayMsg.textContent = 'Upload failed. Please try again.';
+            });
+            xhr.send(fd);
+        });
+    })();
+</script>
+{% endblock %}

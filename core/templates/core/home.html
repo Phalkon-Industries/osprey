@@ -2,13 +2,18 @@
 {% block title %}OSPREY — Open Science Platform for Research and Engineering{% endblock %}
 {% block content %}
 <section class="hero">
-    <h1>A credit layer for research engineering.</h1>
+    <h1>An open catalog for research engineering.</h1>
     <p class="lede">
-        OSPREY makes the second user of an instrument, a script, or a board design
-        easy to find, easy to credit, and easy to build on. This is the demo build.
-        Browse the <a href="{% url 'projects:list' %}">projects</a> seeded from the
-        WHOI pilot, or pull the public record as plain JSON from
-        <a href="/api/v1/export/">/api/v1/export/</a>.
+        OSPREY is a searchable commons for open-source research
+        engineering projects such as instruments, hardware designs, firmware,
+        protocols, and the software tools that make research possible but
+        rarely get published anywhere. Publish an open source project here, get a citable
+        DOI, and give the next researcher a starting point.
+    </p>
+    <p class="lede">
+        This system is in an alpha testing phase at the moment.
+        <a href="{% url 'projects:list' %}">Browse the projects</a>
+        or <a href="{% url 'about' %}">read more about OSPREY</a>.
     </p>
 </section>
 
@@ -18,10 +23,10 @@
     <div class="grid">
         {% for project in recent %}
         <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-            {% if project.cover_image_url %}
+            {% if project.cover_image_display_url %}
             <span class="thumb-frame"
                 style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                    class="thumb" src="{{ project.cover_image_url }}" alt="{{ project.title }} cover"
+                    class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
                     loading="lazy"></span>
             {% else %}
             {% with first_image=project.images.first %}
@@ -56,4 +61,5 @@
     <p class="muted">No projects yet. Sign in and add one.</p>
     {% endif %}
 </section>
+
 {% endblock %}

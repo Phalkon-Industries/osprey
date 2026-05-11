@@ -12,6 +12,7 @@ from urllib import error
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings, tag
@@ -101,7 +102,6 @@ class ProjectTestCase(TestCase):
             "field": "Oceanography",
             "artifact_type": "Hardware",
             "canonical_url": "https://github.com/example/submitted-pump",
-            "doi": "",
             "cover_image_url": "",
             "cover_image_focal_x": "50",
             "cover_image_focal_y": "50",
@@ -186,7 +186,7 @@ class ProjectModelTests(ProjectTestCase):
 
 
 class ProjectFormTests(ProjectTestCase):
-    def test_project_form_normalizes_doi_and_saves_tags(self):
+    def test_project_form_saves_license_tags_and_slug(self):
         form = ProjectForm(
             data={
                 "title": "Field Test Pump",
@@ -195,7 +195,6 @@ class ProjectFormTests(ProjectTestCase):
                 "field": "Oceanography",
                 "artifact_type": "Hardware",
                 "canonical_url": "https://github.com/example/field-test-pump",
-                "doi": "https://doi.org/10.5281/zenodo.123",
                 "cover_image_url": "",
                 "cover_image_focal_x": "50",
                 "cover_image_focal_y": "50",
@@ -210,34 +209,16 @@ class ProjectFormTests(ProjectTestCase):
         self.assertTrue(form.is_valid(), form.errors.as_json())
         with patch("projects.forms.secrets.token_hex", return_value="abcd"):
             project = form.save()
-        self.assertEqual(project.doi, "10.5281/zenodo.123")
         self.assertEqual(project.license, "Custom-OHL-1.0")
         self.assertEqual(project.slug, "field-test-pump-abcd")
         self.assertEqual(list(project.tags.values_list("name", flat=True)), ["co2", "pump"])
 
-    def test_project_form_rejects_invalid_doi(self):
-        form = ProjectForm(
-            data={
-                "title": "Bad DOI",
-                "summary": "Bad DOI.",
-                "readme": "",
-                "field": "",
-                "artifact_type": "",
-                "canonical_url": "",
-                "doi": "not-a-doi",
-                "cover_image_url": "",
-                "cover_image_focal_x": "50",
-                "cover_image_focal_y": "50",
-                "cover_image_zoom": "1",
-                "institution": "",
-                "license_choice": "MIT",
-                "license_custom": "",
-                "tags_input": "",
-            }
-        )
+    def test_recommended_licenses_lead_with_agpl(self):
+        from projects.forms import RECOMMENDED_LICENSES
 
-        self.assertFalse(form.is_valid())
-        self.assertIn("doi", form.errors)
+        ids = [code for code, _ in RECOMMENDED_LICENSES]
+        self.assertEqual(ids[0], "AGPL-3.0")
+        self.assertNotIn("GPL-3.0-or-later", ids)
 
     def test_contribution_formset_requires_at_least_one_contributor(self):
         formset = ContributionFormSet(
@@ -318,7 +299,8 @@ class ProjectViewTests(ProjectTestCase):
         self.assertContains(response, "Sign in with ORCID before publishing a project.")
         self.assertFalse(Project.objects.filter(title="Submitted Pump", visibility=Project.VISIBILITY_PUBLIC).exists())
 
-    def test_verified_user_can_publish_and_gets_verified_submitter_row(self):
+    @patch("projects.views.publish_project_now")
+    def test_verified_user_can_publish_and_gets_verified_submitter_row(self, _publish_mock):
         add_orcid_account(self.owner, "0000-0001-2345-6789")
         Profile.objects.filter(user=self.owner).update(display_name="Owner Person")
         self.client.force_login(self.owner)
@@ -331,7 +313,8 @@ class ProjectViewTests(ProjectTestCase):
         contribution = project.contributions.get(user=self.owner)
         self.assertEqual(contribution.orcid_id, "0000-0001-2345-6789")
 
-    def test_edit_can_publish_draft_with_verified_orcid(self):
+    @patch("projects.views.publish_project_now")
+    def test_edit_can_publish_draft_with_verified_orcid(self, _publish_mock):
         add_orcid_account(self.owner, "0000-0001-2345-6789")
         self.client.force_login(self.owner)
         data = self.project_form_post_data(action="publish")
@@ -365,52 +348,19 @@ class ProjectViewTests(ProjectTestCase):
         self.assertEqual(self.public_project.visibility, Project.VISIBILITY_PUBLIC)
         self.assertEqual(self.public_project.title, "Still Public")
 
-    @patch("projects.views.sync_project_to_zenodo")
-    def test_zenodo_sync_view_requires_edit_permission(self, sync_mock):
-        self.client.force_login(self.unrelated)
-
-        response = self.client.post(reverse("projects:zenodo_sync", args=[self.public_project.slug]))
-
-        self.assertEqual(response.status_code, 404)
-        sync_mock.assert_not_called()
-
-    @patch("projects.views.sync_project_to_zenodo")
-    def test_zenodo_sync_view_calls_service_for_editor(self, sync_mock):
-        deposit = ProjectDeposit.objects.create(
-            project=self.public_project,
-            deposition_id="123",
-            doi="10.5072/zenodo.123",
-        )
-        sync_mock.return_value = deposit
+    @patch("projects.views.publish_project_now")
+    def test_publish_action_on_new_form_calls_publish(self, publish_mock):
+        add_orcid_account(self.owner)
         self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="publish")
+        data["title"] = "New Published Project"
 
-        response = self.client.post(reverse("projects:zenodo_sync", args=[self.public_project.slug]))
+        response = self.client.post(reverse("projects:new"), data)
 
         self.assertEqual(response.status_code, 302)
-        sync_mock.assert_called_once_with(self.public_project, self.owner)
-
-    def test_zenodo_publish_view_handles_missing_deposit(self):
-        self.client.force_login(self.owner)
-
-        response = self.client.post(reverse("projects:zenodo_publish", args=[self.public_project.slug]))
-
-        self.assertEqual(response.status_code, 302)
-
-    @patch("projects.views.publish_project_deposit")
-    def test_zenodo_publish_view_calls_service_for_editor(self, publish_mock):
-        deposit = ProjectDeposit.objects.create(
-            project=self.public_project,
-            deposition_id="123",
-            doi="10.5072/zenodo.123",
-            state=ProjectDeposit.STATE_DRAFT,
-        )
-        publish_mock.return_value = deposit
-        self.client.force_login(self.owner)
-
-        response = self.client.post(reverse("projects:zenodo_publish", args=[self.public_project.slug]))
-
-        self.assertEqual(response.status_code, 302)
-        publish_mock.assert_called_once_with(deposit)
+        publish_mock.assert_called_once()
+        project = Project.objects.get(title="New Published Project")
+        self.assertEqual(project.visibility, Project.VISIBILITY_PUBLIC)
 
 
 class MarkdownTemplateTagTests(TestCase):
@@ -434,7 +384,7 @@ class ZenodoServiceTests(ProjectTestCase):
         metadata = metadata_for_project(self.public_project)
 
         self.assertEqual(metadata["title"], "Public Pump")
-        self.assertEqual(metadata["upload_type"], "other")
+        self.assertEqual(metadata["upload_type"], "physicalobject")
         self.assertEqual(metadata["access_right"], "open")
         self.assertEqual(metadata["license"], "mit-license")
         self.assertIn({"name": "Alice Researcher"}, metadata["creators"])
@@ -480,7 +430,8 @@ class ZenodoServiceTests(ProjectTestCase):
         self.public_project.refresh_from_db()
         self.assertEqual(self.public_project.doi, "10.5072/zenodo.123")
         client.update_deposition_metadata.assert_called_once()
-        client.upload_to_bucket.assert_called_once()
+        # Two sidecar uploads: osprey-project.json and CITATION.cff.
+        self.assertEqual(client.upload_to_bucket.call_count, 2)
 
     @override_settings(
         ZENODO_USE_SANDBOX=True,
@@ -693,3 +644,266 @@ class LiveZenodoSandboxTests(TestCase):
         self.assertEqual(published.state, ProjectDeposit.STATE_PUBLISHED)
         self.assertTrue(published.doi.startswith("10.5072/zenodo."))
         self.assertTrue(published.external_url.startswith("https://sandbox.zenodo.org/records/"))
+
+
+class ProjectVersionsTests(ProjectTestCase):
+    """New-version flow, project permalink, and versions page."""
+
+    def _published_deposit(self, *, concept_doi: str = "10.5072/zenodo.concept") -> ProjectDeposit:
+        return ProjectDeposit.objects.create(
+            project=self.public_project,
+            provider=ProjectDeposit.PROVIDER_ZENODO,
+            sandbox=True,
+            deposition_id="123",
+            record_id="456",
+            doi="10.5072/zenodo.456",
+            concept_doi=concept_doi,
+            state=ProjectDeposit.STATE_PUBLISHED,
+        )
+
+    def test_project_has_public_id_uuid(self):
+        self.assertIsInstance(self.public_project.public_id, uuid.UUID)
+        # Idempotent on re-save
+        original = self.public_project.public_id
+        self.public_project.save()
+        self.public_project.refresh_from_db()
+        self.assertEqual(self.public_project.public_id, original)
+
+    def test_project_permalink_redirects_to_slug_url(self):
+        url = reverse("project_permalink", args=[str(self.public_project.public_id)])
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], self.public_project.get_absolute_url())
+
+    def test_metadata_includes_osprey_permalink_and_canonical_url(self):
+        deposit = self._published_deposit()
+
+        metadata = metadata_for_project(self.public_project, deposit)
+
+        identifiers = metadata.get("related_identifiers", [])
+        urls = [row["identifier"] for row in identifiers]
+        self.assertTrue(
+            any(str(self.public_project.public_id) in u for u in urls),
+            f"permalink not in {urls}",
+        )
+        self.assertIn(self.public_project.canonical_url, urls)
+
+    def test_metadata_includes_version_notes_when_pending_changelog_set(self):
+        deposit = self._published_deposit()
+        deposit.pending_changelog = "Fixed bench wiring."
+        deposit.repo_link = "https://github.com/example/public-pump/releases/tag/v0.2"
+        deposit.save()
+
+        metadata = metadata_for_project(self.public_project, deposit)
+
+        self.assertEqual(metadata["notes"], "Fixed bench wiring.")
+        self.assertEqual(metadata["version"], "v1")
+        urls = [row["identifier"] for row in metadata["related_identifiers"]]
+        self.assertIn(deposit.repo_link, urls)
+
+    @override_settings(
+        ZENODO_USE_SANDBOX=True,
+        ZENODO_ACCESS_TOKEN="fake-token",
+        ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
+    )
+    @patch("projects.zenodo.ZenodoClient")
+    def test_start_new_version_requires_published_deposit(self, client_class):
+        from .zenodo import start_new_version_for_deposit
+
+        deposit = ProjectDeposit.objects.create(
+            project=self.public_project,
+            deposition_id="123",
+            state=ProjectDeposit.STATE_DRAFT,
+        )
+
+        with self.assertRaises(ZenodoError):
+            start_new_version_for_deposit(deposit, changelog="x")
+
+    @override_settings(
+        ZENODO_USE_SANDBOX=True,
+        ZENODO_ACCESS_TOKEN="fake-token",
+        ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
+    )
+    @patch("projects.zenodo.ZenodoClient")
+    def test_start_new_version_requires_changelog(self, client_class):
+        from .zenodo import start_new_version_for_deposit
+
+        deposit = self._published_deposit()
+
+        with self.assertRaises(ZenodoError):
+            start_new_version_for_deposit(deposit, changelog="   ")
+
+    @override_settings(
+        ZENODO_USE_SANDBOX=True,
+        ZENODO_ACCESS_TOKEN="fake-token",
+        ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
+    )
+    @patch("projects.zenodo.ZenodoClient")
+    def test_start_new_version_creates_draft_and_uploads_snapshot(self, client_class):
+        from .zenodo import start_new_version_for_deposit
+
+        client = client_class.from_settings.return_value
+        client.create_new_version.return_value = {
+            "id": 999,
+            "links": {"bucket": "https://sandbox.zenodo.org/api/files/bucket-v2"},
+            "metadata": {"prereserve_doi": {"doi": "10.5072/zenodo.999"}},
+        }
+        client.update_deposition_metadata.return_value = {
+            "id": 999,
+            "links": {"bucket": "https://sandbox.zenodo.org/api/files/bucket-v2"},
+            "metadata": {"prereserve_doi": {"doi": "10.5072/zenodo.999"}},
+        }
+        client.upload_to_bucket.return_value = {"ok": True}
+        deposit = self._published_deposit()
+
+        result = start_new_version_for_deposit(
+            deposit,
+            changelog="New bench data.",
+            repo_link="https://github.com/example/public-pump/releases/tag/v0.2",
+            user=self.owner,
+        )
+
+        self.assertEqual(result.state, ProjectDeposit.STATE_DRAFT)
+        self.assertEqual(result.deposition_id, "999")
+        self.assertEqual(result.pending_changelog, "New bench data.")
+        self.assertEqual(
+            result.repo_link,
+            "https://github.com/example/public-pump/releases/tag/v0.2",
+        )
+        client.create_new_version.assert_called_once_with("123")
+        client.update_deposition_metadata.assert_called_once()
+        # Two sidecar uploads: osprey-project.json and CITATION.cff.
+        self.assertEqual(client.upload_to_bucket.call_count, 2)
+
+    @override_settings(
+        ZENODO_USE_SANDBOX=True,
+        ZENODO_ACCESS_TOKEN="fake-token",
+        ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
+    )
+    @patch("projects.zenodo.ZenodoClient")
+    def test_publish_records_version_and_clears_pending_fields(self, client_class):
+        client = client_class.from_settings.return_value
+        client.publish_deposition.return_value = {
+            "id": 999,
+            "record_id": 1000,
+            "metadata": {"doi": "10.5072/zenodo.1000", "conceptdoi": "10.5072/zenodo.concept"},
+        }
+        deposit = ProjectDeposit.objects.create(
+            project=self.public_project,
+            deposition_id="999",
+            state=ProjectDeposit.STATE_DRAFT,
+            sandbox=True,
+            pending_changelog="Fixed wiring.",
+            repo_link="https://github.com/example/public-pump/releases/tag/v0.2",
+        )
+
+        published = publish_project_deposit(deposit)
+
+        self.assertEqual(published.state, ProjectDeposit.STATE_PUBLISHED)
+        self.assertEqual(published.pending_changelog, "")
+        self.assertEqual(published.repo_link, "")
+        version = published.versions.get(version_index=1)
+        self.assertEqual(version.changelog, "Fixed wiring.")
+        self.assertEqual(version.doi, "10.5072/zenodo.1000")
+        self.assertEqual(
+            version.repo_link,
+            "https://github.com/example/public-pump/releases/tag/v0.2",
+        )
+        # Project DOI tracks the concept (project) DOI.
+        self.public_project.refresh_from_db()
+        self.assertEqual(self.public_project.doi, "10.5072/zenodo.concept")
+
+    def test_versions_page_lists_published_versions(self):
+        deposit = self._published_deposit()
+        from .models import ProjectDepositVersion
+        from django.utils import timezone
+
+        ProjectDepositVersion.objects.create(
+            deposit=deposit,
+            version_index=1,
+            deposition_id="123",
+            record_id="456",
+            doi="10.5072/zenodo.456",
+            changelog="First public release.",
+            published_at=timezone.now(),
+        )
+
+        url = reverse("projects:versions", args=[self.public_project.slug])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "v1")
+        self.assertContains(response, "First public release.")
+        self.assertContains(response, "10.5072/zenodo.456")
+
+    def test_new_version_view_blocks_when_no_published_deposit(self):
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+
+        response = self.client.get(
+            reverse("projects:zenodo_new_version", args=[self.public_project.slug])
+        )
+
+        # No published deposit -> redirect with error message back to project page.
+        self.assertEqual(response.status_code, 302)
+
+    def test_new_version_view_rejects_non_editor(self):
+        self._published_deposit()
+        self.client.force_login(self.unrelated)
+
+        response = self.client.get(
+            reverse("projects:zenodo_new_version", args=[self.public_project.slug])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("projects.views.publish_new_version_now")
+    def test_new_version_view_post_calls_service(self, service_mock):
+        deposit = self._published_deposit()
+        service_mock.return_value = deposit
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("projects:zenodo_new_version", args=[self.public_project.slug]),
+            {
+                "action": "publish",
+                "changelog": "Cleaned up wiring.",
+                "repo_link": "https://github.com/example/public-pump/releases/tag/v0.2",
+                "archive": SimpleUploadedFile(
+                    "panda-v2.zip", b"PK\x03\x04stub", content_type="application/zip"
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        service_mock.assert_called_once()
+        kwargs = service_mock.call_args.kwargs
+        self.assertEqual(kwargs["changelog"], "Cleaned up wiring.")
+        self.assertEqual(
+            kwargs["repo_link"],
+            "https://github.com/example/public-pump/releases/tag/v0.2",
+        )
+
+    @patch("projects.views.publish_new_version_now")
+    def test_new_version_view_requires_changelog(self, service_mock):
+        self._published_deposit()
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("projects:zenodo_new_version", args=[self.public_project.slug]),
+            {
+                "action": "publish",
+                "changelog": "   ",
+                "archive": SimpleUploadedFile(
+                    "panda-v2.zip", b"PK\x03\x04stub", content_type="application/zip"
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        service_mock.assert_not_called()
+        self.assertContains(response, "field is required")

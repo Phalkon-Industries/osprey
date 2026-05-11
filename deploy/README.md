@@ -66,14 +66,71 @@ cd ~/osprey && ./deploy.sh
 
 ## Routine deploy
 
-From a dev machine:
+The recommended flow is **tag a release on GitHub, then ssh in and tell the
+server to move to that tag**. This keeps prod on a named, reproducible point in
+history rather than whatever happens to be on `main` at the moment.
+
+### Cut a release on GitHub
+
+From a dev machine, on a clean `main`:
 
 ```bash
-git push
-ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./deploy.sh'
+git pull --ff-only
+git tag -a v0.1.0 -m "v0.1.0: short note about what changed"
+git push origin v0.1.0
 ```
 
+Then on GitHub, **Releases &rarr; Draft a new release**, pick the tag, and
+write the release notes there. This is the public, human-readable record of
+what is in the deploy.
+
+### Move prod to that tag
+
+```bash
+ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./deploy.sh v0.1.0'
+```
+
+`deploy.sh` accepts an optional ref:
+
+- `./deploy.sh` &mdash; fast-forward the current branch to its remote tip (the
+  legacy behaviour, still works for emergency hotfixes).
+- `./deploy.sh v0.1.0` &mdash; check out that tag in detached-HEAD mode, then
+  rebuild and migrate.
+- `./deploy.sh main` &mdash; force prod to the tip of `main` (mostly useful for
+  rolling forward after a hotfix tag).
+
+In every case the script does:
+
+1. `git fetch --tags --prune origin`
+2. Check out the requested ref
+3. `docker compose ... build web`
+4. `python manage.py migrate --noinput`
+5. `python manage.py collectstatic --noinput`
+6. `docker compose ... up -d`
+
+### Roll back
+
+If a release is bad:
+
+```bash
+ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./deploy.sh v0.0.9'
+```
+
+Note: rolling back across a migration that drops or renames a column will not
+restore data on its own. Migrations marked irreversible need a database restore
+from the most recent backup.
+
 No editing on the server. Ever.
+
+### Future: pre-built images via GHCR
+
+Today `deploy.sh` builds the web image on the VPS itself, which is fine while
+the project is small but adds a few minutes per deploy and means the server
+needs the full Python toolchain. The natural next step is a GitHub Actions
+workflow that builds and pushes a tagged image to GHCR
+(`ghcr.io/phalkon-industries/osprey:v0.1.0`) on each release, and a thinner
+`deploy.sh` that does `docker compose pull && up -d` instead of `build`. That
+work is tracked but not done yet.
 
 ## ORCID setup
 

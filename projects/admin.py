@@ -5,6 +5,7 @@ from .models import (
     Contribution,
     Project,
     ProjectDeposit,
+    ProjectDepositVersion,
     ProjectImage,
     Tag,
     TagAssignment,
@@ -116,10 +117,36 @@ class ProjectDepositAdmin(admin.ModelAdmin):
         "doi",
         "concept_doi",
         "state",
+        "pending_changelog",
+        "repo_link",
         "created_by",
         "last_response",
         "last_error",
         "created_at",
         "updated_at",
         "published_at",
+    )
+
+
+@admin.register(ProjectDepositVersion)
+class ProjectDepositVersionAdmin(admin.ModelAdmin):
+    list_display = ("deposit", "version_index", "doi", "published_at")
+    list_filter = ("deposit__provider", "deposit__sandbox")
+    search_fields = (
+        "deposit__project__title",
+        "deposit__project__slug",
+        "deposition_id",
+        "record_id",
+        "doi",
+    )
+    readonly_fields = (
+        "deposit",
+        "version_index",
+        "deposition_id",
+        "record_id",
+        "doi",
+        "changelog",
+        "repo_link",
+        "published_at",
+        "last_response",
     )
