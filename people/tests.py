@@ -285,3 +285,49 @@ class PeopleViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "WHOI Pump")
         self.assertNotContains(response, "Private WHOI Pump")
+
+
+    def test_onboarding_post_with_taken_usertag_shows_error(self):
+        """Submitting a usertag that another user already owns re-renders the
+        onboarding form with an error and does not lock the tag."""
+        # `other` is created in setUp with username "bob"; create another with
+        # the tag we want to claim.
+        User = get_user_model()
+        User.objects.create_user(username="claimed_tag")
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("people:onboarding"),
+            {
+                "usertag": "claimed_tag",
+                "first_name": "Alice",
+                "last_name": "Researcher",
+                "display_name": "Alice Researcher",
+                "bio": "",
+                "institution": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already taken")
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.profile.usertag_locked)
+        self.assertNotEqual(self.user.username, "claimed_tag")
+
+    def test_institution_page_matches_when_listed_with_others(self):
+        """A project whose institution field lists multiple values still
+        matches each one separately on its institution page."""
+        Project.objects.create(
+            slug="multi-inst-pump",
+            title="Multi Inst Pump",
+            institution="WHOI\nMIT",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.user,
+        )
+
+        whoi = self.client.get(reverse("institutions:detail", args=["whoi"]))
+        mit = self.client.get(reverse("institutions:detail", args=["mit"]))
+        self.assertEqual(whoi.status_code, 200)
+        self.assertEqual(mit.status_code, 200)
+        self.assertContains(whoi, "Multi Inst Pump")
+        self.assertContains(mit, "Multi Inst Pump")

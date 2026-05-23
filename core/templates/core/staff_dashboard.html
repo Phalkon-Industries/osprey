@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard — OSPREY{% endblock %}
+{% block content %}
+<header class="project-header">
+    <h1>Admin dashboard</h1>
+</header>
+
+<section style="margin-bottom:1.5rem">
+    <h2>Overview</h2>
+    <ul class="stats" style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:1rem">
+        <li><strong>{{ totals.projects }}</strong> projects total ({{ totals.public_projects }} public)</li>
+        <li><strong>{{ totals.profiles }}</strong> profiles</li>
+        <li><strong>{{ totals.feedback }}</strong> feedback submissions</li>
+    </ul>
+</section>
+
+<section style="margin-bottom:1.5rem">
+    <h2>Feedback by status</h2>
+    <ul style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:1rem">
+        {% for entry in status_summary %}
+        <li><span class="badge">{{ entry.label }}</span> <strong>{{ entry.count }}</strong></li>
+        {% endfor %}
+    </ul>
+    <p><a class="button ghost" href="{% url 'feedback:review' %}">Open feedback inbox</a></p>
+</section>
+
+<section style="margin-bottom:1.5rem">
+    <h2>Recent feedback</h2>
+    {% if recent_feedback %}
+    <ul class="recent-feedback" style="list-style:none;padding:0">
+        {% for item in recent_feedback %}
+        <li style="border-bottom:1px solid var(--muted-border,#333);padding:.5rem 0">
+            <div>
+                <span class="badge">{{ item.get_status_display }}</span>
+                <strong>{{ item.user.get_username|default:"unknown" }}</strong>
+                <span class="muted">{{ item.created_at|date:"Y-m-d H:i" }}</span>
+            </div>
+            <div class="muted">{{ item.message|truncatewords:24 }}</div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No feedback submitted yet.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h2>Database admin</h2>
+    <ul>
+        <li><a href="{% url 'admin:index' %}">Open Django admin</a></li>
+        <li><a href="{% url 'admin:projects_project_changelist' %}">Projects</a></li>
+        <li><a href="{% url 'admin:projects_contribution_changelist' %}">Contributions</a></li>
+        <li><a href="{% url 'admin:people_profile_changelist' %}">Profiles</a></li>
+        <li><a href="{% url 'admin:feedback_feedback_changelist' %}">Feedback (admin view)</a></li>
+    </ul>
+</section>
+{% endblock %}

@@ -21,7 +21,14 @@ from django.urls import reverse
 from people.models import Profile
 
 from .forms import ContributionFormSet, ProjectForm
-from .models import ArtifactLink, Contribution, Project, ProjectDeposit, Tag, TagAssignment
+from .models import (
+    ArtifactLink,
+    Contribution,
+    Project,
+    ProjectDeposit,
+    Tag,
+    TagAssignment,
+)
 from .templatetags.osprey_md import render_markdown
 from .zenodo import (
     ProjectArchive,
@@ -116,6 +123,7 @@ class ProjectTestCase(TestCase):
             "contributions-MAX_NUM_FORMS": "1000",
             "contributions-0-display_name": "Owner Person",
             "contributions-0-role": "Project lead",
+            "contributions-0-orcid_id": "",
             "contributions-0-credit_statement": "Built the prototype.",
             "contributions-0-order": "0",
             "action": action,
@@ -138,7 +146,9 @@ class ProjectModelTests(ProjectTestCase):
 
     def test_doi_and_deposit_urls(self):
         self.public_project.doi = "https://doi.org/10.5281/zenodo.456"
-        self.assertEqual(self.public_project.doi_url, "https://doi.org/10.5281/zenodo.456")
+        self.assertEqual(
+            self.public_project.doi_url, "https://doi.org/10.5281/zenodo.456"
+        )
         self.assertTrue(self.public_project.is_zenodo_doi)
         self.assertEqual(
             self.public_project.zenodo_badge_url,
@@ -156,7 +166,9 @@ class ProjectModelTests(ProjectTestCase):
             record_id="record-1",
             sandbox=True,
         )
-        self.assertEqual(deposit.external_url, "https://sandbox.zenodo.org/records/record-1")
+        self.assertEqual(
+            deposit.external_url, "https://sandbox.zenodo.org/records/record-1"
+        )
 
     def test_contribution_orcid_is_verified_against_social_account(self):
         add_orcid_account(self.owner, "0000-0001-2345-6789")
@@ -173,7 +185,9 @@ class ProjectModelTests(ProjectTestCase):
         self.assertEqual(contribution.verified_orcid_id, "")
 
     def test_contribution_save_attaches_existing_profile_orcid(self):
-        Profile.objects.filter(user=self.owner).update(orcid_placeholder="0000-0001-2345-6789")
+        Profile.objects.filter(user=self.owner).update(
+            orcid_placeholder="0000-0001-2345-6789"
+        )
 
         contribution = Contribution.objects.create(
             project=self.public_project,
@@ -211,7 +225,9 @@ class ProjectFormTests(ProjectTestCase):
             project = form.save()
         self.assertEqual(project.license, "Custom-OHL-1.0")
         self.assertEqual(project.slug, "field-test-pump-abcd")
-        self.assertEqual(list(project.tags.values_list("name", flat=True)), ["co2", "pump"])
+        self.assertEqual(
+            list(project.tags.values_list("name", flat=True)), ["co2", "pump"]
+        )
 
     def test_recommended_licenses_lead_with_agpl(self):
         from projects.forms import RECOMMENDED_LICENSES
@@ -245,11 +261,15 @@ class ProjectViewTests(ProjectTestCase):
         self.assertContains(response, "Public Pump")
         self.assertNotContains(response, "Private Pump")
 
-        response = self.client.get(reverse("projects:detail", args=[self.private_project.slug]))
+        response = self.client.get(
+            reverse("projects:detail", args=[self.private_project.slug])
+        )
         self.assertEqual(response.status_code, 404)
 
         self.client.force_login(self.owner)
-        response = self.client.get(reverse("projects:detail", args=[self.private_project.slug]))
+        response = self.client.get(
+            reverse("projects:detail", args=[self.private_project.slug])
+        )
         self.assertEqual(response.status_code, 200)
 
     def test_list_filters_by_search_field_type_and_institution(self):
@@ -272,7 +292,9 @@ class ProjectViewTests(ProjectTestCase):
         self.assertContains(response, "Public Pump")
         self.assertNotContains(response, "Float Analysis")
 
-        response = self.client.get(reverse("projects:list"), {"project_type": "Software"})
+        response = self.client.get(
+            reverse("projects:list"), {"project_type": "Software"}
+        )
         self.assertContains(response, "Float Analysis")
         self.assertNotContains(response, "Public Pump")
 
@@ -293,19 +315,29 @@ class ProjectViewTests(ProjectTestCase):
     def test_unverified_user_cannot_publish_new_project(self):
         self.client.force_login(self.owner)
 
-        response = self.client.post(reverse("projects:new"), self.project_form_post_data(action="publish"))
+        response = self.client.post(
+            reverse("projects:new"), self.project_form_post_data(action="publish")
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sign in with ORCID before publishing a project.")
-        self.assertFalse(Project.objects.filter(title="Submitted Pump", visibility=Project.VISIBILITY_PUBLIC).exists())
+        self.assertFalse(
+            Project.objects.filter(
+                title="Submitted Pump", visibility=Project.VISIBILITY_PUBLIC
+            ).exists()
+        )
 
     @patch("projects.views.publish_project_now")
-    def test_verified_user_can_publish_and_gets_verified_submitter_row(self, _publish_mock):
+    def test_verified_user_can_publish_and_gets_verified_submitter_row(
+        self, _publish_mock
+    ):
         add_orcid_account(self.owner, "0000-0001-2345-6789")
         Profile.objects.filter(user=self.owner).update(display_name="Owner Person")
         self.client.force_login(self.owner)
 
-        response = self.client.post(reverse("projects:new"), self.project_form_post_data(action="publish"))
+        response = self.client.post(
+            reverse("projects:new"), self.project_form_post_data(action="publish")
+        )
 
         project = Project.objects.get(title="Submitted Pump")
         self.assertEqual(response.status_code, 302)
@@ -322,7 +354,9 @@ class ProjectViewTests(ProjectTestCase):
         data["contributions-INITIAL_FORMS"] = "1"
         data["contributions-0-id"] = str(self.private_project.contributions.first().pk)
 
-        response = self.client.post(reverse("projects:edit", args=[self.private_project.slug]), data)
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
 
         self.private_project.refresh_from_db()
         self.assertEqual(response.status_code, 302)
@@ -341,7 +375,9 @@ class ProjectViewTests(ProjectTestCase):
         data["contributions-INITIAL_FORMS"] = "1"
         data["contributions-0-id"] = str(self.public_project.contributions.first().pk)
 
-        response = self.client.post(reverse("projects:edit", args=[self.public_project.slug]), data)
+        response = self.client.post(
+            reverse("projects:edit", args=[self.public_project.slug]), data
+        )
 
         self.public_project.refresh_from_db()
         self.assertEqual(response.status_code, 302)
@@ -365,7 +401,9 @@ class ProjectViewTests(ProjectTestCase):
 
 class MarkdownTemplateTagTests(TestCase):
     def test_markdown_sanitizes_html_and_keeps_safe_links(self):
-        rendered = str(render_markdown("[link](https://example.org)\n\n<script>alert(1)</script>"))
+        rendered = str(
+            render_markdown("[link](https://example.org)\n\n<script>alert(1)</script>")
+        )
 
         self.assertIn('href="https://example.org"', rendered)
         self.assertIn('rel="noopener"', rendered)
@@ -466,7 +504,9 @@ class ZenodoServiceTests(ProjectTestCase):
         ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
     )
     @patch("projects.zenodo.ZenodoClient")
-    def test_publish_project_deposit_updates_project_and_artifact_link(self, client_class):
+    def test_publish_project_deposit_updates_project_and_artifact_link(
+        self, client_class
+    ):
         client = client_class.from_settings.return_value
         client.publish_deposition.return_value = {
             "id": 123,
@@ -540,17 +580,30 @@ class ZenodoClientTests(TestCase):
             client.create_deposition()
 
     @patch("projects.zenodo.request.urlopen")
-    def test_bucket_upload_quotes_filename_and_uses_archive_content_type(self, urlopen_mock):
+    def test_bucket_upload_quotes_filename_and_uses_archive_content_type(
+        self, urlopen_mock
+    ):
         urlopen_mock.return_value = _FakeResponse(200, b'{"ok": true}')
         client = ZenodoClient("https://sandbox.zenodo.org", "token")
-        archive = ProjectArchive(filename="space name.zip", content=b"zip", content_type="application/octet-stream")
+        archive = ProjectArchive(
+            filename="space name.zip",
+            content=b"zip",
+            content_type="application/octet-stream",
+        )
 
-        response = client.upload_to_bucket("https://sandbox.zenodo.org/api/files/bucket", archive)
+        response = client.upload_to_bucket(
+            "https://sandbox.zenodo.org/api/files/bucket", archive
+        )
 
         self.assertEqual(response, {"ok": True})
         request_obj = urlopen_mock.call_args.args[0]
-        self.assertEqual(request_obj.full_url, "https://sandbox.zenodo.org/api/files/bucket/space%20name.zip")
-        self.assertEqual(request_obj.headers["Content-type"], "application/octet-stream")
+        self.assertEqual(
+            request_obj.full_url,
+            "https://sandbox.zenodo.org/api/files/bucket/space%20name.zip",
+        )
+        self.assertEqual(
+            request_obj.headers["Content-type"], "application/octet-stream"
+        )
 
 
 class ZenodoSmokeCommandTests(TestCase):
@@ -567,7 +620,9 @@ class ZenodoSmokeCommandTests(TestCase):
     @override_settings(ZENODO_USE_SANDBOX=True, ZENODO_ACCESS_TOKEN="fake-token")
     @patch("projects.management.commands.zenodo_sandbox_smoke.publish_project_deposit")
     @patch("projects.management.commands.zenodo_sandbox_smoke.sync_project_to_zenodo")
-    def test_smoke_command_sync_and_publish_success_paths(self, sync_mock, publish_mock):
+    def test_smoke_command_sync_and_publish_success_paths(
+        self, sync_mock, publish_mock
+    ):
         User = get_user_model()
         user = User.objects.create_user(username="owner")
         project = Project.objects.create(
@@ -604,8 +659,12 @@ class ZenodoSmokeCommandTests(TestCase):
 
 
 @tag("live", "zenodo")
-@unittest.skipUnless(os.environ.get("RUN_LIVE_ZENODO_TESTS") == "1", "live Zenodo tests are opt-in")
-@override_settings(ZENODO_USE_SANDBOX=True, ZENODO_API_BASE_URL="https://sandbox.zenodo.org")
+@unittest.skipUnless(
+    os.environ.get("RUN_LIVE_ZENODO_TESTS") == "1", "live Zenodo tests are opt-in"
+)
+@override_settings(
+    ZENODO_USE_SANDBOX=True, ZENODO_API_BASE_URL="https://sandbox.zenodo.org"
+)
 class LiveZenodoSandboxTests(TestCase):
     def setUp(self):
         if not os.environ.get("ZENODO_ACCESS_TOKEN"):
@@ -636,20 +695,27 @@ class LiveZenodoSandboxTests(TestCase):
         self.assertTrue(deposit.deposition_id)
         self.assertTrue(deposit.external_url)
 
-    @unittest.skipUnless(os.environ.get("RUN_LIVE_ZENODO_PUBLISH") == "1", "live publish is separately opt-in")
+    @unittest.skipUnless(
+        os.environ.get("RUN_LIVE_ZENODO_PUBLISH") == "1",
+        "live publish is separately opt-in",
+    )
     def test_live_publish_creates_sandbox_record(self):
         deposit = sync_project_to_zenodo(self.project, self.user)
         published = publish_project_deposit(deposit)
 
         self.assertEqual(published.state, ProjectDeposit.STATE_PUBLISHED)
         self.assertTrue(published.doi.startswith("10.5072/zenodo."))
-        self.assertTrue(published.external_url.startswith("https://sandbox.zenodo.org/records/"))
+        self.assertTrue(
+            published.external_url.startswith("https://sandbox.zenodo.org/records/")
+        )
 
 
 class ProjectVersionsTests(ProjectTestCase):
     """New-version flow, project permalink, and versions page."""
 
-    def _published_deposit(self, *, concept_doi: str = "10.5072/zenodo.concept") -> ProjectDeposit:
+    def _published_deposit(
+        self, *, concept_doi: str = "10.5072/zenodo.concept"
+    ) -> ProjectDeposit:
         return ProjectDeposit.objects.create(
             project=self.public_project,
             provider=ProjectDeposit.PROVIDER_ZENODO,
@@ -788,7 +854,10 @@ class ProjectVersionsTests(ProjectTestCase):
         client.publish_deposition.return_value = {
             "id": 999,
             "record_id": 1000,
-            "metadata": {"doi": "10.5072/zenodo.1000", "conceptdoi": "10.5072/zenodo.concept"},
+            "metadata": {
+                "doi": "10.5072/zenodo.1000",
+                "conceptdoi": "10.5072/zenodo.concept",
+            },
         }
         deposit = ProjectDeposit.objects.create(
             project=self.public_project,
@@ -907,3 +976,47 @@ class ProjectVersionsTests(ProjectTestCase):
         self.assertEqual(response.status_code, 200)
         service_mock.assert_not_called()
         self.assertContains(response, "field is required")
+
+
+class NewProjectFieldsTests(ProjectTestCase):
+    """Smoke tests for the new project fields and the contributor ORCID input."""
+
+    @patch("projects.views.publish_project_now")
+    def test_form_round_trip_persists_funding_publications_self_rating_and_orcid(
+        self, _publish_mock
+    ):
+        add_orcid_account(self.owner, "0000-0001-2345-6789")
+        self.client.force_login(self.owner)
+
+        data = self.project_form_post_data(action="publish")
+        data["title"] = "Funded Pump"
+        data["funding"] = "NSF OCE-1234567 (PI: Smith)\nWHOI seed grant"
+        data["publications"] = "Smith et al., 2024. DOI:10.1234/abcd"
+        data["self_rating"] = "7"
+        data["institution"] = "WHOI\nMIT"
+        data["contributions-0-orcid_id"] = "0000-0002-1825-0097"
+
+        response = self.client.post(reverse("projects:new"), data)
+        self.assertEqual(response.status_code, 302, response.content[:600])
+
+        project = Project.objects.get(title="Funded Pump")
+        self.assertEqual(project.self_rating, 7)
+        self.assertIn("NSF OCE-1234567", project.funding)
+        self.assertIn("DOI:10.1234/abcd", project.publications)
+        self.assertEqual(project.institutions, ["WHOI", "MIT"])
+        # Multiple contributors may exist; find the one we added by ORCID.
+        contribution = project.contributions.filter(
+            orcid_id="0000-0002-1825-0097"
+        ).first()
+        self.assertIsNotNone(contribution)
+
+    def test_invalid_orcid_on_contribution_is_rejected(self):
+        add_orcid_account(self.owner, "0000-0001-2345-6789")
+        self.client.force_login(self.owner)
+
+        data = self.project_form_post_data(action="publish")
+        data["contributions-0-orcid_id"] = "not-an-orcid"
+
+        response = self.client.post(reverse("projects:new"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Project.objects.filter(title="Submitted Pump").exists())

@@ -19,6 +19,7 @@ urlpatterns = [
     path("roadmap/", core_views.roadmap, name="roadmap"),
     path("admin/login/", core_views.login, name="admin_login"),
     path("admin/", admin.site.urls),
+    path("", include(("core.urls", "core"), namespace="core")),
     path("accounts/", include("allauth.urls")),
     path("login/", core_views.login, name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),

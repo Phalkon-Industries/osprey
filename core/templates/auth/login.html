@@ -3,7 +3,7 @@
 {% block title %}Sign in — OSPREY{% endblock %}
 {% block content %}
 <h1>Sign in</h1>
-<p class="muted">OSPREY accounts use ORCID sign-in. ORCID verifies the account identity; OSPREY does not collect ORCID iDs by hand.</p>
+<p class="muted">OSPREY accounts use ORCID sign-in.</p>
 <p>
     <a class="button" href="{% provider_login_url 'orcid' next=next_url %}">Sign in with ORCID</a>
     <span class="muted" style="display:block;font-size:.85rem;margin-top:.35rem">You will leave OSPREY briefly and return after ORCID authenticates you.</span>

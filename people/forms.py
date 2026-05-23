@@ -1,4 +1,5 @@
 """Forms for the people app."""
+
 from __future__ import annotations
 
 from django import forms
@@ -16,7 +17,9 @@ class ProfileForm(forms.ModelForm):
     never offers it as an editable field.
     """
 
-    usertag = forms.CharField(max_length=USER_TAG_MAX_LENGTH, required=True, label="User tag")
+    usertag = forms.CharField(
+        max_length=USER_TAG_MAX_LENGTH, required=True, label="User tag"
+    )
     first_name = forms.CharField(max_length=150, required=False, label="First name")
     last_name = forms.CharField(max_length=150, required=False, label="Last name")
 
@@ -34,9 +37,10 @@ class ProfileForm(forms.ModelForm):
         model = Profile
         fields = ["display_name", "bio", "avatar", "institution"]
         widgets = {
-            "institution": forms.TextInput(
+            "institution": forms.Textarea(
                 attrs={
-                    "placeholder": "Your institution or lab. Free text.",
+                    "rows": 2,
+                    "placeholder": "One per line, or comma-separated. e.g. WHOI, MIT",
                 }
             ),
             "bio": forms.Textarea(
@@ -53,14 +57,16 @@ class ProfileForm(forms.ModelForm):
             "display_name": "How your name appears on project pages. Falls back to your full name or username.",
             "bio": "Optional. Background, interests, current lab affiliation.",
             "avatar": "Optional. A square crop works best.",
+            "institution": (
+                "List each affiliation on its own line, or separate them with "
+                "commas. Each one becomes a link to its institution page."
+            ),
         }
 
     def __init__(self, *args, allow_usertag: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         unlocked = bool(
-            self.instance
-            and self.instance.user_id
-            and not self.instance.usertag_locked
+            self.instance and self.instance.user_id and not self.instance.usertag_locked
         )
         if allow_usertag and unlocked:
             self.fields["usertag"].initial = self.instance.user.username

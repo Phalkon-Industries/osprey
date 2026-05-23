@@ -5,7 +5,6 @@ from django.db import models
 from django.urls import reverse
 import uuid
 
-
 # 16-digit ORCID iD with hyphens, last char digit or X.
 ORCID_VALIDATOR = RegexValidator(
     regex=r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$",
@@ -132,10 +131,38 @@ class Project(models.Model):
         default=VISIBILITY_PRIVATE,
         help_text="Drafts default to private. Flip to public when ready to share.",
     )
-    institution = models.CharField(
-        max_length=200,
+    institution = models.TextField(
         blank=True,
-        help_text="Institution or lab name. Free text for now.",
+        help_text=(
+            "Institutions or labs that this project belongs to. Free text. "
+            "List multiple affiliations one per line or separated by commas."
+        ),
+    )
+    funding = models.TextField(
+        blank=True,
+        help_text=(
+            "Funding sources, grants, or sponsoring programs that supported "
+            "this project. Free text. List multiple sources one per line."
+        ),
+    )
+    self_rating = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        help_text=(
+            "Submitter's honest self-rating on a 1-10 scale. "
+            "1-3: record of what did not work. "
+            "4-6: usable with caveats; expect work to integrate. "
+            "7-9: production-ready in its intended setting. "
+            "10: trusted on a mission-critical deployment."
+        ),
+    )
+    publications = models.TextField(
+        blank=True,
+        help_text=(
+            "Papers, talks, or reports that used this project. Free text. "
+            "One reference per line; include a URL or DOI when you have one."
+        ),
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -164,6 +191,12 @@ class Project(models.Model):
 
     def get_permalink(self) -> str:
         return reverse("project_permalink", args=[str(self.public_id)])
+
+    @property
+    def institutions(self) -> list[str]:
+        from people.identity import split_institutions
+
+        return split_institutions(self.institution)
 
     @property
     def cover_image_display_url(self) -> str:
@@ -204,14 +237,20 @@ class Project(models.Model):
             return False
         if user.is_staff:
             return True
-        return self.contributions.filter(user=user).exists() or self.created_by_id == user.id
+        return (
+            self.contributions.filter(user=user).exists()
+            or self.created_by_id == user.id
+        )
 
     def editable_by(self, user) -> bool:
         if user is None or not user.is_authenticated:
             return False
         if user.is_staff:
             return True
-        return self.contributions.filter(user=user).exists() or self.created_by_id == user.id
+        return (
+            self.contributions.filter(user=user).exists()
+            or self.created_by_id == user.id
+        )
 
     @property
     def normalized_doi(self) -> str:
@@ -225,7 +264,7 @@ class Project(models.Model):
             "doi:",
         ):
             if doi.lower().startswith(prefix):
-                return doi[len(prefix):]
+                return doi[len(prefix) :]
         return doi
 
     @property
@@ -248,7 +287,11 @@ class Project(models.Model):
         doi = self.normalized_doi
         if not doi:
             return ""
-        host = "https://sandbox.zenodo.org" if doi.lower().startswith("10.5072/zenodo.") else "https://zenodo.org"
+        host = (
+            "https://sandbox.zenodo.org"
+            if doi.lower().startswith("10.5072/zenodo.")
+            else "https://zenodo.org"
+        )
         return f"{host}/badge/DOI/{doi}.svg"
 
 
@@ -267,8 +310,12 @@ class ProjectDeposit(models.Model):
         (STATE_ERROR, "Error"),
     ]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="deposits")
-    provider = models.CharField(max_length=40, choices=PROVIDER_CHOICES, default=PROVIDER_ZENODO)
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="deposits"
+    )
+    provider = models.CharField(
+        max_length=40, choices=PROVIDER_CHOICES, default=PROVIDER_ZENODO
+    )
     sandbox = models.BooleanField(default=True)
     deposition_id = models.CharField(max_length=80, blank=True)
     bucket_url = models.URLField(blank=True)
@@ -315,7 +362,10 @@ class ProjectDeposit(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["provider", "sandbox", "state"], name="projects_deposit_state_idx"),
+            models.Index(
+                fields=["provider", "sandbox", "state"],
+                name="projects_deposit_state_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -387,7 +437,9 @@ class ProjectDepositVersion(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["deposit", "version_index"], name="projects_dep_version_idx"),
+            models.Index(
+                fields=["deposit", "version_index"], name="projects_dep_version_idx"
+            ),
         ]
 
     def __str__(self) -> str:
@@ -395,7 +447,11 @@ class ProjectDepositVersion(models.Model):
 
     @property
     def external_url(self) -> str:
-        base = "https://sandbox.zenodo.org" if self.deposit.sandbox else "https://zenodo.org"
+        base = (
+            "https://sandbox.zenodo.org"
+            if self.deposit.sandbox
+            else "https://zenodo.org"
+        )
         if self.record_id:
             return f"{base}/records/{self.record_id}"
         if self.deposition_id:
@@ -410,7 +466,9 @@ class Contribution(models.Model):
     contributors can be listed before they have claimed or verified a row.
     """
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="contributions")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="contributions"
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -476,6 +534,7 @@ class Contribution(models.Model):
         if self.orcid_id and self.user_id is None:
             # Try to attach an existing user with this ORCID iD.
             from people.models import Profile  # avoid circular import at module load
+
             profile = (
                 Profile.objects.filter(orcid_placeholder=self.orcid_id)
                 .select_related("user")
@@ -487,8 +546,12 @@ class Contribution(models.Model):
 
 
 class ArtifactLink(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="artifact_links")
-    kind = models.CharField(max_length=40, choices=ARTIFACT_KIND_CHOICES, default="github")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="artifact_links"
+    )
+    kind = models.CharField(
+        max_length=40, choices=ARTIFACT_KIND_CHOICES, default="github"
+    )
     url = models.URLField()
     label = models.CharField(max_length=200, blank=True)
 
@@ -598,7 +661,9 @@ def project_image_upload_to(instance: "ProjectImage", filename: str) -> str:
 
 
 class ProjectImage(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="images")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="images"
+    )
     image = models.ImageField(upload_to=project_image_upload_to)
     caption = models.CharField(max_length=300, blank=True)
     order = models.PositiveIntegerField(default=0)
@@ -619,7 +684,9 @@ class Citation(models.Model):
     attestations from §planning/features/reuse-attestations.md).
     """
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="citations")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="citations"
+    )
     text = models.CharField(
         max_length=600,
         help_text="Plain-text citation as it would appear in a references list.",

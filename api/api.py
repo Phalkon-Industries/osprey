@@ -30,7 +30,6 @@ from projects.models import (
     TagAssignment,
 )
 
-
 api = NinjaAPI(title="OSPREY demo API", version="1.0.0")
 
 
@@ -66,6 +65,7 @@ class ProjectSummary(Schema):
     license: str
     doi: str
     institution: Optional[str] = None
+    institutions: list[str] = []
     visibility: str
     updated_at: datetime
 
@@ -84,6 +84,9 @@ class ProjectDetail(ProjectSummary):
     cover_image_focal_x: int
     cover_image_focal_y: int
     cover_image_zoom: float
+    funding: str = ""
+    self_rating: Optional[int] = None
+    publications: str = ""
     created_at: datetime
     contributors: list[ContributionOut]
     artifact_links: list[ArtifactLinkOut]
@@ -104,6 +107,7 @@ def _project_summary(p: Project) -> dict:
         "license": p.license,
         "doi": p.doi,
         "institution": p.institution or None,
+        "institutions": p.institutions,
         "visibility": p.visibility,
         "updated_at": p.updated_at,
     }
@@ -135,6 +139,9 @@ def _project_detail(p: Project) -> dict:
             "cover_image_focal_x": p.cover_image_focal_x,
             "cover_image_focal_y": p.cover_image_focal_y,
             "cover_image_zoom": float(p.cover_image_zoom),
+            "funding": p.funding,
+            "self_rating": p.self_rating,
+            "publications": p.publications,
             "created_at": p.created_at,
             "contributors": [
                 {
@@ -174,7 +181,9 @@ def list_projects(
     institution: str = "",
     tag: str = "",
 ):
-    qs = Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).prefetch_related("tags")
+    qs = Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).prefetch_related(
+        "tags"
+    )
     if q:
         qs = qs.filter(
             Q(title__icontains=q)
@@ -228,9 +237,7 @@ def full_export(request):
                 "display_name": getattr(getattr(u, "profile", None), "display_name", "")
                 or u.get_full_name(),
                 "orcid_placeholder": _verified_profile_orcid(u),
-                "institution": getattr(
-                    getattr(u, "profile", None), "institution", ""
-                ),
+                "institution": getattr(getattr(u, "profile", None), "institution", ""),
             }
             for u in User.objects.select_related("profile")
         ],
@@ -254,6 +261,9 @@ def full_export(request):
                 "cover_image_zoom",
                 "visibility",
                 "institution",
+                "funding",
+                "self_rating",
+                "publications",
                 "created_at",
                 "updated_at",
             )

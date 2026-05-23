@@ -42,16 +42,18 @@ def person_detail(request, pk: int):
     is_self = request.user.is_authenticated and request.user.pk == person.pk
     verified_orcid = _verified_orcid_for(person)
 
-    contributions = (
-        person.contributions.select_related("project").order_by("project__title")
+    contributions = person.contributions.select_related("project").order_by(
+        "project__title"
     )
 
     # On a person's own profile, surface their drafts. On someone else's
     # profile, only show projects the viewer is allowed to see.
     if is_self:
-        own_projects = Project.objects.filter(
-            Q(created_by=person) | Q(contributions__user=person)
-        ).distinct().order_by("-updated_at")
+        own_projects = (
+            Project.objects.filter(Q(created_by=person) | Q(contributions__user=person))
+            .distinct()
+            .order_by("-updated_at")
+        )
     else:
         own_projects = None
 
@@ -134,21 +136,26 @@ def account_deactivate(request):
 
 
 def institution_detail(request, slug: str):
-    """List visible projects whose institution string slugifies to `slug`.
+    """List visible projects whose institution list contains a matching name.
 
-    Institutions are stored as free text. This view does a Python-side
-    match across distinct institution strings and surfaces a canonical
-    display name (the most-used spelling) for the heading.
+    Institutions are stored as free text. A project may list multiple
+    affiliations one per line or comma-separated. This view matches any
+    project whose institution list contains a name whose slug equals
+    `slug`, and surfaces the most-used spelling for the heading.
     """
     from projects.views import _visible_projects_for
+
     qs = _visible_projects_for(request.user).exclude(institution="")
-    matches = [p for p in qs if slugify(p.institution) == slug]
+    matches: list = []
+    counts: dict[str, int] = {}
+    for p in qs:
+        for name in p.institutions:
+            if slugify(name) == slug:
+                matches.append(p)
+                counts[name] = counts.get(name, 0) + 1
+                break
     if not matches:
         raise Http404
-    # Pick the most common spelling as the display name.
-    counts: dict[str, int] = {}
-    for p in matches:
-        counts[p.institution] = counts.get(p.institution, 0) + 1
     display_name = max(counts.items(), key=lambda kv: kv[1])[0]
     return render(
         request,

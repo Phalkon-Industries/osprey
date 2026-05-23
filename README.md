@@ -3,9 +3,6 @@
 **Open Science Platform for Research and Engineering.** A public-benefit research
 engineering commons run by [pHalkon Industries LLC](https://phalkon.example).
 
-This repository holds the planning documents in `planning/` and the demo web
-application that implements the architecture described in
-[planning/demo-architecture.md](planning/demo-architecture.md).
 
 ## Quick start (development)
 

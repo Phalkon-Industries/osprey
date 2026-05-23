@@ -16,8 +16,8 @@
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "fb-fab";
-    btn.setAttribute("aria-label", "Send feedback");
-    btn.textContent = "Feedback";
+    btn.setAttribute("aria-label", "Submit feedback");
+    btn.textContent = "Submit feedback";
     mount.appendChild(btn);
 
     var panel = document.createElement("div");

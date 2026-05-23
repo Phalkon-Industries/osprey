@@ -1,4 +1,5 @@
 """Identity helpers for ORCID-backed local accounts."""
+
 from __future__ import annotations
 
 import random
@@ -7,8 +8,30 @@ import re
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 
-
 USER_TAG_MAX_LENGTH = 40
+
+
+def split_institutions(text: str) -> list[str]:
+    """Split a free-text institution field into a list of distinct names.
+
+    Accepts newline- or comma-separated input. Whitespace is stripped and
+    empty entries are dropped. Case-insensitive duplicates collapse to the
+    first spelling seen.
+    """
+    if not text:
+        return []
+    parts: list[str] = []
+    seen: set[str] = set()
+    for line in text.replace(",", "\n").splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        parts.append(name)
+    return parts
 
 
 def extract_orcid(extra_data: dict) -> str:
@@ -22,7 +45,9 @@ def extract_orcid_names(extra_data: dict) -> dict[str, str]:
     credit_name = ((name.get("credit-name") or {}).get("value") or "").strip()
     given_names = ((name.get("given-names") or {}).get("value") or "").strip()
     family_name = ((name.get("family-name") or {}).get("value") or "").strip()
-    full_name = credit_name or " ".join(part for part in [given_names, family_name] if part)
+    full_name = credit_name or " ".join(
+        part for part in [given_names, family_name] if part
+    )
     return {
         "display_name": full_name.strip(),
         "first_name": given_names,
@@ -55,7 +80,9 @@ def _is_available(tag: str, *, user_id: int | None = None) -> bool:
     return not users.exists()
 
 
-def generate_user_tag(name: str, *, orcid_id: str = "", user_id: int | None = None) -> str:
+def generate_user_tag(
+    name: str, *, orcid_id: str = "", user_id: int | None = None
+) -> str:
     base = user_tag_base(name)
     bare = base[:USER_TAG_MAX_LENGTH]
     if _is_available(bare, user_id=user_id):

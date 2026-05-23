@@ -21,7 +21,7 @@
             </h1>
             <p class="muted" style="margin:.25rem 0">
                 @{{ person.username }}
-                {% if person.profile.institution %}&middot; <a href="{% url 'institutions:detail' person.profile.institution|slugify %}">{{ person.profile.institution }}</a>{% endif %}
+                {% for inst in person.profile.institutions %}&middot; <a href="{% url 'institutions:detail' inst|slugify %}">{{ inst }}</a>{% endfor %}
                 {% if verified_orcid %}&middot; ORCID {{ verified_orcid }}{% endif %}
             </p>
         </div>

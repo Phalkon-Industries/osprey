@@ -38,9 +38,7 @@
     <p class="project-meta">
         {% if project.field %}<span>{{ project.field }}</span>{% endif %}
         {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
-        {% if project.institution %}
-        <span class="sep"><a href="{% url 'institutions:detail' project.institution|slugify %}">{{ project.institution }}</a></span>
-        {% endif %}
+        {% for inst in project.institutions %}<span class="sep"><a href="{% url 'institutions:detail' inst|slugify %}">{{ inst }}</a></span>{% endfor %}
         <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
     </p>
 
@@ -79,7 +77,11 @@
                     {% endif %}
                     <span class="muted">— {{ c.role }}</span>
                     {% if c.verified_orcid_id %}
-                    <span class="orcid muted" style="font-size:.8rem">ORCID&nbsp;{{ c.verified_orcid_id }}</span>
+                    <span class="orcid-verified" title="ORCID-verified contributor" style="color:#a6ce39;font-weight:600">&#10004;</span>
+                    <a class="orcid muted" style="font-size:.8rem" href="https://orcid.org/{{ c.verified_orcid_id }}" rel="noopener">ORCID&nbsp;{{ c.verified_orcid_id }}</a>
+                    {% elif c.orcid_id %}
+                    <a class="orcid muted" style="font-size:.8rem" href="https://orcid.org/{{ c.orcid_id }}" rel="noopener">ORCID&nbsp;{{ c.orcid_id }}</a>
+                    <span class="muted small" title="This ORCID has not signed in to OSPREY yet.">unverified</span>
                     {% endif %}
                     {% if c.credit_statement %}
                     <div class="muted" style="font-size:.9rem;margin-top:.15rem">{{ c.credit_statement }}</div>
@@ -200,6 +202,27 @@
         {% for tag in project.tags.all %}
         <a href="{% url 'projects:list' %}?tag={{ tag.name }}" class="pill">{{ tag.name }}</a>
         {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if project.self_rating %}
+    <section>
+        <h2>Submitter's self-rating</h2>
+        <p><strong>{{ project.self_rating }}/10</strong> <span class="muted small">(self-reported by the submitter)</span></p>
+    </section>
+    {% endif %}
+
+    {% if project.funding %}
+    <section>
+        <h2>Funding</h2>
+        <p style="white-space:pre-line">{{ project.funding }}</p>
+    </section>
+    {% endif %}
+
+    {% if project.publications %}
+    <section>
+        <h2>Publications using this project</h2>
+        <div class="prose">{{ project.publications|markdown }}</div>
     </section>
     {% endif %}
 </article>

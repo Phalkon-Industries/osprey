@@ -2,6 +2,7 @@
 
 Profile editing lives in people/forms.py.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -14,7 +15,6 @@ from django.utils.text import slugify
 
 from .models import Contribution, Project, Tag
 from .cover_images import MAX_DOWNLOAD_BYTES, process_cover_image
-
 
 FIELD_SUGGESTIONS = [
     "Oceanography",
@@ -67,7 +67,10 @@ def _examples_text(items: list[str], n: int = 4) -> str:
 # offered. Users can also pick "Other" and type a custom OSI / OSHWA /
 # Creative Commons identifier.
 RECOMMENDED_LICENSES = [
-    ("AGPL-3.0", "AGPL 3.0 — strong copyleft, recommended for code that runs as a service"),
+    (
+        "AGPL-3.0",
+        "AGPL 3.0 — strong copyleft, recommended for code that runs as a service",
+    ),
     ("MIT", "MIT — permissive code"),
     ("Apache-2.0", "Apache 2.0 — permissive code, with patent grant"),
     ("GPL-3.0", "GPL 3.0 — copyleft code"),
@@ -112,9 +115,13 @@ class _DataListInput(forms.TextInput):
 
     def render(self, name, value, attrs=None, renderer=None):
         html = super().render(name, value, attrs=attrs, renderer=renderer)
-        options = format_html_join("", '<option value="{}">', ((s,) for s in self._suggestions))
+        options = format_html_join(
+            "", '<option value="{}">', ((s,) for s in self._suggestions)
+        )
         return mark_safe(
-            format_html('{}<datalist id="{}">{}</datalist>', html, self._list_id, options)
+            format_html(
+                '{}<datalist id="{}">{}</datalist>', html, self._list_id, options
+            )
         )
 
 
@@ -138,9 +145,7 @@ class ProjectForm(forms.ModelForm):
         max_length=80,
         required=False,
         label="Custom license",
-        widget=forms.TextInput(
-            attrs={"placeholder": "SPDX identifier or short name"}
-        ),
+        widget=forms.TextInput(attrs={"placeholder": "SPDX identifier or short name"}),
     )
 
     tags_input = forms.CharField(
@@ -169,6 +174,9 @@ class ProjectForm(forms.ModelForm):
             "cover_image_focal_y",
             "cover_image_zoom",
             "institution",
+            "funding",
+            "self_rating",
+            "publications",
         ]
         widgets = {
             "summary": forms.Textarea(
@@ -183,14 +191,26 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "# Project README\n\nLong-form description, build notes, usage. Markdown is supported.",
                 }
             ),
-            "field": forms.TextInput(
-                attrs={"placeholder": "e.g. Oceanography"}
+            "field": forms.TextInput(attrs={"placeholder": "e.g. Oceanography"}),
+            "artifact_type": forms.TextInput(attrs={"placeholder": "e.g. Hardware"}),
+            "institution": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "placeholder": "One per line, or comma-separated. e.g. WHOI, MIT",
+                }
             ),
-            "artifact_type": forms.TextInput(
-                attrs={"placeholder": "e.g. Hardware"}
+            "funding": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "e.g. NSF OCE-1234567 (PI: Smith)\nWHOI internal seed funding",
+                }
             ),
-            "institution": forms.TextInput(
-                attrs={"placeholder": "Your institution or lab. Free text."}
+            "self_rating": forms.NumberInput(attrs={"min": 1, "max": 10, "step": 1}),
+            "publications": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "placeholder": "One per line. Include a DOI or URL where you can.",
+                }
             ),
             "cover_image_focal_x": forms.HiddenInput(),
             "cover_image_focal_y": forms.HiddenInput(),
@@ -207,6 +227,10 @@ class ProjectForm(forms.ModelForm):
             "cover_image_focal_x": "Horizontal crop",
             "cover_image_focal_y": "Vertical crop",
             "cover_image_zoom": "Zoom",
+            "institution": "Institutions",
+            "funding": "Funding sources",
+            "self_rating": "Submitter's self-rating (1\u201310)",
+            "publications": "Publications that used this project",
         }
         help_texts = {
             "field": _examples_text(FIELD_SUGGESTIONS),
@@ -223,6 +247,25 @@ class ProjectForm(forms.ModelForm):
             "cover_image_focal_x": "Saved horizontal crop position.",
             "cover_image_focal_y": "Saved vertical crop position.",
             "cover_image_zoom": "Zoom in when important detail is too small in the crop.",
+            "institution": (
+                "List each affiliation on its own line, or separate them with "
+                "commas. Each one becomes a link to its institution page."
+            ),
+            "funding": (
+                "Grants, programs, or sponsors that supported this work. "
+                "Academic work usually has funders that deserve credit."
+            ),
+            "self_rating": (
+                "Be honest. "
+                "1\u20133: posted as a record of what did not work. "
+                "4\u20136: usable, but expect integration work and known issues. "
+                "7\u20139: production-ready in the setting it was built for. "
+                "10: trusted on a mission-critical deployment."
+            ),
+            "publications": (
+                "Papers, talks, theses, or reports that used this project. "
+                "One per line. A DOI or URL helps readers find each item."
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -263,7 +306,9 @@ class ProjectForm(forms.ModelForm):
         size = getattr(upload, "size", None)
         if size is not None and size > MAX_DOWNLOAD_BYTES:
             mib = MAX_DOWNLOAD_BYTES / (1024 * 1024)
-            raise forms.ValidationError(f"Cover image must be {mib:.0f} MiB or smaller.")
+            raise forms.ValidationError(
+                f"Cover image must be {mib:.0f} MiB or smaller."
+            )
         return upload
 
     def save(self, commit: bool = True) -> Project:
@@ -308,7 +353,7 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ["display_name", "role", "credit_statement", "order"]
+        fields = ["display_name", "role", "orcid_id", "credit_statement", "order"]
         widgets = {
             "display_name": forms.TextInput(
                 attrs={"placeholder": "Name as shown on the project page"}
@@ -319,6 +364,14 @@ class ContributionForm(forms.ModelForm):
                     "placeholder": "e.g. Project lead, Principal investigator, Maintainer",
                 }
             ),
+            "orcid_id": forms.TextInput(
+                attrs={
+                    "placeholder": "0000-0000-0000-0000",
+                    "pattern": r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]",
+                    "inputmode": "text",
+                    "autocomplete": "off",
+                }
+            ),
             "credit_statement": forms.TextInput(
                 attrs={"placeholder": "Optional. What this person did."}
             ),
@@ -327,9 +380,27 @@ class ContributionForm(forms.ModelForm):
         labels = {
             "display_name": "Display name",
             "role": "Role",
+            "orcid_id": "ORCID iD (optional)",
             "credit_statement": "Credit statement",
             "order": "Order",
         }
+        help_texts = {
+            "orcid_id": (
+                "Optional. Paste the contributor's public ORCID iD. "
+                "It links to their verified profile automatically when they sign in with ORCID."
+            ),
+        }
+
+    def clean_orcid_id(self) -> str:
+        value = (self.cleaned_data.get("orcid_id") or "").strip()
+        if not value:
+            return ""
+        # Strip a pasted URL prefix so users can copy the public profile link.
+        for prefix in ("https://orcid.org/", "http://orcid.org/", "orcid.org/"):
+            if value.lower().startswith(prefix):
+                value = value[len(prefix) :]
+                break
+        return value.upper()  # only the final checksum digit can be X; uppercase it
 
 
 ContributionFormSet = inlineformset_factory(
@@ -368,5 +439,7 @@ class NewVersionForm(forms.Form):
     def clean_changelog(self) -> str:
         value = (self.cleaned_data.get("changelog") or "").strip()
         if not value:
-            raise forms.ValidationError("A changelog is required when publishing a new version.")
+            raise forms.ValidationError(
+                "A changelog is required when publishing a new version."
+            )
         return value

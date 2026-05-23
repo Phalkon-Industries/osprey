@@ -54,6 +54,7 @@
             {% if user.is_authenticated %}
             {% if user.is_staff %}
             <span class="staff-links" aria-label="Admin links">
+                <a href="{% url 'core:staff_dashboard' %}">Admin dashboard</a>
                 <a href="{% url 'feedback:review' %}">Feedback</a>
                 <a href="{% url 'admin:index' %}">Database admin</a>
             </span>
@@ -79,8 +80,7 @@
         {% block content %}{% endblock %}
     </main>
     <footer class="site">
-        OSPREY demo &middot; data export at <a href="/api/v1/export/">/api/v1/export/</a> &middot;
-        OpenAPI at <a href="/api/v1/docs">/api/v1/docs</a>
+        OSPREY demo
     </footer>
 
     <script>

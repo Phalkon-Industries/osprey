@@ -90,7 +90,7 @@
         <div class="meta">
             {% if project.field %}<span>{{ project.field }}</span>{% endif %}
             {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
-            {% if project.institution %}<span>· {{ project.institution }}</span>{% endif %}
+            {% for inst in project.institutions %}<span>· {{ inst }}</span>{% endfor %}
             {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{% endif %}
         </div>
         {% if project.tags.all %}

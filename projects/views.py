@@ -27,7 +27,6 @@ from .zenodo import (
     zenodo_mode_label,
 )
 
-
 MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024  # 500 MiB per attached file
 
 
@@ -36,7 +35,11 @@ def _looks_like_zip(upload) -> bool:
     if name.endswith(".zip"):
         return True
     ctype = (getattr(upload, "content_type", "") or "").lower()
-    return ctype in {"application/zip", "application/x-zip-compressed", "multipart/x-zip"}
+    return ctype in {
+        "application/zip",
+        "application/x-zip-compressed",
+        "multipart/x-zip",
+    }
 
 
 def _process_attachments(request, project: Project) -> None:
@@ -86,9 +89,7 @@ def _process_attachments(request, project: Project) -> None:
 
 def _visible_projects_for(user):
     """Queryset of projects the given user is allowed to see in lists."""
-    qs = Project.objects.prefetch_related(
-        "tags", "images", "contributions__user"
-    )
+    qs = Project.objects.prefetch_related("tags", "images", "contributions__user")
     if user.is_authenticated and user.is_staff:
         return qs
     public_q = Q(visibility=Project.VISIBILITY_PUBLIC)
@@ -127,7 +128,7 @@ def project_list(request):
     if project_type:
         qs = qs.filter(artifact_type__iexact=project_type)
     if institution:
-        qs = qs.filter(institution__iexact=institution)
+        qs = qs.filter(institution__icontains=institution)
     if tag:
         qs = qs.filter(tags__name=tag)
 
@@ -149,7 +150,9 @@ def project_list(request):
             "active_field": field,
             "active_project_type": project_type,
             "field_options": _filter_options(field_values, FIELD_SUGGESTIONS),
-            "project_type_options": _filter_options(type_values, PROJECT_TYPE_SUGGESTIONS),
+            "project_type_options": _filter_options(
+                type_values, PROJECT_TYPE_SUGGESTIONS
+            ),
         },
     )
 
@@ -167,9 +170,7 @@ def project_detail(request, slug: str):
     )
     if not project.viewable_by(request.user):
         raise Http404
-    deposit = project.deposits.filter(
-        provider=ProjectDeposit.PROVIDER_ZENODO
-    ).first()
+    deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
     return render(
         request,
         "projects/detail.html",
@@ -208,7 +209,9 @@ def _build_citation_text(project: Project, deposit) -> str:
             authors = ", ".join(names[:-1]) + f", & {names[-1]}"
     else:
         authors = "OSPREY contributors"
-    when = deposit.published_at if deposit and deposit.published_at else project.updated_at
+    when = (
+        deposit.published_at if deposit and deposit.published_at else project.updated_at
+    )
     year = when.year if when else ""
     title = (project.title or "").strip()
     # Resolve the version label to display in parentheses.
@@ -248,7 +251,11 @@ def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
     staff user can still adjust through the Django admin.
     """
     if is_new:
-        return Project.VISIBILITY_PUBLIC if action == "publish" else Project.VISIBILITY_PRIVATE
+        return (
+            Project.VISIBILITY_PUBLIC
+            if action == "publish"
+            else Project.VISIBILITY_PRIVATE
+        )
     # Existing project. Allow draft -> public, never public -> draft.
     if project.visibility != Project.VISIBILITY_PUBLIC and action == "publish":
         return Project.VISIBILITY_PUBLIC
@@ -346,9 +353,7 @@ def project_new(request):
         if form.is_valid() and formset.is_valid() and can_publish:
             project = form.save(commit=False)
             project.created_by = request.user
-            project.visibility = _resolve_visibility(
-                project, action, is_new=True
-            )
+            project.visibility = _resolve_visibility(project, action, is_new=True)
             project.save()
             form.save_m2m()
             formset.instance = project
@@ -407,9 +412,7 @@ def project_edit(request, slug: str):
         if form.is_valid() and formset.is_valid() and can_publish:
             saved = form.save(commit=False)
             was_public = project.visibility == Project.VISIBILITY_PUBLIC
-            saved.visibility = _resolve_visibility(
-                project, action, is_new=False
-            )
+            saved.visibility = _resolve_visibility(project, action, is_new=False)
             saved.save()
             form.save_m2m()
             formset.save()
@@ -489,9 +492,9 @@ def project_zenodo_new_version(request, slug: str):
     if not verified_orcid:
         messages.error(request, "Sign in with ORCID before publishing a new version.")
         return redirect(project.get_absolute_url())
-    pending_attachment = project.attachments.filter(
-        published_to_zenodo=False
-    ).exclude(file="").first()
+    pending_attachment = (
+        project.attachments.filter(published_to_zenodo=False).exclude(file="").first()
+    )
     if request.method == "POST":
         action = request.POST.get("action", "draft")
         form = NewVersionForm(request.POST, request.FILES)

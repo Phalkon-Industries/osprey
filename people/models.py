@@ -30,10 +30,12 @@ class Profile(models.Model):
         db_index=True,
         help_text="String form of an ORCID iD; becomes the verified iD once OAuth lands.",
     )
-    institution = models.CharField(
-        max_length=200,
+    institution = models.TextField(
         blank=True,
-        help_text="Institution or lab name. Free text for now.",
+        help_text=(
+            "Institutions or labs you are affiliated with. Free text. "
+            "List multiple affiliations one per line or separated by commas."
+        ),
     )
     usertag_locked = models.BooleanField(
         default=False,
@@ -43,17 +45,27 @@ class Profile(models.Model):
     def __str__(self) -> str:
         return self.display_name or self.user.get_username()
 
+    @property
+    def institutions(self) -> list[str]:
+        from .identity import split_institutions
+
+        return split_institutions(self.institution)
+
     def save(self, *args, **kwargs):
         prev_orcid = None
         if self.pk:
             prev_orcid = (
-                type(self).objects.filter(pk=self.pk).values_list("orcid_placeholder", flat=True).first()
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("orcid_placeholder", flat=True)
+                .first()
             )
         super().save(*args, **kwargs)
         # When a Profile's ORCID is set or changed, attach any existing
         # stub Contribution rows that match.
         if self.orcid_placeholder and self.orcid_placeholder != prev_orcid:
             from projects.models import Contribution
+
             Contribution.objects.filter(
                 orcid_id=self.orcid_placeholder, user__isnull=True
             ).update(user=self.user)

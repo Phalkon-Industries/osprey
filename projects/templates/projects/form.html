@@ -138,6 +138,7 @@
                     <label>Display name<br>{{ cform.display_name }}</label>
                     <label>Role<br>{{ cform.role }}</label>
                 </div>
+                <label class="contributor-credit">ORCID iD (optional)<br>{{ cform.orcid_id }}<span class="muted small">Format: 0000-0000-0000-0000. Auto-links a verified profile when that ORCID signs in.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
                 {% if cform.errors %}
                 <p style="color:#fca5a5;margin:.25rem 0 0">
@@ -166,6 +167,7 @@
                     <label>Display name<br>{{ formset.empty_form.display_name }}</label>
                     <label>Role<br>{{ formset.empty_form.role }}</label>
                 </div>
+                <label class="contributor-credit">ORCID iD (optional)<br>{{ formset.empty_form.orcid_id }}<span class="muted small">Format: 0000-0000-0000-0000. Auto-links a verified profile when that ORCID signs in.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ formset.empty_form.credit_statement }}</label>
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
             </div>
