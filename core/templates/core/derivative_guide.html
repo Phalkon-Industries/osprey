@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Derivative projects &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <h1>Derivative projects</h1>
+    <p class="muted">
+        How to think about forks, new versions, and derivatives on OSPREY,
+        and what the lineage graph is actually claiming.
+    </p>
+
+    <h2>Three things people lump together</h2>
+    <p>
+        Saying "I'm building on top of project X" can mean very different
+        things in practice. OSPREY splits them into three relations so the
+        credit and the history stay readable.
+    </p>
+
+    <h3>New version</h3>
+    <p>
+        Same team, same project, later release. Pump v2 by the same lab
+        that made Pump v1 is a new version, not a derivative. Use the
+        "new version" workflow so the version history page lists them in
+        order and the DOI chain stays clean.
+    </p>
+
+    <h3>Derivative</h3>
+    <p>
+        Different team picks up the design, modifies it, and ships their
+        own thing. The original maintainers do not control the new
+        project. This is a derivative. The lineage edge points from the
+        derivative back to its parent. Both projects keep their own
+        wikis, attestations, and version histories.
+    </p>
+
+    <h3>Inspired by</h3>
+    <p>
+        Heavy intellectual debt without a shared codebase or BOM. Worth
+        recording in a project's description; usually not worth a
+        lineage edge unless the reuse is substantial.
+    </p>
+
+    <h2>Etiquette</h2>
+    <ul>
+        <li>
+            If you derive from a project, add the lineage edge and a short
+            note explaining what you changed and why.
+        </li>
+        <li>
+            If a derivative supersedes the original for a specific use
+            case, say so plainly. That is useful information, not an
+            insult.
+        </li>
+        <li>
+            Wikis on derivatives can either fork the parent's pages or
+            link out. Both are fine. Linking out avoids drift.
+        </li>
+    </ul>
+
+    <h2>What the lineage graph claims</h2>
+    <p>
+        A lineage edge is a factual claim that one project built on
+        another. It is not an endorsement. The graph view shows parents
+        and descendants for any project; it is not a citation count and
+        should not be used as one. For citations, see the citations
+        dashboard on each project.
+    </p>
+</section>
+{% endblock %}

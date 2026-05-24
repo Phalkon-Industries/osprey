@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}My feedback &middot; OSPREY{% endblock %}
+{% block content %}
+<section>
+    <h1>My feedback</h1>
+    <p class="muted">
+        Every piece of feedback you have submitted through the widget,
+        with any replies from the maintainers.
+    </p>
+
+    {% for item in feedback_items %}
+    <article class="feedback-item">
+        <header>
+            <span class="muted small">{{ item.created_at|date:"Y-m-d H:i" }}</span>
+            <span class="badge">{{ item.get_status_display }}</span>
+        </header>
+        <p>{{ item.message|linebreaksbr }}</p>
+        {% if item.page_url %}<p class="muted small">On <a href="{{ item.page_url }}">{{ item.page_url }}</a></p>{% endif %}
+        {% if item.replies.all %}
+        <div class="feedback-replies">
+            <h3>Replies</h3>
+            {% for r in item.replies.all %}
+            <p><strong>{{ r.author.get_username|default:"staff" }}</strong> <span class="muted small">{{ r.created_at|date:"Y-m-d H:i" }}</span><br>{{ r.body|linebreaksbr }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </article>
+    {% empty %}
+    <p class="muted">You have not submitted any feedback yet.</p>
+    {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}New attestation &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'attestations:index' project.slug %}">&larr; Attestations on {{ project.title }}</a></p>
+    <h1>Share how you used {{ project.title }}</h1>
+    <p class="muted">
+        Attestations are first-hand accounts, in your own words. They are not anonymous,
+        and maintainers can acknowledge or feature them. Skip anything you don't want public.
+    </p>
+    <form method="post" class="stack-form">
+        {% csrf_token %}
+        <p>
+            <label for="{{ form.narrative.id_for_label }}"><strong>How did you use it?</strong></label><br>
+            {{ form.narrative }}
+        </p>
+        <p>
+            <label for="{{ form.used_at.id_for_label }}"><strong>Used at</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(optional)</span></label><br>
+            {{ form.used_at }}
+        </p>
+        <p>
+            <label for="{{ form.citations.id_for_label }}"><strong>Citations</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(optional)</span></label><br>
+            {{ form.citations }}
+            <br><span class="muted" style="font-size:.85rem">{{ form.citations.help_text }}</span>
+        </p>
+        <button type="submit" class="primary">Post attestation</button>
+    </form>
+</section>
+{% endblock %}

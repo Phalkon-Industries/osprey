@@ -3,6 +3,7 @@
 Submissions come from the floating widget. Staff can review them in a small
 in-app inbox, with the Django admin kept as the lower-level back office.
 """
+
 from __future__ import annotations
 
 import base64
@@ -15,8 +16,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .models import Feedback
-
+from .models import Feedback, FeedbackReply
 
 _MAX_MESSAGE_LEN = 4000
 _MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024  # 4 MiB after base64 decode
@@ -128,6 +128,24 @@ def _staff_required(user) -> bool:
 def review(request):
     if request.method == "POST":
         fb = get_object_or_404(Feedback, pk=request.POST.get("feedback_id"))
+        reply_body = (request.POST.get("reply_body") or "").strip()
+        if reply_body:
+            reply = FeedbackReply.objects.create(
+                feedback=fb, author=request.user, body=reply_body[:4000]
+            )
+            if fb.user_id and fb.user_id != request.user.id:
+                try:
+                    from notifications.models import send as notify
+
+                    notify(
+                        fb.user,
+                        kind="feedback_reply",
+                        title="A maintainer replied to your feedback",
+                        body=reply.body[:200],
+                        url="/feedback/mine/",
+                    )
+                except Exception:
+                    pass
         status = request.POST.get("status") or Feedback.STATUS_NEW
         if status in dict(Feedback.STATUS_CHOICES):
             fb.status = status
@@ -137,7 +155,7 @@ def review(request):
         return redirect("feedback:review")
 
     status = request.GET.get("status", "")
-    feedback = Feedback.objects.select_related("user")
+    feedback = Feedback.objects.select_related("user").prefetch_related("replies")
     if status:
         feedback = feedback.filter(status=status)
     return render(
@@ -149,3 +167,14 @@ def review(request):
             "active_status": status,
         },
     )
+
+
+@login_required
+def mine(request):
+    """List the current user's feedback submissions, with staff replies."""
+    items = (
+        Feedback.objects.filter(user=request.user)
+        .prefetch_related("replies__author")
+        .order_by("-created_at")
+    )
+    return render(request, "feedback/mine.html", {"feedback_items": items})

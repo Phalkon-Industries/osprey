@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}{{ project.title }} wiki &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
+    <h1>{{ project.title }} wiki</h1>
+    <p class="muted">
+        {% if project.wiki_requires_approval %}
+        Maintainer-reviewed wiki. Anyone signed in can suggest edits; maintainers apply or decline them.
+        {% else %}
+        Open wiki. Anyone signed in can edit pages directly. All revisions are saved.
+        {% endif %}
+    </p>
+    {% if can_edit %}
+    <p>
+        <a class="primary button" href="{% url 'wiki:new' project.slug %}">New page</a>
+        {% if is_maintainer %}<a class="ghost button" href="{% url 'wiki:review' project.slug %}">Review suggestions</a>{% endif %}
+    </p>
+    {% endif %}
+    {% if landing %}
+    <article class="wiki-landing">
+        <h2>{{ landing.title }}</h2>
+        {{ landing.body|markdown }}
+    </article>
+    {% endif %}
+
+    <h2>Pages</h2>
+    {% if pages %}
+    <ul>
+        {% for p in pages %}
+        <li><a href="{% url 'wiki:detail' project.slug p.slug %}">{{ p.title }}</a> <span class="muted small">updated {{ p.updated_at|date:"M j, Y" }}</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No wiki pages yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

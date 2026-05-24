@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Start a thread &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'conversations:index' project.slug %}">&larr; Discussion</a></p>
+    <h1>Start a thread on {{ project.title }}</h1>
+    <p class="muted">Ask a specific question about the project. Markdown is supported in the body.</p>
+    <form method="post" class="stack-form">
+        {% csrf_token %}
+        <p>
+            <label><strong>Title</strong><br>
+                <input type="text" name="title" maxlength="200" required style="width:100%">
+            </label>
+        </p>
+        <p>
+            <label><strong>Body</strong><br>
+                <textarea name="body" rows="8" required style="width:100%"></textarea>
+            </label>
+        </p>
+        <button type="submit" class="primary">Post thread</button>
+    </form>
+</section>
+{% endblock %}

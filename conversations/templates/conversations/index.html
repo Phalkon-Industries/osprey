@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}Discussion &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
+    <header class="project-header">
+        <h1>Discussion</h1>
+        <span class="spacer"></span>
+        {% if user.is_authenticated %}
+        <a class="button primary" href="{% url 'conversations:new' project.slug %}">Start a thread</a>
+        {% endif %}
+    </header>
+    <p class="muted">
+        Questions about this project. Flat threads, no nested replies.
+        Maintainers can mark a canonical answer.
+    </p>
+    {% for t in threads %}
+    <article class="thread-row">
+        <h2><a href="{% url 'conversations:detail' project.slug t.id %}">{{ t.title }}</a>{% if t.is_closed %} <span class="badge">closed</span>{% endif %}{% if t.answer_id %} <span class="badge ok">answered</span>{% endif %}</h2>
+        <p class="muted small">
+            Started by {% if t.author %}@{{ t.author.get_username }}{% else %}unknown{% endif %}
+            &middot; {{ t.created_at|date:"Y-m-d" }}
+            &middot; {{ t.replies.count }} repl{{ t.replies.count|pluralize:"y,ies" }}
+        </p>
+    </article>
+    {% empty %}
+    <p class="muted">No threads yet. Be the first to ask a question.</p>
+    {% endfor %}
+</section>
+{% endblock %}

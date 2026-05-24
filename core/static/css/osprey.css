@@ -390,6 +390,44 @@ header.site .auth a {
     color: var(--accent-strong);
 }
 
+.inbox-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border, #444);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.inbox-link .badge {
+    background: var(--accent, #6cb6ff);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.notifications-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.notifications-list>li {
+    border: 1px solid var(--border, #444);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.5rem;
+    background: var(--bg-soft);
+}
+
+.notifications-list>li.notification-unread {
+    border-left: 3px solid var(--accent, #6cb6ff);
+}
+
 /* ---- Theme toggle ---- */
 
 .theme-toggle {
@@ -1335,6 +1373,73 @@ button.ghost:hover,
     to {
         transform: rotate(360deg);
     }
+}
+
+.orcid-search-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.orcid-search-overlay[hidden] {
+    display: none;
+}
+
+.orcid-search-card {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border, #444);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    width: 100%;
+    max-width: 36rem;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.orcid-search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.orcid-search-results {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+}
+
+.orcid-search-results .orcid-result {
+    border: 1px solid var(--border, #444);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    background: var(--bg-soft);
+}
+
+.contributor-orcid-label {
+    margin-bottom: 0.25rem;
+}
+
+.contributor-orcid-attached,
+.contributor-orcid-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.contributor-orcid-attached[hidden],
+.contributor-orcid-empty[hidden] {
+    display: none;
 }
 
 .callout {

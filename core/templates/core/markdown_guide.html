@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Markdown tips &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <h1>Markdown tips</h1>
+    <p class="muted">
+        OSPREY uses standard Markdown for project descriptions, wiki pages,
+        and attestation narratives. This page covers the bits I find myself
+        looking up most often.
+    </p>
+
+    <h2>Basics</h2>
+    <pre><code># Heading 1
+## Heading 2
+
+A paragraph with **bold**, *italic*, and `inline code`.
+
+- bullet
+- another bullet
+  - nested
+
+1. numbered
+2. list
+
+[link text](https://example.org)
+> a blockquote
+
+```python
+print("fenced code with a language tag")
+```
+</code></pre>
+
+    <h2>Images</h2>
+    <p>
+        OSPREY does not host project media. Link to images already hosted
+        somewhere durable (your GitHub repo, Zenodo, lab site). The
+        Markdown syntax is the same as a link, with a leading exclamation
+        point:
+    </p>
+    <pre><code>![Alt text](https://example.org/img/diagram.png)</code></pre>
+
+    <h3>The GitHub image gotcha</h3>
+    <p>
+        A common slip is to paste the regular GitHub web URL for an image,
+        which renders the GitHub viewer page, not the image itself:
+    </p>
+    <pre><code>![Alt text](https://github.com/username/repository/blob/master/img/octocat.png)</code></pre>
+    <p>
+        That does not render. Use one of these instead.
+    </p>
+    <p>Append <code>?raw=true</code>:</p>
+    <pre><code>![Alt text](https://github.com/username/repository/blob/master/img/octocat.png?raw=true)</code></pre>
+    <p>Or use the <code>raw.githubusercontent.com</code> host:</p>
+    <pre><code>![Alt text](https://raw.githubusercontent.com/username/repository/master/img/octocat.png)</code></pre>
+    <p class="muted small">
+        Same trick works for diagrams committed to your repo. If the image
+        moves, the link breaks; that is the tradeoff for not hosting media
+        in OSPREY.
+    </p>
+
+    <h2>Tables</h2>
+    <pre><code>| Sensor | Range  | Notes        |
+| ------ | ------ | ------------ |
+| CO2    | 400-2k | NDIR         |
+| O2     | 0-25%  | electrochem  |
+</code></pre>
+
+    <h2>What is allowed</h2>
+    <p>
+        OSPREY's renderer allows the standard Markdown set plus external
+        <code>http(s)</code> image URLs. Raw HTML is stripped. If something
+        you expected to render did not, that is probably why.
+    </p>
+</section>
+{% endblock %}

@@ -16,6 +16,8 @@ urlpatterns = [
     path("", core_views.home, name="home"),
     path("about/", core_views.about, name="about"),
     path("about/licenses/", core_views.license_guide, name="license_guide"),
+    path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
+    path("about/derivatives/", core_views.derivative_guide, name="derivative_guide"),
     path("roadmap/", core_views.roadmap, name="roadmap"),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
@@ -23,6 +25,15 @@ urlpatterns = [
     path("login/", core_views.login, name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("projects/", include(("projects.urls", "projects"), namespace="projects")),
+    path("projects/", include(("wiki.urls", "wiki"), namespace="wiki")),
+    path(
+        "projects/",
+        include(("attestations.urls", "attestations"), namespace="attestations"),
+    ),
+    path(
+        "projects/",
+        include(("conversations.urls", "conversations"), namespace="conversations"),
+    ),
     path(
         "p/<uuid:public_id>/",
         project_views.project_permalink,
@@ -34,6 +45,10 @@ urlpatterns = [
         include(("people.urls_institutions", "institutions"), namespace="institutions"),
     ),
     path("feedback/", include("feedback.urls")),
+    path(
+        "inbox/",
+        include(("notifications.urls", "notifications"), namespace="notifications"),
+    ),
     path("api/v1/", api.urls),
 ]
 

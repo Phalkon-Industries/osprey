@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Edit wiki &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small">
+        <a href="{% url 'projects:detail' project.slug %}">{{ project.title }}</a> &middot;
+        <a href="{% url 'wiki:index' project.slug %}">wiki</a>
+    </p>
+    <h1>{% if page %}Edit {{ page.title }}{% else %}New wiki page{% endif %}</h1>
+    {% if requires_approval %}
+    <p class="callout">This project requires maintainer approval for wiki edits. Your changes will be queued as a suggestion.</p>
+    {% else %}
+    <p class="muted small">Edits apply immediately. A revision is saved every time you save the page.</p>
+    {% endif %}
+
+    <form method="post" class="stack-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<p style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>{% endif %}
+        <p>
+            <label for="{{ form.title.id_for_label }}"><strong>Title</strong></label><br>
+            {{ form.title }}
+            {% if form.title.errors %}<br><span style="color:#fca5a5">{{ form.title.errors|join:" " }}</span>{% endif %}
+        </p>
+        <p>
+            <label for="{{ form.summary.id_for_label }}"><strong>Summary</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(optional, shown in revision history)</span></label><br>
+            {{ form.summary }}
+        </p>
+        <p>
+            <label for="{{ form.body.id_for_label }}"><strong>Body</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(Markdown &middot; <a href="{% url 'markdown_guide' %}">tips</a>)</span></label><br>
+            {{ form.body }}
+            {% if form.body.errors %}<br><span style="color:#fca5a5">{{ form.body.errors|join:" " }}</span>{% endif %}
+        </p>
+        <button type="submit" class="primary">{% if requires_approval %}Submit suggestion{% else %}Save{% endif %}</button>
+    </form>
+</section>
+{% endblock %}

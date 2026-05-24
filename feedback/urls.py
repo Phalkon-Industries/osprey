@@ -7,4 +7,5 @@ app_name = "feedback"
 urlpatterns = [
     path("review/", views.review, name="review"),
     path("submit/", views.submit, name="submit"),
+    path("mine/", views.mine, name="mine"),
 ]

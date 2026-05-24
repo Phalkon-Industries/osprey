@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}{{ page.title }} &middot; {{ project.title }} wiki &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small">
+        <a href="{% url 'projects:detail' project.slug %}">{{ project.title }}</a> &middot;
+        <a href="{% url 'wiki:index' project.slug %}">wiki</a>
+    </p>
+    <h1>{{ page.title }}</h1>
+    <p class="muted small">
+        Last edited {{ page.updated_at|date:"M j, Y H:i" }}{% if page.last_edited_by %} by @{{ page.last_edited_by.get_username }}{% endif %}
+        {% if can_edit %}&middot; <a href="{% url 'wiki:edit' project.slug page.slug %}">Edit</a>{% endif %}
+        &middot; <a href="{% url 'wiki:history' project.slug page.slug %}">History</a>
+        {% if is_maintainer and pending_count %}&middot; <a href="{% url 'wiki:review' project.slug %}">Review {{ pending_count }} pending</a>{% endif %}
+    </p>
+    <article class="wiki-body">
+        {% if page.body %}{{ page.body|markdown }}{% else %}<p class="muted">This page is empty. Use Edit to add content.</p>{% endif %}
+    </article>
+    {% if pending_revisions %}
+    <section class="wiki-pending">
+        <h2>Pending suggestions ({{ pending_count }})</h2>
+        <p class="muted small">These edits are awaiting maintainer review. They are not part of the page above.</p>
+        {% for rev in pending_revisions %}
+        <details class="wiki-pending-rev">
+            <summary>
+                <strong>{{ rev.title }}</strong>
+                <span class="muted small"> &middot; {% if rev.author %}@{{ rev.author.get_username }}{% else %}anonymous{% endif %} &middot; {{ rev.created_at|date:"M j, Y H:i" }}</span>
+            </summary>
+            {% if rev.summary %}<p class="muted small"><em>{{ rev.summary }}</em></p>{% endif %}
+            <article class="wiki-body">{{ rev.body|markdown }}</article>
+        </details>
+        {% endfor %}
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

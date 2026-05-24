@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Citations &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
+    <h1>Citations dashboard</h1>
+    <p class="muted">
+        Works that reference this project. Maintainers can add citations directly.
+        Anyone signed in can submit a citation through an
+        <a href="{% url 'attestations:new' project.slug %}">attestation</a>;
+        those are listed under <em>User-submitted</em>.
+    </p>
+
+    {% if not citations %}
+    <p class="muted">No citations recorded yet. Be the first to add one.</p>
+    {% endif %}
+
+    {% if maintainer_citations %}
+    <h2>Maintainer-added ({{ maintainer_citations|length }})</h2>
+    <ul class="citation-list">
+        {% for c in maintainer_citations %}
+        <li>
+            {{ c.text }}
+            {% if c.doi %}<br><span class="muted small">DOI: <a href="https://doi.org/{{ c.doi }}" target="_blank" rel="noopener">{{ c.doi }}</a></span>{% elif c.url %}<br><span class="muted small"><a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.url }}</a></span>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if user_citations or attestation_citations %}
+    <h2>User-submitted</h2>
+    <ul class="citation-list">
+        {% for c in user_citations %}
+        <li>
+            {{ c.text }}
+            {% if c.submitted_by %}<br><span class="muted small">submitted by @{{ c.submitted_by.get_username }}</span>{% endif %}
+        </li>
+        {% endfor %}
+        {% for c in attestation_citations %}
+        <li>
+            {{ c.text }}
+            <br><span class="muted small">from an <a href="{% url 'attestations:index' project.slug %}">attestation</a>{% if c.submitted_by %} by @{{ c.submitted_by.get_username }}{% endif %}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endblock %}

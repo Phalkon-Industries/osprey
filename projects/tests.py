@@ -1021,3 +1021,174 @@ class NewProjectFieldsTests(ProjectTestCase):
         response = self.client.post(reverse("projects:new"), data)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Project.objects.filter(title="Submitted Pump").exists())
+
+
+# --- Inline ORCID person search --------------------------------------------
+
+
+class OrcidSearchHelperTests(TestCase):
+    """Pure helpers in projects.orcid_search."""
+
+    def test_credit_name_wins(self):
+        from .orcid_search import normalize_row
+
+        row = normalize_row(
+            {
+                "orcid-id": "0000-0001-2345-6789",
+                "given-names": "Anna",
+                "family-names": "Michel",
+                "credit-name": "Anna P. M. Michel",
+                "institution-name": ["WHOI"],
+            }
+        )
+        self.assertEqual(row["display_name"], "Anna P. M. Michel")
+        self.assertEqual(row["affiliation"], "WHOI")
+
+    def test_given_family_fallback(self):
+        from .orcid_search import normalize_row
+
+        row = normalize_row(
+            {
+                "orcid-id": "0000-0001-2345-6789",
+                "given-names": "Anna",
+                "family-names": "Michel",
+                "institution-name": ["WHOI", "MIT"],
+            }
+        )
+        self.assertEqual(row["display_name"], "Anna Michel")
+        # First institution wins for the inline affiliation field.
+        self.assertEqual(row["affiliation"], "WHOI")
+        self.assertEqual(row["institutions"], ["WHOI", "MIT"])
+
+    def test_missing_name_falls_back_to_orcid_id(self):
+        from .orcid_search import normalize_row
+
+        row = normalize_row({"orcid-id": "0000-0001-2345-6789"})
+        self.assertEqual(row["display_name"], "ORCID 0000-0001-2345-6789")
+        self.assertEqual(row["affiliation"], "")
+
+    def test_string_institution_normalized_to_first(self):
+        from .orcid_search import normalize_row
+
+        row = normalize_row(
+            {
+                "orcid-id": "0000-0001-2345-6789",
+                "given-names": "A",
+                "family-names": "B",
+                "institution-name": "Only Place",
+            }
+        )
+        self.assertEqual(row["affiliation"], "Only Place")
+        self.assertEqual(row["institutions"], ["Only Place"])
+
+    def test_expanded_search_blank_query_short_circuits(self):
+        from .orcid_search import expanded_search
+
+        self.assertEqual(expanded_search("  "), {"results": [], "error": ""})
+
+    def test_expanded_search_handles_outage(self):
+        from .orcid_search import expanded_search
+
+        with patch("projects.orcid_search.urlopen") as mock_open:
+            mock_open.side_effect = error.URLError("name resolution failed")
+            data = expanded_search("anna michel")
+        self.assertEqual(data["results"], [])
+        self.assertIn("Could not reach ORCID", data["error"])
+
+
+class OrcidSearchEndpointTests(TestCase):
+    """The login-gated JSON endpoint feeding the inline search UI."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="alice")
+        self.url = reverse("projects:orcid_search")
+
+    def test_login_required(self):
+        response = self.client.get(self.url + "?q=anna")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    def test_returns_normalized_rows(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.client.force_login(self.user)
+        fake_payload = {
+            "expanded-result": [
+                {
+                    "orcid-id": "0000-0001-2345-6789",
+                    "given-names": "Anna",
+                    "family-names": "Michel",
+                    "credit-name": "Anna P. M. Michel",
+                    "institution-name": ["WHOI"],
+                }
+            ]
+        }
+        with patch("projects.orcid_search.expanded_search") as mock_search:
+            mock_search.return_value = {
+                "results": [
+                    {
+                        "orcid_id": "0000-0001-2345-6789",
+                        "display_name": "Anna P. M. Michel",
+                        "affiliation": "WHOI",
+                        "institutions": ["WHOI"],
+                        "given_names": "Anna",
+                        "family_names": "Michel",
+                        "credit_name": "Anna P. M. Michel",
+                    }
+                ],
+                "error": "",
+            }
+            response = self.client.get(self.url + "?q=anna michel")
+            mock_search.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["error"], "")
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["orcid_id"], "0000-0001-2345-6789")
+        self.assertEqual(payload["results"][0]["display_name"], "Anna P. M. Michel")
+        self.assertEqual(
+            fake_payload["expanded-result"][0]["orcid-id"], "0000-0001-2345-6789"
+        )
+
+    def test_blank_query_returns_empty(self):
+        self.client.force_login(self.user)
+        response = self.client.get(self.url + "?q=")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"results": [], "error": ""})
+
+
+class ContributorOrcidFormTests(TestCase):
+    """The form widget contract that locks ORCID iDs to the inline search."""
+
+    def test_orcid_widget_is_hidden(self):
+        import django.forms as forms
+        from .forms import ContributionForm
+
+        form = ContributionForm()
+        widget = form.fields["orcid_id"].widget
+        self.assertIsInstance(widget, forms.HiddenInput)
+
+    def test_form_template_has_no_visible_orcid_input(self):
+        from .forms import ContributionForm
+
+        form = ContributionForm()
+        rendered = str(form["orcid_id"])
+        self.assertIn('type="hidden"', rendered)
+        self.assertIn("data-contributor-orcid", rendered)
+
+
+class ContributorOrcidTemplateTests(ProjectTestCase):
+    """Integration: project form page exposes the inline ORCID UI."""
+
+    def test_new_project_page_has_inline_orcid_controls(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("data-contributor-orcid-search", body)
+        self.assertIn("data-contributor-orcid-remove", body)
+        self.assertIn("data-orcid-search-overlay", body)
+        self.assertIn("orcid-search/", body)
+        # ORCID iD must only render as a hidden input on the form.
+        self.assertNotIn("ORCID iD (optional)", body)

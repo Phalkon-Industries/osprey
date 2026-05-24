@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Lineage &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
+    <h1>Lineage</h1>
+    <p class="muted">
+        How this project relates to others. Derivatives are projects built on
+        top of this one. New versions are successor releases.
+        See the <a href="{% url 'derivative_guide' %}">derivative projects guide</a>
+        for what counts as which.
+    </p>
+
+    {% if parents %}
+    <h2>Parents</h2>
+    <ul>
+        {% for edge in parents %}
+        <li>
+            <a href="{{ edge.parent.get_absolute_url }}">{{ edge.parent.title }}</a>
+            <span class="muted small">&middot; {{ edge.get_relation_display }}</span>
+            {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if children %}
+    <h2>Descendants</h2>
+    <ul>
+        {% for edge in children %}
+        <li>
+            <a href="{{ edge.child.get_absolute_url }}">{{ edge.child.title }}</a>
+            <span class="muted small">&middot; {{ edge.get_relation_display }}</span>
+            {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if not parents and not children %}
+    <p class="muted">No lineage recorded for this project yet.</p>
+    {% endif %}
+
+    <h2>Diagram</h2>
+    {% if parents or children %}
+    <pre class="lineage-graph">
+{% for edge in parents %}{{ edge.parent.title }}  --[{{ edge.get_relation_display }}]-->  {{ project.title }}
+{% endfor %}{% for edge in children %}{{ project.title }}  --[{{ edge.get_relation_display }}]-->  {{ edge.child.title }}
+{% endfor %}</pre>
+    {% else %}
+    <p class="muted">Diagram will appear once lineage edges are added.</p>
+    {% endif %}
+</section>
+{% endblock %}

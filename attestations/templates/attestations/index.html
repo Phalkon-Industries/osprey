@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Attestations &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
+    <h1>Attestations</h1>
+    <p class="muted">
+        First-hand accounts from people who used this project. Each one is the author's own words.
+        Maintainers can acknowledge or feature attestations they recognise; they don't approve them.
+    </p>
+    {% if can_attest %}
+    <p><a class="primary button" href="{% url 'attestations:new' project.slug %}">Add your attestation</a></p>
+    {% else %}
+    <p class="muted">Sign in to add an attestation.</p>
+    {% endif %}
+
+    {% if attestations %}
+    <ul class="attestation-list">
+        {% for att in attestations %}
+        <li class="attestation {% if att.endorsement == 'featured' %}attestation-featured{% endif %}">
+            <div>
+                {% if att.endorsement %}<span class="badge endorsement">{{ att.get_endorsement_display }}</span>{% endif %}
+                <strong>{% if att.author %}@{{ att.author.get_username }}{% else %}anonymous{% endif %}</strong>
+                <span class="muted small"> &middot; {{ att.created_at|date:"M j, Y" }}{% if att.used_at %} &middot; {{ att.used_at }}{% endif %}</span>
+            </div>
+            <p>{{ att.narrative|linebreaksbr }}</p>
+            {% if is_maintainer %}
+            <form method="post" action="{% url 'attestations:moderate' project.slug att.pk %}" class="attestation-mod">
+                {% csrf_token %}
+                <button type="submit" name="action" value="endorse" class="ghost">Acknowledge</button>
+                <button type="submit" name="action" value="feature" class="ghost">Feature</button>
+                {% if att.endorsement %}<button type="submit" name="action" value="unendorse" class="ghost">Clear endorsement</button>{% endif %}
+                <button type="submit" name="action" value="hide" class="ghost">Hide</button>
+            </form>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No attestations yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

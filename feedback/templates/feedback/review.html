@@ -48,6 +48,15 @@
                 </select>
             </label>
             <label>Admin notes<br><textarea name="admin_notes" rows="3">{{ item.admin_notes }}</textarea></label>
+            <label>Reply to submitter <span class="muted small">(optional, sends a notification)</span><br><textarea name="reply_body" rows="3" placeholder="Visible to the person who submitted this."></textarea></label>
+            {% if item.replies.all %}
+            <details class="feedback-replies">
+                <summary>{{ item.replies.count }} previous repl{{ item.replies.count|pluralize:"y,ies" }}</summary>
+                {% for r in item.replies.all %}
+                <p><strong>{{ r.author.get_username|default:"staff" }}</strong> <span class="muted small">{{ r.created_at|date:"Y-m-d H:i" }}</span><br>{{ r.body|linebreaksbr }}</p>
+                {% endfor %}
+            </details>
+            {% endif %}
             <button type="submit">Save</button>
         </form>
     </article>

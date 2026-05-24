@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from allauth.socialaccount.models import SocialAccount
@@ -16,7 +17,7 @@ from .forms import (
     NewVersionForm,
     ProjectForm,
 )
-from .models import Contribution, Project, ProjectAttachment, ProjectDeposit
+from .models import Citation, Contribution, Project, ProjectAttachment, ProjectDeposit
 from .zenodo import (
     ZenodoError,
     publish_new_version_now,
@@ -105,6 +106,28 @@ def _filter_options(values_qs, suggestions):
     existing = [v for v in values_qs if v]
     merged = sorted({*existing, *suggestions}, key=lambda s: s.lower())
     return merged
+
+
+@login_required
+def orcid_search_json(request):
+    """JSON endpoint backing the inline ORCID search on the contributor formset.
+
+    Login-required so the public 24 req/s ORCID rate limit isn't burned by
+    unauthenticated traffic. Results are cached for 5 minutes per query.
+    """
+    from .orcid_search import expanded_search
+
+    query = (request.GET.get("q") or "").strip()
+    if not query:
+        return JsonResponse({"results": [], "error": ""})
+    cache_key = f"orcid-search:{query.lower()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse(cached)
+    data = expanded_search(query, rows=10)
+    if not data.get("error"):
+        cache.set(cache_key, data, 300)
+    return JsonResponse(data)
 
 
 def project_list(request):
@@ -625,3 +648,50 @@ def project_permalink(request, public_id):
     if not project.viewable_by(request.user):
         raise Http404
     return redirect(project.get_absolute_url())
+
+
+def project_citations(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    if not project.viewable_by(request.user):
+        raise Http404
+    citations = list(project.citations.select_related("submitted_by", "attestation"))
+    by_source = {
+        Citation.SOURCE_MAINTAINER: [],
+        Citation.SOURCE_USER: [],
+        Citation.SOURCE_ATTESTATION: [],
+    }
+    for cit in citations:
+        by_source.setdefault(cit.source, []).append(cit)
+    return render(
+        request,
+        "projects/citations.html",
+        {
+            "project": project,
+            "citations": citations,
+            "maintainer_citations": by_source[Citation.SOURCE_MAINTAINER],
+            "user_citations": by_source[Citation.SOURCE_USER],
+            "attestation_citations": by_source[Citation.SOURCE_ATTESTATION],
+            "can_edit": project.editable_by(request.user),
+        },
+    )
+
+
+def project_lineage(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    if not project.viewable_by(request.user):
+        raise Http404
+    parents = list(
+        project.lineage_parents.select_related("parent").order_by("relation")
+    )
+    children = list(
+        project.lineage_children.select_related("child").order_by("relation")
+    )
+    return render(
+        request,
+        "projects/lineage.html",
+        {
+            "project": project,
+            "parents": parents,
+            "children": children,
+        },
+    )

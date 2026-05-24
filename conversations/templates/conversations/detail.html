@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}{{ thread.title }} &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small"><a href="{% url 'conversations:index' project.slug %}">&larr; Discussion</a></p>
+    <header class="project-header">
+        <h1>{{ thread.title }}</h1>
+        {% if thread.is_closed %}<span class="badge">closed</span>{% endif %}
+        {% if thread.answer_id %}<span class="badge ok">answered</span>{% endif %}
+        <span class="spacer"></span>
+        {% if is_maintainer %}
+        <form method="post" action="{% url 'conversations:close' project.slug thread.id %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="button ghost">{% if thread.is_closed %}Reopen{% else %}Close{% endif %}</button>
+        </form>
+        {% endif %}
+    </header>
+    <p class="muted small">Started by {% if thread.author %}@{{ thread.author.get_username }}{% else %}unknown{% endif %} on {{ thread.created_at|date:"Y-m-d H:i" }}</p>
+    <div class="thread-body">{{ thread.body|markdown }}</div>
+
+    {% if thread.answer %}
+    <section class="thread-canonical-answer">
+        <h2>Canonical answer</h2>
+        <article class="reply">
+            <p class="muted small">@{{ thread.answer.author.get_username|default:"unknown" }} &middot; {{ thread.answer.created_at|date:"Y-m-d H:i" }}</p>
+            <div>{{ thread.answer.body|markdown }}</div>
+        </article>
+    </section>
+    {% endif %}
+
+    <h2>Replies</h2>
+    {% for r in replies %}
+    <article class="reply{% if thread.answer_id == r.id %} canonical{% endif %}">
+        <p class="muted small">
+            @{{ r.author.get_username|default:"unknown" }} &middot; {{ r.created_at|date:"Y-m-d H:i" }}
+            {% if thread.answer_id == r.id %}&middot; <strong>canonical answer</strong>{% endif %}
+        </p>
+        <div>{{ r.body|markdown }}</div>
+        {% if is_maintainer and thread.answer_id != r.id %}
+        <form method="post" action="{% url 'conversations:mark_answer' project.slug thread.id %}" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="reply_id" value="{{ r.id }}">
+            <button type="submit" class="button ghost small">Mark as canonical answer</button>
+        </form>
+        {% endif %}
+    </article>
+    {% empty %}
+    <p class="muted">No replies yet.</p>
+    {% endfor %}
+
+    {% if not thread.is_closed %}
+    {% if user.is_authenticated %}
+    <form method="post" class="stack-form">
+        {% csrf_token %}
+        <p>
+            <label><strong>Reply</strong><br>
+                <textarea name="body" rows="5" required style="width:100%"></textarea>
+            </label>
+        </p>
+        <button type="submit" class="primary">Post reply</button>
+    </form>
+    {% else %}
+    <p class="muted"><a href="{% url 'login' %}">Sign in</a> to reply.</p>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

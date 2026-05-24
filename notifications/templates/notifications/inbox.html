@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Inbox &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <h1>Inbox</h1>
+    <p class="muted">Replies on your projects, feedback you submitted, and other site activity show up here.</p>
+
+    {% if unread_count %}
+    <form method="post" action="{% url 'notifications:mark_all_read' %}" style="margin-bottom:1rem">
+        {% csrf_token %}
+        <button type="submit" class="ghost">Mark all as read ({{ unread_count }})</button>
+    </form>
+    {% endif %}
+
+    {% if notifications %}
+    <ul class="notifications-list">
+        {% for n in notifications %}
+        <li class="{% if not n.is_read %}notification-unread{% endif %}">
+            <div>
+                {% if n.url %}
+                <a href="{% url 'notifications:open' n.pk %}"><strong>{{ n.title }}</strong></a>
+                {% else %}
+                <strong>{{ n.title }}</strong>
+                {% endif %}
+                <span class="muted small"> &middot; {{ n.get_kind_display }} &middot; {{ n.created_at|date:"M j, Y H:i" }}</span>
+            </div>
+            {% if n.body %}<p class="muted">{{ n.body }}</p>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Nothing yet. New activity will land here.</p>
+    {% endif %}
+</section>
+{% endblock %}

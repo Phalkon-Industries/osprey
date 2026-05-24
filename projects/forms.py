@@ -178,6 +178,7 @@ class ProjectForm(forms.ModelForm):
             "self_rating",
             "self_rating_note",
             "publications",
+            "wiki_requires_approval",
         ]
         widgets = {
             "summary": forms.Textarea(
@@ -388,12 +389,10 @@ class ContributionForm(forms.ModelForm):
                     "placeholder": "e.g. WHOI, MIT",
                 }
             ),
-            "orcid_id": forms.TextInput(
+            "orcid_id": forms.HiddenInput(
                 attrs={
-                    "placeholder": "0000-0000-0000-0000",
                     "pattern": r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]",
-                    "inputmode": "text",
-                    "autocomplete": "off",
+                    "data-contributor-orcid": "",
                 }
             ),
             "credit_statement": forms.TextInput(

@@ -26,6 +26,11 @@
         {% if not project.is_public %}<span class="badge private">private</span>{% endif %}
         {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
         <span class="spacer"></span>
+        <a class="button ghost" href="{% url 'wiki:index' project.slug %}">Wiki</a>
+        <a class="button ghost" href="{% url 'attestations:index' project.slug %}">Attestations</a>
+        <a class="button ghost" href="{% url 'projects:citations' project.slug %}">Citations</a>
+        <a class="button ghost" href="{% url 'projects:lineage' project.slug %}">Lineage</a>
+        <a class="button ghost" href="{% url 'conversations:index' project.slug %}">Discussion</a>
         {% if can_edit %}
         <a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>
         {% endif %}

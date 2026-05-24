@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}Wiki suggestions &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small">
+        <a href="{% url 'projects:detail' project.slug %}">{{ project.title }}</a> &middot;
+        <a href="{% url 'wiki:index' project.slug %}">wiki</a>
+    </p>
+    <h1>Pending wiki suggestions</h1>
+    {% if pending %}
+    {% for rev in pending %}
+    <article class="wiki-revision">
+        <h2><a href="{% url 'wiki:detail' project.slug rev.page.slug %}">{{ rev.title }}</a></h2>
+        <p class="muted small">
+            From @{{ rev.author.get_username }} on {{ rev.created_at|date:"M j, Y H:i" }}
+            {% if rev.summary %}&middot; {{ rev.summary }}{% endif %}
+        </p>
+        <details>
+            <summary>Show proposed body</summary>
+            {{ rev.body|markdown }}
+        </details>
+        <form method="post" action="{% url 'wiki:review_action' project.slug rev.pk %}" style="margin-top:.5rem">
+            {% csrf_token %}
+            <button type="submit" name="action" value="apply" class="primary">Apply</button>
+            <button type="submit" name="action" value="reject" class="ghost">Reject</button>
+        </form>
+    </article>
+    {% endfor %}
+    {% else %}
+    <p class="muted">No pending suggestions.</p>
+    {% endif %}
+</section>
+{% endblock %}

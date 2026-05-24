@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load osprey_md %}
+{% block title %}History &middot; {{ page.title }} &middot; {{ project.title }} wiki &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section>
+    <p class="muted small">
+        <a href="{% url 'projects:detail' project.slug %}">{{ project.title }}</a> &middot;
+        <a href="{% url 'wiki:index' project.slug %}">wiki</a> &middot;
+        <a href="{% url 'wiki:detail' project.slug page.slug %}">{{ page.title }}</a>
+    </p>
+    <h1>Edit history</h1>
+    {% if revisions %}
+    <ul class="wiki-history">
+        {% for rev in revisions %}
+        <li class="wiki-history-row wiki-status-{{ rev.status }}">
+            <div>
+                <strong>{{ rev.title }}</strong>
+                <span class="badge">{{ rev.get_status_display }}</span>
+            </div>
+            <div class="muted small">
+                {% if rev.author %}@{{ rev.author.get_username }}{% else %}anonymous{% endif %}
+                &middot; {{ rev.created_at|date:"M j, Y H:i" }}
+                {% if rev.reviewed_by %}&middot; reviewed by @{{ rev.reviewed_by.get_username }} on {{ rev.reviewed_at|date:"M j, Y" }}{% endif %}
+            </div>
+            {% if rev.summary %}<p class="muted small"><em>{{ rev.summary }}</em></p>{% endif %}
+            <details>
+                <summary class="muted small">Show body</summary>
+                <article class="wiki-body">{{ rev.body|markdown }}</article>
+            </details>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No revisions yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

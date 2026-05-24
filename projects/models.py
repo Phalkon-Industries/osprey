@@ -131,6 +131,14 @@ class Project(models.Model):
         default=VISIBILITY_PRIVATE,
         help_text="Drafts default to private. Flip to public when ready to share.",
     )
+    wiki_requires_approval = models.BooleanField(
+        default=True,
+        help_text=(
+            "When true, edits from non-maintainers are queued as pending "
+            "suggestions for review. Pending suggestions are still publicly "
+            "visible on the page so others can see proposed changes."
+        ),
+    )
     institution = models.TextField(
         blank=True,
         help_text=(
@@ -700,6 +708,15 @@ class Citation(models.Model):
     attestations from §planning/features/reuse-attestations.md).
     """
 
+    SOURCE_MAINTAINER = "maintainer"
+    SOURCE_USER = "user"
+    SOURCE_ATTESTATION = "attestation"
+    SOURCE_CHOICES = [
+        (SOURCE_MAINTAINER, "Maintainer-added"),
+        (SOURCE_USER, "User-submitted"),
+        (SOURCE_ATTESTATION, "From attestation"),
+    ]
+
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="citations"
     )
@@ -711,6 +728,23 @@ class Citation(models.Model):
     doi = models.CharField(max_length=120, blank=True)
     year = models.PositiveIntegerField(null=True, blank=True)
     order = models.PositiveIntegerField(default=0)
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default=SOURCE_MAINTAINER
+    )
+    submitted_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_citations",
+    )
+    attestation = models.ForeignKey(
+        "attestations.Attestation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="citations",
+    )
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

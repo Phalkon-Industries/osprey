@@ -1,4 +1,5 @@
 """Models for in-page user feedback."""
+
 from __future__ import annotations
 
 import uuid
@@ -85,3 +86,30 @@ class Feedback(models.Model):
     def __str__(self) -> str:
         who = self.user.get_username() if self.user_id else "anon"
         return f"[{self.status}] {who}: {self.message[:60]}"
+
+
+class FeedbackReply(models.Model):
+    """A staff reply to a feedback submission.
+
+    Replies are visible to the original submitter on their feedback page
+    and trigger a notification at creation time.
+    """
+
+    feedback = models.ForeignKey(
+        Feedback, on_delete=models.CASCADE, related_name="replies"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedback_replies",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"reply {self.pk} to feedback {self.feedback_id}"

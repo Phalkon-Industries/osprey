@@ -59,6 +59,9 @@
                 <a href="{% url 'admin:index' %}">Database admin</a>
             </span>
             {% endif %}
+            <a href="{% url 'notifications:inbox' %}" class="inbox-link" title="Inbox">
+                Inbox{% if unread_notification_count %} <span class="badge">{{ unread_notification_count }}</span>{% endif %}
+            </a>
             <span class="muted">@{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
                 {% csrf_token %}
