@@ -123,6 +123,7 @@ class ProjectTestCase(TestCase):
             "contributions-MAX_NUM_FORMS": "1000",
             "contributions-0-display_name": "Owner Person",
             "contributions-0-role": "Project lead",
+            "contributions-0-affiliation": "",
             "contributions-0-orcid_id": "",
             "contributions-0-credit_statement": "Built the prototype.",
             "contributions-0-order": "0",

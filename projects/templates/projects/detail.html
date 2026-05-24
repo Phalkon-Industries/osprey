@@ -76,6 +76,7 @@
                     <span>{{ c.display_name }}</span>
                     {% endif %}
                     <span class="muted">— {{ c.role }}</span>
+                    {% if c.affiliation %}<span class="muted small">&middot; {{ c.affiliation }}</span>{% endif %}
                     {% if c.verified_orcid_id %}
                     <span class="orcid-verified" title="ORCID-verified contributor" style="color:#a6ce39;font-weight:600">&#10004;</span>
                     <a class="orcid muted" style="font-size:.8rem" href="https://orcid.org/{{ c.verified_orcid_id }}" rel="noopener">ORCID&nbsp;{{ c.verified_orcid_id }}</a>
@@ -209,6 +210,7 @@
     <section>
         <h2>Submitter's self-rating</h2>
         <p><strong>{{ project.self_rating }}/10</strong> <span class="muted small">(self-reported by the submitter)</span></p>
+        {% if project.self_rating_note %}<p style="white-space:pre-line">{{ project.self_rating_note }}</p>{% endif %}
     </section>
     {% endif %}
 

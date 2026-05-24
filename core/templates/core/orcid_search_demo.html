@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}ORCID person search — OSPREY demo{% endblock %}
+
+{% block content %}
+<h1>ORCID person search</h1>
+<p class="muted" style="max-width:42rem">
+    Throwaway demo of the contributor ORCID-lookup idea on the project submission form.
+    Type a name, press <em>Search</em>, and OSPREY hits ORCID's public
+    <code>expanded-search</code> API once. Submit-on-button (rather than
+    typeahead) keeps us well clear of the 24 requests/second rate limit on
+    the public API. If this lookup makes it into the real submission form,
+    the button stays.
+</p>
+
+<form method="get" action="" style="max-width:42rem;margin-top:1rem" class="orcid-search-form">
+    <label for="orcid-q"><strong>Name</strong></label><br>
+    <input type="text" id="orcid-q" name="q" value="{{ query }}" placeholder="e.g. Jonathan Pfeifer" autofocus
+        autocomplete="off" style="min-width:24rem">
+    <label for="orcid-rows" style="margin-left:1rem">Rows</label>
+    <input type="number" id="orcid-rows" name="rows" value="{{ rows }}" min="1" max="25" style="width:5rem">
+    <button type="submit">Search</button>
+</form>
+
+{% if error %}
+<p style="color:#fca5a5;margin-top:1rem">{{ error }}</p>
+{% endif %}
+
+{% if searched and not error %}
+<p class="muted" style="margin-top:1rem">
+    {% if results %}{{ results|length }} result{{ results|length|pluralize }} for "{{ query }}".{% else %}No matches.{% endif %}
+</p>
+{% endif %}
+
+{% if results %}
+<ul class="orcid-search-results" style="list-style:none;padding-left:0;max-width:48rem">
+    {% for row in results %}
+    <li style="border:1px solid var(--border, #2d3340);border-radius:.5rem;padding:.75rem 1rem;margin:.5rem 0">
+        <div>
+            <strong>{{ row.display_name|default:row.credit_name|default:"(no name)" }}</strong>
+            {% if row.credit_name and row.credit_name != row.display_name %}
+            <span class="muted small">also published as {{ row.credit_name }}</span>
+            {% endif %}
+        </div>
+        <div class="muted small">
+            <a href="https://orcid.org/{{ row.orcid_id }}" rel="noopener">
+                ORCID&nbsp;{{ row.orcid_id }}
+            </a>
+        </div>
+        {% if row.institutions %}
+        <div class="muted small">
+            {% for inst in row.institutions %}{{ inst }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+        {% if row.other_names %}
+        <div class="muted small">
+            Other names:
+            {% for n in row.other_names %}{{ n }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+        <button type="button" class="ghost" style="margin-top:.5rem" onclick="navigator.clipboard.writeText('{{ row.orcid_id }}');this.textContent='Copied ' + '{{ row.orcid_id }}';">
+            Copy ORCID iD
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<p class="muted small" style="margin-top:2rem;max-width:42rem">
+    The real contributor row on the submission form would offer this same
+    lookup inline. A "Find their ORCID iD" button next to the contributor
+    name opens this search; clicking a result fills the ORCID iD field on
+    the row. No typeahead, no surprise rate-limit bill.
+</p>
+{% endblock %}

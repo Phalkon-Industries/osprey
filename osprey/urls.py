@@ -17,7 +17,6 @@ urlpatterns = [
     path("about/", core_views.about, name="about"),
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("roadmap/", core_views.roadmap, name="roadmap"),
-    path("admin/login/", core_views.login, name="admin_login"),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
     path("accounts/", include("allauth.urls")),

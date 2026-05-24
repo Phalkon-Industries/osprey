@@ -265,13 +265,18 @@ def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
 def _initial_contributors_for(user) -> list[dict]:
     """Pre-populate the contributor formset with the submitter's row.
 
-    ORCID is attached later from the authenticated sign-in account, not from
-    this form row.
+    Pre-fills ORCID iD and institution affiliation from the signed-in user's
+    profile so the submitter does not have to retype information OSPREY
+    already has on file.
     """
     try:
         profile = user.profile
     except Exception:
         profile = None
+    verified_orcid = _verified_orcid_for(user)
+    affiliation = (profile.institution if profile else "") or ""
+    # Multi-line institution lists collapse to the first line for the row hint.
+    primary_affiliation = affiliation.split("\n")[0].split(",")[0].strip()
     return [
         {
             "display_name": (
@@ -280,6 +285,8 @@ def _initial_contributors_for(user) -> list[dict]:
                 or user.get_username()
             ),
             "role": "Project lead",
+            "affiliation": primary_affiliation,
+            "orcid_id": verified_orcid,
             "order": 0,
         }
     ]

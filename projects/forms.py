@@ -165,17 +165,18 @@ class ProjectForm(forms.ModelForm):
         fields = [
             "title",
             "summary",
-            "readme",
-            "field",
-            "artifact_type",
-            "canonical_url",
             "cover_image",
             "cover_image_focal_x",
             "cover_image_focal_y",
             "cover_image_zoom",
+            "readme",
+            "field",
+            "artifact_type",
+            "canonical_url",
             "institution",
             "funding",
             "self_rating",
+            "self_rating_note",
             "publications",
         ]
         widgets = {
@@ -206,6 +207,12 @@ class ProjectForm(forms.ModelForm):
                 }
             ),
             "self_rating": forms.NumberInput(attrs={"min": 1, "max": 10, "step": 1}),
+            "self_rating_note": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "Why that rating? e.g. 'Works on the bench, but the 3.3 V rail droops under load and needs a redesign.'",
+                }
+            ),
             "publications": forms.Textarea(
                 attrs={
                     "rows": 4,
@@ -230,6 +237,7 @@ class ProjectForm(forms.ModelForm):
             "institution": "Institutions",
             "funding": "Funding sources",
             "self_rating": "Submitter's self-rating (1\u201310)",
+            "self_rating_note": "Notes on the rating (optional)",
             "publications": "Publications that used this project",
         }
         help_texts = {
@@ -261,6 +269,10 @@ class ProjectForm(forms.ModelForm):
                 "4\u20136: usable, but expect integration work and known issues. "
                 "7\u20139: production-ready in the setting it was built for. "
                 "10: trusted on a mission-critical deployment."
+            ),
+            "self_rating_note": (
+                "A sentence or two on why the rating is what it is. Especially useful for low ratings: "
+                "future users want to know what works, what doesn't, and what to watch out for."
             ),
             "publications": (
                 "Papers, talks, theses, or reports that used this project. "
@@ -353,7 +365,14 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ["display_name", "role", "orcid_id", "credit_statement", "order"]
+        fields = [
+            "display_name",
+            "role",
+            "affiliation",
+            "orcid_id",
+            "credit_statement",
+            "order",
+        ]
         widgets = {
             "display_name": forms.TextInput(
                 attrs={"placeholder": "Name as shown on the project page"}
@@ -362,6 +381,11 @@ class ContributionForm(forms.ModelForm):
                 attrs={
                     "list": "contributor-role-suggestions",
                     "placeholder": "e.g. Project lead, Principal investigator, Maintainer",
+                }
+            ),
+            "affiliation": forms.TextInput(
+                attrs={
+                    "placeholder": "e.g. WHOI, MIT",
                 }
             ),
             "orcid_id": forms.TextInput(
@@ -380,6 +404,7 @@ class ContributionForm(forms.ModelForm):
         labels = {
             "display_name": "Display name",
             "role": "Role",
+            "affiliation": "Affiliation (optional)",
             "orcid_id": "ORCID iD (optional)",
             "credit_statement": "Credit statement",
             "order": "Order",

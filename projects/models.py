@@ -157,6 +157,13 @@ class Project(models.Model):
             "10: trusted on a mission-critical deployment."
         ),
     )
+    self_rating_note = models.TextField(
+        blank=True,
+        help_text=(
+            "Optional. Brief explanation of the rating, especially when it is low. "
+            "For example: 'works but power supply design has a known bug that needs fixing.'"
+        ),
+    )
     publications = models.TextField(
         blank=True,
         help_text=(
@@ -492,6 +499,15 @@ class Contribution(models.Model):
         max_length=80,
         default="Project lead",
         help_text="Free text. Pick from the suggestions or write your own.",
+    )
+    affiliation = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "Institution this person was affiliated with for this project. "
+            "Free text. Different contributors can list different institutions."
+        ),
     )
     credit_statement = models.CharField(
         max_length=400,

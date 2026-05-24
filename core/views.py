@@ -1,7 +1,12 @@
 from pathlib import Path
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required
 from django.db import models
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -84,5 +89,93 @@ def staff_dashboard(request):
                 ).count(),
                 "profiles": Profile.objects.count(),
             },
+        },
+    )
+
+
+# --- ORCID person-search demo ----------------------------------------------
+#
+# Throwaway demo of the contributor ORCID-search idea. The user types a name,
+# hits a button, and we hit ORCID's public expanded-search API once. The
+# explicit button (rather than as-you-type) is intentional: the public API has
+# a 24 req/s per-IP rate limit, and we don't want a typeahead to chew through
+# it. Gated behind @login_required so an unauthenticated visitor can't burn
+# the quota for everyone.
+
+_ORCID_SEARCH_URL = "https://pub.orcid.org/v3.0/expanded-search/"
+
+
+def _orcid_expanded_search(query: str, rows: int = 10) -> dict:
+    """Call ORCID's public expanded-search endpoint.
+
+    Returns a dict with either `results` (list of normalized rows) or `error`.
+    """
+    if not query:
+        return {"results": [], "error": ""}
+    params = {"q": query, "rows": str(min(max(rows, 1), 25))}
+    url = f"{_ORCID_SEARCH_URL}?{urlencode(params)}"
+    req = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "OSPREY-demo/0.1 (https://osprey.phalkon.io)",
+        },
+    )
+    try:
+        with urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        return {"results": [], "error": f"ORCID API returned HTTP {exc.code}."}
+    except URLError as exc:
+        return {"results": [], "error": f"Could not reach ORCID: {exc.reason}."}
+    except (ValueError, TimeoutError) as exc:
+        return {"results": [], "error": f"Unexpected response from ORCID: {exc}."}
+    results = []
+    for row in payload.get("expanded-result") or []:
+        given = (row.get("given-names") or "").strip()
+        family = (row.get("family-names") or "").strip()
+        institutions = row.get("institution-name") or []
+        if not isinstance(institutions, list):
+            institutions = [institutions]
+        results.append(
+            {
+                "orcid_id": (row.get("orcid-id") or "").strip(),
+                "given_names": given,
+                "family_names": family,
+                "display_name": " ".join(part for part in [given, family] if part),
+                "institutions": [str(name) for name in institutions if name],
+                "other_names": row.get("other-name") or [],
+                "credit_name": (row.get("credit-name") or "").strip(),
+                "email": (row.get("email") or [""])[0] if row.get("email") else "",
+            }
+        )
+    return {"results": results, "error": ""}
+
+
+@login_required
+def orcid_search_demo(request):
+    """Demo page for the contributor ORCID-search idea.
+
+    Type a name, hit Search, see ORCID matches. Submit-on-button rather than
+    type-ahead so the rate limit stays manageable.
+    """
+    query = (request.GET.get("q") or "").strip()
+    rows = request.GET.get("rows") or "10"
+    try:
+        rows_int = int(rows)
+    except (TypeError, ValueError):
+        rows_int = 10
+    data: dict = {"results": [], "error": ""}
+    if query:
+        data = _orcid_expanded_search(query, rows=rows_int)
+    return render(
+        request,
+        "core/orcid_search_demo.html",
+        {
+            "query": query,
+            "rows": rows_int,
+            "results": data["results"],
+            "error": data["error"],
+            "searched": bool(query),
         },
     )

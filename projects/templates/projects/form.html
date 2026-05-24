@@ -111,9 +111,11 @@
 
     <h2 style="margin-top:1.5rem">Contributors</h2>
     <p class="muted" style="font-size:.9rem">
-        Your ORCID-signed-in account is attached when you publish. Other people
-        can be listed by name for now; verified contributor claims will be
-        invitation-based.
+        Everyone who worked on the project belongs here. The first row is you;
+        OSPREY pre-fills your name, ORCID iD, and primary institution when you're
+        signed in with ORCID. Add a row for each collaborator and list their ORCID
+        iD if you know it. When that person later signs in with ORCID, OSPREY
+        automatically links their profile to the row and marks it verified.
     </p>
     <datalist id="contributor-role-suggestions">
         {% for role in role_suggestions %}<option value="{{ role }}"></option>{% endfor %}
@@ -138,6 +140,7 @@
                     <label>Display name<br>{{ cform.display_name }}</label>
                     <label>Role<br>{{ cform.role }}</label>
                 </div>
+                <label class="contributor-credit">Affiliation (optional)<br>{{ cform.affiliation }}<span class="muted small">Institution this person was at while working on the project. Each contributor can list their own.</span></label>
                 <label class="contributor-credit">ORCID iD (optional)<br>{{ cform.orcid_id }}<span class="muted small">Format: 0000-0000-0000-0000. Auto-links a verified profile when that ORCID signs in.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
                 {% if cform.errors %}
@@ -167,6 +170,7 @@
                     <label>Display name<br>{{ formset.empty_form.display_name }}</label>
                     <label>Role<br>{{ formset.empty_form.role }}</label>
                 </div>
+                <label class="contributor-credit">Affiliation (optional)<br>{{ formset.empty_form.affiliation }}<span class="muted small">Institution this person was at while working on the project.</span></label>
                 <label class="contributor-credit">ORCID iD (optional)<br>{{ formset.empty_form.orcid_id }}<span class="muted small">Format: 0000-0000-0000-0000. Auto-links a verified profile when that ORCID signs in.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ formset.empty_form.credit_statement }}</label>
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
