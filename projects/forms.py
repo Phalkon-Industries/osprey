@@ -207,7 +207,21 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "e.g. NSF OCE-1234567 (PI: Smith)\nWHOI internal seed funding",
                 }
             ),
-            "self_rating": forms.NumberInput(attrs={"min": 1, "max": 10, "step": 1}),
+            "self_rating": forms.Select(
+                choices=[
+                    ("", "— pick a rating —"),
+                    (1, "1 — Sketch only; mostly a record of what did not work"),
+                    (2, "2 — Early prototype; major rework expected"),
+                    (3, "3 — Bench-tested; rough edges and known bugs"),
+                    (4, "4 — Usable with significant caveats"),
+                    (5, "5 — Works for our use case; integration work expected"),
+                    (6, "6 — Works for our use case; well-documented caveats"),
+                    (7, "7 — Production-ready in its intended setting"),
+                    (8, "8 — Production-tested; minor caveats"),
+                    (9, "9 — Robust; used routinely on real deployments"),
+                    (10, "10 — Trusted on a mission-critical deployment"),
+                ]
+            ),
             "self_rating_note": forms.Textarea(
                 attrs={
                     "rows": 3,

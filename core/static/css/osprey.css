@@ -811,6 +811,53 @@ button.ghost:hover {
     flex: 1;
 }
 
+/* ---- Project sub-page tabs (Printables-style underline indicator) ---- */
+
+.project-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 1rem 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.project-tab,
+.project-tab:link,
+.project-tab:visited {
+    padding: 0.7rem 1.1rem;
+    color: var(--fg-muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+    transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+    background: transparent;
+}
+
+.project-tab:hover {
+    color: var(--fg);
+    background: var(--bg-soft);
+    text-decoration: none;
+    border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.project-tab.is-active,
+.project-tab.is-active:link,
+.project-tab.is-active:visited {
+    color: var(--fg);
+    font-weight: 700;
+    border-bottom-color: var(--accent);
+    text-decoration: none;
+}
+
+.project-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
 .project-meta {
     color: var(--fg-muted);
     font-size: 0.9rem;
@@ -913,17 +960,32 @@ button.ghost:hover {
     padding: 1rem;
 }
 
-/* Lineage SVG ships with hard-coded white fills. Soften it in dark mode
-   without doing surgery on graphviz output. */
-:root:not([data-theme="light"]) .lineage svg {
-    filter: invert(0.92) hue-rotate(180deg);
+.lineage-graph svg {
+    width: 100%;
+    height: auto;
+    max-height: 28rem;
+    display: block;
 }
 
-@media (prefers-color-scheme: light) {
-    :root[data-theme="auto"] .lineage svg {
-        filter: none;
-    }
+.lineage-node-link {
+    cursor: pointer;
 }
+
+.lineage-node rect {
+    transition: stroke 120ms ease, fill 120ms ease;
+}
+
+.lineage-node-link:hover .lineage-node rect {
+    stroke: var(--accent);
+    stroke-width: 2;
+}
+
+.lineage-node-link:focus-visible .lineage-node rect {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* The new lineage SVG uses theme variables, no filter needed. */
 
 /* ---- Citation block ---- */
 
@@ -1226,6 +1288,50 @@ button.ghost:hover,
     display: none;
 }
 
+/* Avatar cropper: same drag/zoom system as cover-crop, but square + circular
+   preview. */
+.avatar-crop-layout {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 14rem);
+    gap: 1rem;
+    align-items: start;
+}
+
+.avatar-crop-frame {
+    aspect-ratio: 1 / 1;
+    max-width: 18rem;
+}
+
+.avatar-preview-frame {
+    width: 7rem;
+    height: 7rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    overflow: hidden;
+}
+
+.avatar-preview-frame img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    object-position: var(--cover-x, 50%) var(--cover-y, 50%);
+    transform: scale(var(--cover-zoom, 1));
+    transform-origin: var(--cover-x, 50%) var(--cover-y, 50%);
+    background: var(--bg-soft);
+}
+
+.avatar-preview-frame.is-empty img {
+    display: none;
+}
+
+@media (max-width: 40rem) {
+    .avatar-crop-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Contributor formset rows on the project form. */
 .contributor-formset .contributor-row {
     border: 1px solid var(--border);
@@ -1467,3 +1573,31 @@ button.ghost:hover,
     background: var(--accent, #6cb6ff);
     transition: width 0.15s linear;
 }
+/* Wiki diff (suggestion review) */
+.wiki-diff {
+    background: var(--surface-2, #1a1d23);
+    color: var(--fg, #e6e6e6);
+    padding: .75rem 1rem;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .85rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+.wiki-diff .diff-add { color: #6ee7b7; display: block; }
+.wiki-diff .diff-remove { color: #fca5a5; display: block; }
+
+/* Asker-accepted reply highlight */
+.reply.asker-accepted {
+    border-left: 3px solid #6ee7b7;
+    padding-left: .75rem;
+}
+.reply.maintainer-pick {
+    border-left: 3px solid var(--accent, #6cb6ff);
+    padding-left: .75rem;
+}
+.thread-solution,
+.thread-maintainer-pick {
+    margin-top: 1.25rem;
+}
+.warn { color: #fbbf24; }

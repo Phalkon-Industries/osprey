@@ -66,14 +66,18 @@ def process_cover_image(project) -> bool:
     """
     source: bytes | None = None
     if project.cover_image and hasattr(project.cover_image, "file"):
+        field = project.cover_image
         try:
-            project.cover_image.open("rb")
-            source = project.cover_image.read()
-        finally:
-            try:
-                project.cover_image.close()
-            except Exception:  # pragma: no cover - best effort
-                pass
+            field.seek(0)
+        except Exception:  # pragma: no cover - best effort
+            pass
+        source = field.read()
+        # Leave the upload positioned at the start so a later FileField save
+        # (e.g. when we early-return without re-encoding) can re-read it.
+        try:
+            field.seek(0)
+        except Exception:  # pragma: no cover - best effort
+            pass
         # Skip re-processing already-stored .webp files (e.g. when the user
         # didn't change the upload). We detect by extension.
         existing_name = (project.cover_image.name or "").lower()

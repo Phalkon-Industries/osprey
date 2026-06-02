@@ -1,0 +1,41 @@
+{% comment %}
+Shared project page hero: cover image, title row, summary, meta, tab strip.
+Pass `project` and `current_tab`. Optional `project_can_edit` to show the
+project Edit button (kept separate from sub-page `can_edit` flags).
+{% endcomment %}
+{% if project.cover_image_display_url %}
+<div class="hero-image-frame"
+    style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
+    <img class="hero-image" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover" loading="lazy">
+</div>
+{% else %}
+{% with hero=project.images.first %}
+{% if hero %}
+<div class="hero-image-frame"
+    style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
+    <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
+</div>
+{% endif %}
+{% endwith %}
+{% endif %}
+
+<header class="project-header">
+    <h1><a href="{% url 'projects:detail' project.slug %}" style="color:inherit;text-decoration:none">{{ project.title }}</a></h1>
+    {% if not project.is_public %}<span class="badge private">private</span>{% endif %}
+    {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
+    <span class="spacer"></span>
+    {% if project_can_edit %}<a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>{% endif %}
+</header>
+
+{% if project.summary %}
+<p class="project-summary">{{ project.summary }}</p>
+{% endif %}
+
+<p class="project-meta">
+    {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+    {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
+    {% for inst in project.institutions %}<span class="sep"><a href="{% url 'institutions:detail' inst|slugify %}">{{ inst }}</a></span>{% endfor %}
+    <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
+</p>
+
+{% include "projects/_project_tabs.html" with current_tab=current_tab %}

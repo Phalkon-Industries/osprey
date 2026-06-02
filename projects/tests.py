@@ -313,6 +313,22 @@ class ProjectViewTests(ProjectTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Owner Person")
 
+    def test_save_draft_creates_private_project_and_renders_detail(self):
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="draft")
+        data["title"] = "Brand New Draft"
+
+        response = self.client.post(reverse("projects:new"), data, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        project = Project.objects.get(title="Brand New Draft")
+        self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
+        self.assertEqual(project.created_by, self.owner)
+        self.assertEqual(
+            response.redirect_chain, [(project.get_absolute_url(), 302)]
+        )
+        self.assertContains(response, "Brand New Draft")
+
     def test_unverified_user_cannot_publish_new_project(self):
         self.client.force_login(self.owner)
 

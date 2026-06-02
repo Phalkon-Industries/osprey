@@ -29,3 +29,5 @@ class WikiRevisionReviewForm(forms.Form):
     action = forms.ChoiceField(
         choices=[(ACTION_APPLY, "Apply"), (ACTION_REJECT, "Reject")]
     )
+    edited_title = forms.CharField(required=False, max_length=200)
+    edited_body = forms.CharField(required=False, widget=forms.Textarea)

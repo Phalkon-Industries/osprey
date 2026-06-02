@@ -2,13 +2,14 @@
 {% block title %}Citations &middot; {{ project.title }} &middot; OSPREY{% endblock %}
 
 {% block content %}
+<article>
+{% include "projects/_project_hero.html" with current_tab="citations" %}
 <section>
-    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
-    <h1>Citations dashboard</h1>
+    <h1 style="margin-top:1rem">Citations dashboard</h1>
     <p class="muted">
         Works that reference this project. Maintainers can add citations directly.
         Anyone signed in can submit a citation through an
-        <a href="{% url 'attestations:new' project.slug %}">attestation</a>;
+        <a href="{% url 'attestations:new' project.slug %}">use report</a>;
         those are listed under <em>User-submitted</em>.
     </p>
 
@@ -28,7 +29,7 @@
     </ul>
     {% endif %}
 
-    {% if user_citations or attestation_citations %}
+    {% if user_citations or use_report_citations %}
     <h2>User-submitted</h2>
     <ul class="citation-list">
         {% for c in user_citations %}
@@ -37,13 +38,14 @@
             {% if c.submitted_by %}<br><span class="muted small">submitted by @{{ c.submitted_by.get_username }}</span>{% endif %}
         </li>
         {% endfor %}
-        {% for c in attestation_citations %}
+        {% for c in use_report_citations %}
         <li>
             {{ c.text }}
-            <br><span class="muted small">from an <a href="{% url 'attestations:index' project.slug %}">attestation</a>{% if c.submitted_by %} by @{{ c.submitted_by.get_username }}{% endif %}</span>
+            <br><span class="muted small">from a <a href="{% url 'attestations:index' project.slug %}">use report</a>{% if c.submitted_by %} by @{{ c.submitted_by.get_username }}{% endif %}</span>
         </li>
         {% endfor %}
     </ul>
     {% endif %}
 </section>
+</article>
 {% endblock %}

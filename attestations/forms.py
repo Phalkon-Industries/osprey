@@ -1,9 +1,9 @@
 from django import forms
 
-from .models import Attestation
+from .models import UseReport
 
 
-class AttestationForm(forms.ModelForm):
+class UseReportForm(forms.ModelForm):
     citations = forms.CharField(
         required=False,
         widget=forms.Textarea(
@@ -22,7 +22,7 @@ class AttestationForm(forms.ModelForm):
     )
 
     class Meta:
-        model = Attestation
+        model = UseReport
         fields = ["narrative", "used_at"]
         widgets = {
             "narrative": forms.Textarea(

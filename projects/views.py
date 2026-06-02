@@ -194,6 +194,10 @@ def project_detail(request, slug: str):
     if not project.viewable_by(request.user):
         raise Http404
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+    recent_citations = project.citations.select_related("submitted_by").order_by(
+        "-added_at"
+    )[:5]
+    citations_count = project.citations.count()
     return render(
         request,
         "projects/detail.html",
@@ -204,6 +208,8 @@ def project_detail(request, slug: str):
             "zenodo_mode_label": zenodo_mode_label(),
             "zenodo_deposit": deposit,
             "citation_text": _build_citation_text(project, deposit),
+            "recent_citations": recent_citations,
+            "citations_count": citations_count,
         },
     )
 
@@ -406,7 +412,7 @@ def project_new(request):
                         f"Project published on {zenodo_mode_label()}.",
                     )
             else:
-                messages.success(request, "Draft saved.")
+                messages.success(request, f"Draft saved as “{project.title}.” You can find it on your profile page under Your projects.")
             return redirect(project.get_absolute_url())
     else:
         form = ProjectForm()
@@ -654,11 +660,11 @@ def project_citations(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     if not project.viewable_by(request.user):
         raise Http404
-    citations = list(project.citations.select_related("submitted_by", "attestation"))
+    citations = list(project.citations.select_related("submitted_by", "use_report"))
     by_source = {
         Citation.SOURCE_MAINTAINER: [],
         Citation.SOURCE_USER: [],
-        Citation.SOURCE_ATTESTATION: [],
+        Citation.SOURCE_USE_REPORT: [],
     }
     for cit in citations:
         by_source.setdefault(cit.source, []).append(cit)
@@ -670,7 +676,7 @@ def project_citations(request, slug: str):
             "citations": citations,
             "maintainer_citations": by_source[Citation.SOURCE_MAINTAINER],
             "user_citations": by_source[Citation.SOURCE_USER],
-            "attestation_citations": by_source[Citation.SOURCE_ATTESTATION],
+            "use_report_citations": by_source[Citation.SOURCE_USE_REPORT],
             "can_edit": project.editable_by(request.user),
         },
     )

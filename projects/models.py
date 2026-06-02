@@ -704,17 +704,17 @@ class Citation(models.Model):
     """A paper, talk, or other work that cites this project.
 
     For the demo these are entered manually. A future federation pass will
-    pull citations from upstream sources (Crossref, ORCID works, manual
-    attestations from §planning/features/reuse-attestations.md).
+    pull citations from upstream sources (Crossref, ORCID works, user
+    use reports from §planning/features/reuse-attestations.md).
     """
 
     SOURCE_MAINTAINER = "maintainer"
     SOURCE_USER = "user"
-    SOURCE_ATTESTATION = "attestation"
+    SOURCE_USE_REPORT = "use_report"
     SOURCE_CHOICES = [
         (SOURCE_MAINTAINER, "Maintainer-added"),
         (SOURCE_USER, "User-submitted"),
-        (SOURCE_ATTESTATION, "From attestation"),
+        (SOURCE_USE_REPORT, "From use report"),
     ]
 
     project = models.ForeignKey(
@@ -738,8 +738,8 @@ class Citation(models.Model):
         blank=True,
         related_name="submitted_citations",
     )
-    attestation = models.ForeignKey(
-        "attestations.Attestation",
+    use_report = models.ForeignKey(
+        "attestations.UseReport",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

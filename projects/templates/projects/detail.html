@@ -4,48 +4,7 @@
 
 {% block content %}
 <article>
-    {% if project.cover_image_display_url %}
-    <div class="hero-image-frame"
-        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
-        <img class="hero-image" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
-            loading="lazy">
-    </div>
-    {% else %}
-    {% with hero=project.images.first %}
-    {% if hero %}
-    <div class="hero-image-frame"
-        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
-        <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
-    </div>
-    {% endif %}
-    {% endwith %}
-    {% endif %}
-
-    <header class="project-header">
-        <h1>{{ project.title }}</h1>
-        {% if not project.is_public %}<span class="badge private">private</span>{% endif %}
-        {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
-        <span class="spacer"></span>
-        <a class="button ghost" href="{% url 'wiki:index' project.slug %}">Wiki</a>
-        <a class="button ghost" href="{% url 'attestations:index' project.slug %}">Attestations</a>
-        <a class="button ghost" href="{% url 'projects:citations' project.slug %}">Citations</a>
-        <a class="button ghost" href="{% url 'projects:lineage' project.slug %}">Lineage</a>
-        <a class="button ghost" href="{% url 'conversations:index' project.slug %}">Discussion</a>
-        {% if can_edit %}
-        <a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>
-        {% endif %}
-    </header>
-
-    {% if project.summary %}
-    <p class="project-summary">{{ project.summary }}</p>
-    {% endif %}
-
-    <p class="project-meta">
-        {% if project.field %}<span>{{ project.field }}</span>{% endif %}
-        {% if project.artifact_type %}<span class="sep">{{ project.artifact_type }}</span>{% endif %}
-        {% for inst in project.institutions %}<span class="sep"><a href="{% url 'institutions:detail' inst|slugify %}">{{ inst }}</a></span>{% endfor %}
-        <span class="sep">updated {{ project.updated_at|date:"Y-m-d" }}</span>
-    </p>
+    {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit %}
 
     {% if project.readme %}
     <section>
@@ -109,10 +68,12 @@
                 </li>
                 {% endif %}
                 {% for a in project.artifact_links.all %}
+                {% if a.url != project.canonical_url %}
                 <li>
                     <span class="pill">{{ a.get_kind_display }}</span>
                     <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
                 </li>
+                {% endif %}
                 {% empty %}
                 {% if not project.canonical_url %}<li class="muted">No repository links yet.</li>{% endif %}
                 {% endfor %}
@@ -230,6 +191,21 @@
     <section>
         <h2>Publications using this project</h2>
         <div class="prose">{{ project.publications|markdown }}</div>
+    </section>
+    {% endif %}
+
+    {% if recent_citations %}
+    <section class="project-citations-overview">
+        <h2>Citations <span class="muted small">({{ citations_count }})</span></h2>
+        <ul>
+            {% for c in recent_citations %}
+            <li>
+                {% if c.url or c.doi %}<a href="{% if c.doi %}https://doi.org/{{ c.doi }}{% else %}{{ c.url }}{% endif %}" rel="noopener">{{ c.text }}</a>{% else %}{{ c.text }}{% endif %}
+                {% if c.year %}<span class="muted small">({{ c.year }})</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p><a href="{% url 'projects:citations' project.slug %}">See all citations &rarr;</a></p>
     </section>
     {% endif %}
 </article>

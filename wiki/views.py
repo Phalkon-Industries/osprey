@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponseForbidden
@@ -13,6 +15,7 @@ from projects.models import Project
 from notifications.models import send as notify
 
 from .forms import WikiPageForm, WikiRevisionReviewForm
+from .merge import three_way_merge
 from .models import WikiPage, WikiRevision
 
 
@@ -98,6 +101,11 @@ def edit(request, slug, page_slug=None):
     requires_approval = project.wiki_requires_approval and not is_maintainer
 
     if request.method == "POST":
+        # Capture the page state BEFORE binding the form, because
+        # ModelForm.is_valid() mutates the instance with the submitted
+        # data and would otherwise overwrite our base snapshot.
+        base_title_snapshot = page.title if page else ""
+        base_body_snapshot = page.body if page else ""
         form = WikiPageForm(request.POST, instance=page)
         if form.is_valid():
             title = form.cleaned_data["title"]
@@ -106,6 +114,8 @@ def edit(request, slug, page_slug=None):
 
             if requires_approval:
                 target_page = page
+                base_body = base_body_snapshot
+                base_title = base_title_snapshot
                 if target_page is None:
                     # Create the page row but leave its body blank until approved.
                     target_page = WikiPage.objects.create(
@@ -119,6 +129,8 @@ def edit(request, slug, page_slug=None):
                     author=request.user,
                     title=title,
                     body=body,
+                    base_title=base_title,
+                    base_body=base_body,
                     summary=summary,
                     status=WikiRevision.STATUS_PENDING,
                 )
@@ -158,6 +170,8 @@ def edit(request, slug, page_slug=None):
                 author=request.user,
                 title=title,
                 body=body,
+                base_title=base_title_snapshot,
+                base_body=base_body_snapshot,
                 summary=summary,
                 status=WikiRevision.STATUS_APPLIED,
                 reviewed_at=timezone.now(),
@@ -188,9 +202,49 @@ def review(request, slug):
         return HttpResponseForbidden(
             "Only project maintainers can review wiki suggestions."
         )
-    pending = WikiRevision.objects.filter(
+    pending_qs = WikiRevision.objects.filter(
         page__project=project, status=WikiRevision.STATUS_PENDING
     ).select_related("page", "author")
+    pending = []
+    for rev in pending_qs:
+        base_body = rev.base_body or ""
+        proposed_body = rev.body or ""
+        current_body = rev.page.body or ""
+        # Diff the suggester actually made: from the body they saw
+        # (base) to their proposal. This is the right thing to show a
+        # reviewer even when the page has moved on since.
+        diff_lines = list(
+            difflib.unified_diff(
+                base_body.splitlines(),
+                proposed_body.splitlines(),
+                fromfile="before",
+                tofile="after",
+                lineterm="",
+            )
+        )
+        is_new_page = not base_body.strip() and not current_body.strip()
+        is_rebased = base_body == current_body
+        merged_body, had_conflict = three_way_merge(
+            base_body, current_body, proposed_body
+        )
+        # Title: if current title differs from base, prefer current; otherwise use proposed.
+        if (rev.base_title or "") == rev.page.title:
+            merged_title = rev.title
+        else:
+            merged_title = rev.page.title
+            if rev.title and rev.title != (rev.base_title or ""):
+                had_conflict = True
+        pending.append(
+            {
+                "rev": rev,
+                "diff_lines": diff_lines,
+                "is_new_page": is_new_page,
+                "is_rebased": is_rebased,
+                "has_conflict": had_conflict,
+                "merged_body": merged_body,
+                "merged_title": merged_title,
+            }
+        )
     return render(
         request,
         "wiki/review.html",
@@ -222,8 +276,22 @@ def review_action(request, slug, revision_id):
 
     if action == WikiRevisionReviewForm.ACTION_APPLY:
         page = revision.page
-        page.title = revision.title
-        page.body = revision.body
+        # The reviewer may have tweaked the wording on the accept screen.
+        # If they didn't, fall back to the 3-way merged result so other
+        # already-applied edits on this page aren't clobbered.
+        merged_body, _ = three_way_merge(
+            revision.base_body or "", page.body or "", revision.body or ""
+        )
+        edited_title = form.cleaned_data.get("edited_title") or revision.title
+        edited_body = form.cleaned_data.get("edited_body")
+        if edited_body is None or edited_body == "":
+            edited_body = merged_body
+        # Persist the (possibly-edited) text on the revision so the history
+        # records what was actually applied, not what was originally suggested.
+        revision.title = edited_title
+        revision.body = edited_body
+        page.title = edited_title
+        page.body = edited_body
         page.last_edited_by = revision.author
         page.save()
         revision.status = WikiRevision.STATUS_APPLIED

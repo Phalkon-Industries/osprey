@@ -8,7 +8,8 @@
     <header class="project-header">
         <h1>{{ thread.title }}</h1>
         {% if thread.is_closed %}<span class="badge">closed</span>{% endif %}
-        {% if thread.answer_id %}<span class="badge ok">answered</span>{% endif %}
+        {% if solution_reply %}<span class="badge ok">answered</span>{% endif %}
+        {% if thread.answer_id %}<span class="badge ok">maintainer answered</span>{% endif %}
         <span class="spacer"></span>
         {% if is_maintainer %}
         <form method="post" action="{% url 'conversations:close' project.slug thread.id %}" style="display:inline">
@@ -20,10 +21,20 @@
     <p class="muted small">Started by {% if thread.author %}@{{ thread.author.get_username }}{% else %}unknown{% endif %} on {{ thread.created_at|date:"Y-m-d H:i" }}</p>
     <div class="thread-body">{{ thread.body|markdown }}</div>
 
+    {% if solution_reply %}
+    <section class="thread-solution">
+        <h2>Marked as solution</h2>
+        <article class="reply asker-accepted">
+            <p class="muted small">@{{ solution_reply.author.get_username|default:"unknown" }} &middot; {{ solution_reply.created_at|date:"Y-m-d H:i" }}</p>
+            <div>{{ solution_reply.body|markdown }}</div>
+        </article>
+    </section>
+    {% endif %}
+
     {% if thread.answer %}
-    <section class="thread-canonical-answer">
-        <h2>Canonical answer</h2>
-        <article class="reply">
+    <section class="thread-maintainer-pick">
+        <h2>Maintainer pick</h2>
+        <article class="reply maintainer-pick">
             <p class="muted small">@{{ thread.answer.author.get_username|default:"unknown" }} &middot; {{ thread.answer.created_at|date:"Y-m-d H:i" }}</p>
             <div>{{ thread.answer.body|markdown }}</div>
         </article>
@@ -32,17 +43,29 @@
 
     <h2>Replies</h2>
     {% for r in replies %}
-    <article class="reply{% if thread.answer_id == r.id %} canonical{% endif %}">
+    <article class="reply{% if thread.answer_id == r.id %} maintainer-pick{% endif %}{% if r.accepted_by_asker_at %} asker-accepted{% endif %}">
         <p class="muted small">
             @{{ r.author.get_username|default:"unknown" }} &middot; {{ r.created_at|date:"Y-m-d H:i" }}
-            {% if thread.answer_id == r.id %}&middot; <strong>canonical answer</strong>{% endif %}
+            {% if thread.answer_id == r.id %}&middot; <strong>maintainer pick</strong>{% endif %}
+            {% if r.accepted_by_asker_at %}&middot; <strong>solution</strong>{% endif %}
         </p>
         <div>{{ r.body|markdown }}</div>
-        {% if is_maintainer and thread.answer_id != r.id %}
+        {% if is_maintainer %}
         <form method="post" action="{% url 'conversations:mark_answer' project.slug thread.id %}" style="display:inline">
             {% csrf_token %}
+            {% if thread.answer_id == r.id %}
+            <button type="submit" class="button ghost small">Unmark maintainer pick</button>
+            {% else %}
             <input type="hidden" name="reply_id" value="{{ r.id }}">
-            <button type="submit" class="button ghost small">Mark as canonical answer</button>
+            <button type="submit" class="button ghost small">Mark as maintainer pick</button>
+            {% endif %}
+        </form>
+        {% endif %}
+        {% if user.is_authenticated and user.id == thread.author_id %}
+        <form method="post" action="{% url 'conversations:accept_answer' project.slug thread.id %}" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="reply_id" value="{{ r.id }}">
+            <button type="submit" class="button ghost small">{% if r.accepted_by_asker_at %}Unmark solution{% else %}Mark as solution{% endif %}</button>
         </form>
         {% endif %}
     </article>

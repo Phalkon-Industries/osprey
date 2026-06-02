@@ -1,0 +1,14 @@
+{% comment %}
+Shared project tab strip. Pass `project` and `current_tab` (one of
+overview/wiki/use-reports/discussion/lineage/citations).
+The host page is responsible for its own header above this strip.
+{% endcomment %}
+<nav class="project-tabs" aria-label="Project sections" role="tablist">
+    <a href="{% url 'projects:detail' project.slug %}" class="project-tab{% if current_tab == 'overview' %} is-active{% endif %}"{% if current_tab == 'overview' %} aria-current="page"{% endif %}>Overview</a>
+    <a href="{% url 'wiki:index' project.slug %}" class="project-tab{% if current_tab == 'wiki' %} is-active{% endif %}"{% if current_tab == 'wiki' %} aria-current="page"{% endif %}>Wiki</a>
+    <a href="{% url 'attestations:index' project.slug %}" class="project-tab{% if current_tab == 'use-reports' %} is-active{% endif %}"{% if current_tab == 'use-reports' %} aria-current="page"{% endif %}>Use reports</a>
+    <a href="{% url 'conversations:index' project.slug %}" class="project-tab{% if current_tab == 'discussion' %} is-active{% endif %}"{% if current_tab == 'discussion' %} aria-current="page"{% endif %}>Discussion</a>
+    <a href="{% url 'projects:lineage' project.slug %}" class="project-tab{% if current_tab == 'lineage' %} is-active{% endif %}"{% if current_tab == 'lineage' %} aria-current="page"{% endif %}>Lineage</a>
+    <a href="{% url 'projects:versions' project.slug %}" class="project-tab{% if current_tab == 'versions' %} is-active{% endif %}"{% if current_tab == 'versions' %} aria-current="page"{% endif %}>Versions</a>
+    <a href="{% url 'projects:citations' project.slug %}" class="project-tab{% if current_tab == 'citations' %} is-active{% endif %}"{% if current_tab == 'citations' %} aria-current="page"{% endif %}>Citations</a>
+</nav>

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -23,6 +24,23 @@ class Profile(models.Model):
         upload_to=_avatar_upload_to,
         blank=True,
         null=True,
+    )
+    avatar_focal_x = models.PositiveSmallIntegerField(
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Horizontal focal point for avatar crops, 0-100%.",
+    )
+    avatar_focal_y = models.PositiveSmallIntegerField(
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Vertical focal point for avatar crops, 0-100%.",
+    )
+    avatar_zoom = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(3)],
+        help_text="Display zoom for avatar crops. 1 is no extra zoom.",
     )
     orcid_placeholder = models.CharField(
         max_length=40,

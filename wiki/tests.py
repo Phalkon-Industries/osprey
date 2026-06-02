@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from projects.models import Project
 
+from .merge import three_way_merge
 from .models import WikiPage, WikiRevision
 
 
@@ -103,6 +104,8 @@ class ApprovalWikiTests(WikiTestCase):
             author=self.stranger,
             title="Page",
             body="new body",
+            base_title="Page",
+            base_body="old",
             status=WikiRevision.STATUS_PENDING,
         )
         self.client.force_login(self.owner)
@@ -123,6 +126,8 @@ class ApprovalWikiTests(WikiTestCase):
             author=self.stranger,
             title="Page",
             body="new body",
+            base_title="Page",
+            base_body="old",
             status=WikiRevision.STATUS_PENDING,
         )
         self.client.force_login(self.owner)
@@ -151,3 +156,127 @@ class ApprovalWikiTests(WikiTestCase):
             {"action": "apply"},
         )
         self.assertEqual(response.status_code, 403)
+
+
+class ThreeWayMergeTests(TestCase):
+    def test_clean_apply_when_base_matches_current(self):
+        base = "a\nb\nc\n"
+        current = base
+        proposed = "a\nB\nc\n"
+        merged, conflict = three_way_merge(base, current, proposed)
+        self.assertEqual(merged, proposed)
+        self.assertFalse(conflict)
+
+    def test_disjoint_edits_both_apply(self):
+        base = "intro\n\nmaterials\noriginal-materials\n\ncalibration\noriginal-cal\n"
+        # Current changed the calibration section only.
+        current = "intro\n\nmaterials\noriginal-materials\n\ncalibration\nnew-cal\n"
+        # Proposed changed the materials section only (from base's view).
+        proposed = "intro\n\nmaterials\nnew-materials\n\ncalibration\noriginal-cal\n"
+        merged, conflict = three_way_merge(base, current, proposed)
+        self.assertFalse(conflict)
+        self.assertIn("new-materials", merged)
+        self.assertIn("new-cal", merged)
+        self.assertNotIn("original-materials", merged)
+        self.assertNotIn("original-cal", merged)
+
+    def test_overlapping_edits_flag_conflict_and_keep_current(self):
+        base = "a\nb\nc\n"
+        current = "a\nCURRENT\nc\n"
+        proposed = "a\nPROPOSED\nc\n"
+        merged, conflict = three_way_merge(base, current, proposed)
+        self.assertTrue(conflict)
+        # Conflict resolution falls back to keeping current to avoid losing landed text.
+        self.assertIn("CURRENT", merged)
+        self.assertNotIn("PROPOSED", merged)
+
+    def test_new_page_proposal_returns_proposed(self):
+        merged, conflict = three_way_merge("", "", "hello\nworld\n")
+        self.assertEqual(merged, "hello\nworld\n")
+        self.assertFalse(conflict)
+
+
+class RevisionBaseTrackingTests(WikiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.project.wiki_requires_approval = True
+        self.project.save(update_fields=["wiki_requires_approval"])
+
+    def test_suggestion_records_base_body(self):
+        page = WikiPage.objects.create(
+            project=self.project, title="Spec", body="line 1\nline 2\n"
+        )
+        self.client.force_login(self.stranger)
+        self.client.post(
+            reverse("wiki:edit", args=[self.project.slug, page.slug]),
+            {"title": "Spec", "body": "line 1\nline 2 edited\n", "summary": ""},
+        )
+        rev = page.revisions.get(status=WikiRevision.STATUS_PENDING)
+        self.assertEqual(rev.base_body, "line 1\nline 2\n")
+        self.assertEqual(rev.base_title, "Spec")
+
+    def test_disjoint_suggestions_both_land(self):
+        page = WikiPage.objects.create(
+            project=self.project,
+            title="Doc",
+            body="top\nmiddle\nbottom\n",
+        )
+        # Alice (maintainer) edits the top section first.
+        self.client.force_login(self.owner)
+        self.client.post(
+            reverse("wiki:edit", args=[self.project.slug, page.slug]),
+            {"title": "Doc", "body": "TOP\nmiddle\nbottom\n", "summary": ""},
+        )
+        page.refresh_from_db()
+        self.assertIn("TOP", page.body)
+        self.assertIn("bottom", page.body)
+
+        # Bob (non-maintainer) had been editing the bottom section from the
+        # pre-Alice body. Simulate by submitting a suggestion whose base is
+        # the original body but proposing a bottom-section change.
+        self.client.force_login(self.editor)
+        # We need the suggestion's base to be the original body, not the
+        # post-Alice body. The edit view always reads the current page body
+        # as base, so to test "Bob started editing earlier" we create the
+        # revision directly with the original base.
+        rev = WikiRevision.objects.create(
+            page=page,
+            author=self.editor,
+            title="Doc",
+            body="top\nmiddle\nBOTTOM\n",
+            base_title="Doc",
+            base_body="top\nmiddle\nbottom\n",
+            status=WikiRevision.STATUS_PENDING,
+        )
+
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("wiki:review_action", args=[self.project.slug, rev.pk]),
+            {"action": "apply"},
+        )
+        self.assertEqual(response.status_code, 302)
+        page.refresh_from_db()
+        # Both edits should now be present.
+        self.assertIn("TOP", page.body)
+        self.assertIn("BOTTOM", page.body)
+        self.assertIn("middle", page.body)
+
+    def test_review_page_shows_diff_against_base(self):
+        page = WikiPage.objects.create(
+            project=self.project, title="Doc", body="alpha\nbeta\n"
+        )
+        WikiRevision.objects.create(
+            page=page,
+            author=self.stranger,
+            title="Doc",
+            body="alpha\nBETA\n",
+            base_title="Doc",
+            base_body="alpha\nbeta\n",
+            status=WikiRevision.STATUS_PENDING,
+        )
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("wiki:review", args=[self.project.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "BETA")
+        self.assertContains(response, "Suggested change")
+

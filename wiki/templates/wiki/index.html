@@ -3,9 +3,10 @@
 {% block title %}{{ project.title }} wiki &middot; OSPREY{% endblock %}
 
 {% block content %}
+<article>
+{% include "projects/_project_hero.html" with current_tab="wiki" %}
 <section>
-    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
-    <h1>{{ project.title }} wiki</h1>
+    <h1 style="margin-top:1rem">{{ project.title }} wiki</h1>
     <p class="muted">
         {% if project.wiki_requires_approval %}
         Maintainer-reviewed wiki. Anyone signed in can suggest edits; maintainers apply or decline them.
@@ -37,4 +38,5 @@
     <p class="muted">No wiki pages yet.</p>
     {% endif %}
 </section>
+</article>
 {% endblock %}

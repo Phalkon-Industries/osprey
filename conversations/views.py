@@ -1,6 +1,8 @@
 from django.contrib.auth.decorators import login_required
+from django.db.models import Exists, OuterRef
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from projects.models import Project
@@ -17,7 +19,17 @@ def _get_project(request, slug: str) -> Project:
 
 def thread_index(request, slug: str):
     project = _get_project(request, slug)
-    threads = project.threads.select_related("author").prefetch_related("replies")
+    threads = (
+        project.threads.select_related("author")
+        .prefetch_related("replies")
+        .annotate(
+            has_solution=Exists(
+                ProjectReply.objects.filter(
+                    thread=OuterRef("pk"), accepted_by_asker_at__isnull=False
+                )
+            )
+        )
+    )
     return render(
         request,
         "conversations/index.html",
@@ -72,13 +84,18 @@ def thread_detail(request, slug: str, thread_id: int):
             except Exception:
                 pass
         return redirect("conversations:detail", slug=project.slug, thread_id=thread.pk)
+    replies = list(thread.replies.select_related("author"))
+    solution_reply = next(
+        (r for r in replies if r.accepted_by_asker_at is not None), None
+    )
     return render(
         request,
         "conversations/detail.html",
         {
             "project": project,
             "thread": thread,
-            "replies": thread.replies.select_related("author"),
+            "replies": replies,
+            "solution_reply": solution_reply,
             "is_maintainer": project.editable_by(request.user),
         },
     )
@@ -101,6 +118,32 @@ def mark_answer(request, slug: str, thread_id: int):
     else:
         thread.answer = None
     thread.save(update_fields=["answer", "updated_at"])
+    return redirect("conversations:detail", slug=project.slug, thread_id=thread.pk)
+
+
+@login_required
+@require_POST
+def accept_answer(request, slug: str, thread_id: int):
+    """The thread's asker marks (or unmarks) a reply as the answer that worked for them."""
+    project = _get_project(request, slug)
+    thread = get_object_or_404(ProjectThread, pk=thread_id, project=project)
+    if thread.author_id != request.user.id:
+        return HttpResponseForbidden(
+            "Only the person who asked can mark an answer as accepted."
+        )
+    reply_id = request.POST.get("reply_id")
+    if not reply_id:
+        return redirect("conversations:detail", slug=project.slug, thread_id=thread.pk)
+    reply = get_object_or_404(ProjectReply, pk=reply_id, thread=thread)
+    if reply.accepted_by_asker_at:
+        reply.accepted_by_asker_at = None
+    else:
+        # Clear any previously accepted reply on this thread so only one is current.
+        ProjectReply.objects.filter(
+            thread=thread, accepted_by_asker_at__isnull=False
+        ).exclude(pk=reply.pk).update(accepted_by_asker_at=None)
+        reply.accepted_by_asker_at = timezone.now()
+    reply.save(update_fields=["accepted_by_asker_at"])
     return redirect("conversations:detail", slug=project.slug, thread_id=thread.pk)
 
 

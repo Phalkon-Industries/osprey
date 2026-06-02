@@ -4,10 +4,10 @@ from django.urls import reverse
 
 from projects.models import Project
 
-from .models import Attestation
+from .models import UseReport
 
 
-class AttestationTests(TestCase):
+class UseReportTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.owner = User.objects.create_user(username="alice")
@@ -22,15 +22,15 @@ class AttestationTests(TestCase):
             user=self.owner, display_name="Alice", role="Lead"
         )
 
-    def test_index_lists_only_public_attestations(self):
-        Attestation.objects.create(
+    def test_index_lists_only_public_use_reports(self):
+        UseReport.objects.create(
             project=self.project, author=self.user, narrative="visible"
         )
-        Attestation.objects.create(
+        UseReport.objects.create(
             project=self.project,
             author=self.user,
             narrative="hidden one",
-            visibility=Attestation.VIS_HIDDEN,
+            visibility=UseReport.VIS_HIDDEN,
         )
         response = self.client.get(
             reverse("attestations:index", args=[self.project.slug])
@@ -39,51 +39,54 @@ class AttestationTests(TestCase):
         self.assertContains(response, "visible")
         self.assertNotContains(response, "hidden one")
 
-    def test_signed_in_user_can_post_attestation(self):
+    def test_signed_in_user_can_post_use_report(self):
         self.client.force_login(self.user)
         response = self.client.post(
             reverse("attestations:new", args=[self.project.slug]),
             {"narrative": "I used this on a cruise.", "used_at": "2024"},
         )
         self.assertEqual(response.status_code, 302)
-        att = Attestation.objects.get()
-        self.assertEqual(att.author, self.user)
-        self.assertEqual(att.narrative, "I used this on a cruise.")
-        self.assertEqual(att.visibility, Attestation.VIS_PUBLIC)
-        self.assertEqual(att.endorsement, Attestation.ENDORSE_NONE)
+        report = UseReport.objects.get()
+        self.assertEqual(report.author, self.user)
+        self.assertEqual(report.narrative, "I used this on a cruise.")
+        self.assertEqual(report.visibility, UseReport.VIS_PUBLIC)
 
-    def test_maintainer_can_endorse(self):
-        att = Attestation.objects.create(
+    def test_maintainer_cannot_hide_only_staff(self):
+        report = UseReport.objects.create(
             project=self.project, author=self.user, narrative="x"
         )
         self.client.force_login(self.owner)
-        self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, att.pk]),
-            {"action": "feature"},
-        )
-        att.refresh_from_db()
-        self.assertEqual(att.endorsement, Attestation.ENDORSE_FEATURED)
-        self.assertEqual(att.endorsed_by, self.owner)
-
-    def test_maintainer_can_hide(self):
-        att = Attestation.objects.create(
-            project=self.project, author=self.user, narrative="x"
-        )
-        self.client.force_login(self.owner)
-        self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, att.pk]),
+        response = self.client.post(
+            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
             {"action": "hide"},
         )
-        att.refresh_from_db()
-        self.assertEqual(att.visibility, Attestation.VIS_HIDDEN)
+        self.assertEqual(response.status_code, 403)
+        report.refresh_from_db()
+        self.assertEqual(report.visibility, UseReport.VIS_PUBLIC)
+
+    def test_staff_can_hide(self):
+        report = UseReport.objects.create(
+            project=self.project, author=self.user, narrative="x"
+        )
+        User = get_user_model()
+        staff = User.objects.create_user(
+            "modstaff", "mod@example.org", "x", is_staff=True
+        )
+        self.client.force_login(staff)
+        self.client.post(
+            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
+            {"action": "hide"},
+        )
+        report.refresh_from_db()
+        self.assertEqual(report.visibility, UseReport.VIS_HIDDEN)
 
     def test_stranger_cannot_moderate(self):
-        att = Attestation.objects.create(
+        report = UseReport.objects.create(
             project=self.project, author=self.user, narrative="x"
         )
         self.client.force_login(self.user)
         response = self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, att.pk]),
+            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
             {"action": "hide"},
         )
         self.assertEqual(response.status_code, 403)
@@ -94,4 +97,4 @@ class AttestationTests(TestCase):
             {"narrative": "anon"},
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Attestation.objects.count(), 0)
+        self.assertEqual(UseReport.objects.count(), 0)

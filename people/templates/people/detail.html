@@ -6,8 +6,11 @@
 <article class="profile">
     <header style="display:flex;gap:1.25rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1rem">
         {% if person.profile.avatar %}
-        <img src="{{ person.profile.avatar.url }}" alt="" class="avatar"
-            style="width:6rem;height:6rem;border-radius:50%;object-fit:cover;border:1px solid var(--border);background:var(--bg-soft)">
+        <div class="avatar avatar-crop-display"
+            style="width:6rem;height:6rem;border-radius:50%;border:1px solid var(--border);background:var(--bg-soft);overflow:hidden;--cover-x:{{ person.profile.avatar_focal_x }}%;--cover-y:{{ person.profile.avatar_focal_y }}%;--cover-zoom:{{ person.profile.avatar_zoom }}">
+            <img src="{{ person.profile.avatar.url }}" alt=""
+                style="width:100%;height:100%;display:block;object-fit:cover;object-position:var(--cover-x) var(--cover-y);transform:scale(var(--cover-zoom));transform-origin:var(--cover-x) var(--cover-y)">
+        </div>
         {% else %}
         <div class="avatar" aria-hidden="true"
             style="width:6rem;height:6rem;border-radius:50%;background:var(--bg-soft);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--fg-muted);font-size:1.6rem;font-weight:600">

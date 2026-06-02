@@ -3,9 +3,10 @@
 {% block title %}Discussion &middot; {{ project.title }} &middot; OSPREY{% endblock %}
 
 {% block content %}
+<article>
+{% include "projects/_project_hero.html" with current_tab="discussion" %}
 <section>
-    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
-    <header class="project-header">
+    <header class="project-header" style="margin-top:1rem">
         <h1>Discussion</h1>
         <span class="spacer"></span>
         {% if user.is_authenticated %}
@@ -14,11 +15,11 @@
     </header>
     <p class="muted">
         Questions about this project. Flat threads, no nested replies.
-        Maintainers can mark a canonical answer.
+        Askers can mark a reply as the solution. Maintainers can mark a maintainer pick.
     </p>
     {% for t in threads %}
     <article class="thread-row">
-        <h2><a href="{% url 'conversations:detail' project.slug t.id %}">{{ t.title }}</a>{% if t.is_closed %} <span class="badge">closed</span>{% endif %}{% if t.answer_id %} <span class="badge ok">answered</span>{% endif %}</h2>
+        <h2><a href="{% url 'conversations:detail' project.slug t.id %}">{{ t.title }}</a>{% if t.is_closed %} <span class="badge">closed</span>{% endif %}{% if t.has_solution %} <span class="badge ok">answered</span>{% endif %}{% if t.answer_id %} <span class="badge ok">maintainer answered</span>{% endif %}</h2>
         <p class="muted small">
             Started by {% if t.author %}@{{ t.author.get_username }}{% else %}unknown{% endif %}
             &middot; {{ t.created_at|date:"Y-m-d" }}
@@ -29,4 +30,5 @@
     <p class="muted">No threads yet. Be the first to ask a question.</p>
     {% endfor %}
 </section>
+</article>
 {% endblock %}

@@ -15,16 +15,143 @@
 <form method="post" enctype="multipart/form-data" style="max-width:42rem">
     {% csrf_token %}
     {% for field in form %}
+    {% if field.name == "avatar_focal_x" or field.name == "avatar_focal_y" or field.name == "avatar_zoom" %}{# rendered inside cropper #}{% elif field.name == "avatar" %}
+    <section class="avatar-crop-editor cover-crop-editor" data-avatar-crop-editor data-existing-url="{% if form.instance.avatar %}{{ form.instance.avatar.url }}{% endif %}">
+        <h2>Avatar</h2>
+        <p>
+            <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
+            {{ field }}
+            {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
+            {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
+        </p>
+        <div class="avatar-crop-layout">
+            <div>
+                <div class="cover-preview-label">Crop frame</div>
+                <div class="cover-crop-frame avatar-crop-frame" data-avatar-drag-frame>
+                    <img class="cover-crop-image" alt="Avatar crop editor">
+                    <span class="cover-crop-empty">Upload an avatar to position it.</span>
+                    <span class="cover-crop-box" aria-hidden="true"></span>
+                </div>
+            </div>
+            <div>
+                <div class="cover-preview-label">Profile preview</div>
+                <div class="avatar-preview-frame"><img alt="Avatar preview"></div>
+            </div>
+        </div>
+        <div class="cover-crop-controls">
+            <label for="{{ form.avatar_zoom.id_for_label }}">{{ form.avatar_zoom.label }} <span data-avatar-value="zoom"></span><br>{{ form.avatar_zoom }}</label>
+            <button type="button" class="ghost" data-avatar-center>Center</button>
+            <span class="muted cover-position-readout">Position <span data-avatar-value="position"></span></span>
+        </div>
+        <span class="cover-hidden-fields">{{ form.avatar_focal_x }}{{ form.avatar_focal_y }}</span>
+        {% if form.avatar_focal_x.errors or form.avatar_focal_y.errors or form.avatar_zoom.errors %}
+        <p style="color:#fca5a5">
+            {{ form.avatar_focal_x.errors|join:" " }}
+            {{ form.avatar_focal_y.errors|join:" " }}
+            {{ form.avatar_zoom.errors|join:" " }}
+        </p>
+        {% endif %}
+    </section>
+    {% else %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label><br>
         {{ field }}
         {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
         {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
     </p>
+    {% endif %}
     {% endfor %}
     <button type="submit">Save profile</button>
     <a class="button ghost" href="{% url 'people:detail' user.pk %}" style="margin-left:.5rem">Cancel</a>
 </form>
+
+<script>
+    (function () {
+        var editor = document.querySelector('[data-avatar-crop-editor]');
+        if (!editor) return;
+        var fileInput = document.getElementById('id_avatar');
+        var x = document.getElementById('id_avatar_focal_x');
+        var y = document.getElementById('id_avatar_focal_y');
+        var zoom = document.getElementById('id_avatar_zoom');
+        var dragFrame = editor.querySelector('[data-avatar-drag-frame]');
+        var frames = editor.querySelectorAll('.avatar-preview-frame, .cover-crop-frame');
+        var images = editor.querySelectorAll('img.cover-crop-image, .avatar-preview-frame img');
+        var valuePosition = editor.querySelector('[data-avatar-value="position"]');
+        var valueZoom = editor.querySelector('[data-avatar-value="zoom"]');
+        var centerBtn = editor.querySelector('[data-avatar-center]');
+        var dragging = false;
+        var startPointer = { x: 0, y: 0 };
+        var startCrop = { x: 50, y: 50 };
+        var currentSrc = editor.getAttribute('data-existing-url') || '';
+        if (!fileInput || !x || !y || !zoom || !dragFrame || !centerBtn) return;
+
+        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+        function num(el, fallback) { var v = parseFloat(el.value); return Number.isFinite(v) ? v : fallback; }
+
+        function sync() {
+            var src = currentSrc;
+            var cx = clamp(num(x, 50), 0, 100);
+            var cy = clamp(num(y, 50), 0, 100);
+            var cz = clamp(num(zoom, 1), 1, 3);
+            x.value = String(Math.round(cx));
+            y.value = String(Math.round(cy));
+            zoom.value = String(cz);
+            frames.forEach(function (frame) {
+                frame.style.setProperty('--cover-x', cx + '%');
+                frame.style.setProperty('--cover-y', cy + '%');
+                frame.style.setProperty('--cover-zoom', cz || '1');
+                frame.classList.toggle('is-empty', !src);
+            });
+            images.forEach(function (img) {
+                if (src) img.src = src;
+                else img.removeAttribute('src');
+            });
+            if (valuePosition) valuePosition.textContent = Math.round(cx) + '%, ' + Math.round(cy) + '%';
+            if (valueZoom) valueZoom.textContent = Number(cz || 1).toFixed(2) + 'x';
+        }
+
+        function setFromDrag(event) {
+            var rect = dragFrame.getBoundingClientRect();
+            var zf = num(zoom, 1);
+            var dx = event.clientX - startPointer.x;
+            var dy = event.clientY - startPointer.y;
+            x.value = String(clamp(startCrop.x - (dx / rect.width) * (100 / zf), 0, 100));
+            y.value = String(clamp(startCrop.y - (dy / rect.height) * (100 / zf), 0, 100));
+            sync();
+        }
+
+        fileInput.addEventListener('change', function () {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                currentSrc = e.target.result;
+                x.value = '50'; y.value = '50'; zoom.value = '1';
+                sync();
+            };
+            reader.readAsDataURL(file);
+        });
+        zoom.addEventListener('input', sync);
+        centerBtn.addEventListener('click', function () {
+            x.value = '50'; y.value = '50'; zoom.value = '1'; sync();
+        });
+        dragFrame.addEventListener('pointerdown', function (event) {
+            if (!currentSrc) return;
+            dragging = true;
+            startPointer = { x: event.clientX, y: event.clientY };
+            startCrop = { x: num(x, 50), y: num(y, 50) };
+            dragFrame.classList.add('is-dragging');
+            try { dragFrame.setPointerCapture(event.pointerId); } catch (e) { }
+        });
+        dragFrame.addEventListener('pointermove', function (event) {
+            if (dragging) setFromDrag(event);
+        });
+        function endDrag() { dragging = false; dragFrame.classList.remove('is-dragging'); }
+        dragFrame.addEventListener('pointerup', endDrag);
+        dragFrame.addEventListener('pointercancel', endDrag);
+        sync();
+    })();
+</script>
 
 <section style="max-width:42rem;margin-top:2rem;border-top:1px solid var(--border);padding-top:1rem">
     <h2>Deactivate account</h2>

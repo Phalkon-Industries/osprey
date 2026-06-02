@@ -136,11 +136,6 @@
             <div class="contributor-fields" data-contributor-row-fields>
                 {% for hidden in cform.hidden_fields %}{{ hidden }}{% endfor %}
                 <span class="delete-field">{{ cform.DELETE }}</span>
-                <div class="contributor-grid">
-                    <label>Display name<br><span data-contributor-display>{{ cform.display_name }}</span></label>
-                    <label>Role<br>{{ cform.role }}</label>
-                </div>
-                <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ cform.affiliation }}</span><span class="muted small">Institution this person was at while working on the project. Each contributor can list their own.</span></label>
                 <div class="contributor-credit" data-contributor-orcid-block>
                     <div class="contributor-orcid-label"><strong>ORCID iD</strong></div>
                     <div data-contributor-orcid-status>
@@ -150,10 +145,15 @@
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry.</span>
+                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry. Saves you typing the name, role hints, and affiliation.</span>
                         </span>
                     </div>
                 </div>
+                <div class="contributor-grid">
+                    <label>Display name<br><span data-contributor-display>{{ cform.display_name }}</span></label>
+                    <label>Role<br>{{ cform.role }}</label>
+                </div>
+                <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ cform.affiliation }}</span><span class="muted small">Institution this person was at while working on the project. Each contributor can list their own.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
                 {% if cform.errors %}
                 <p style="color:#fca5a5;margin:.25rem 0 0">
@@ -178,11 +178,6 @@
             <div class="contributor-fields" data-contributor-row-fields>
                 {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
                 <span class="delete-field">{{ formset.empty_form.DELETE }}</span>
-                <div class="contributor-grid">
-                    <label>Display name<br><span data-contributor-display>{{ formset.empty_form.display_name }}</span></label>
-                    <label>Role<br>{{ formset.empty_form.role }}</label>
-                </div>
-                <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ formset.empty_form.affiliation }}</span><span class="muted small">Institution this person was at while working on the project.</span></label>
                 <div class="contributor-credit" data-contributor-orcid-block>
                     <div class="contributor-orcid-label"><strong>ORCID iD</strong></div>
                     <div data-contributor-orcid-status>
@@ -192,10 +187,15 @@
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry.</span>
+                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry. Saves you typing the name, role hints, and affiliation.</span>
                         </span>
                     </div>
                 </div>
+                <div class="contributor-grid">
+                    <label>Display name<br><span data-contributor-display>{{ formset.empty_form.display_name }}</span></label>
+                    <label>Role<br>{{ formset.empty_form.role }}</label>
+                </div>
+                <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ formset.empty_form.affiliation }}</span><span class="muted small">Institution this person was at while working on the project.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ formset.empty_form.credit_statement }}</label>
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
             </div>

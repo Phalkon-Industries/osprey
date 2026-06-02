@@ -1,44 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Attestations &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+{% block title %}Use reports &middot; {{ project.title }} &middot; OSPREY{% endblock %}
 
 {% block content %}
+<article>
+{% include "projects/_project_hero.html" with current_tab="use-reports" %}
 <section>
-    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
-    <h1>Attestations</h1>
+    <h1 style="margin-top:1rem">Use reports</h1>
     <p class="muted">
-        First-hand accounts from people who used this project. Each one is the author's own words.
-        Maintainers can acknowledge or feature attestations they recognise; they don't approve them.
+        First-hand accounts from people who used this project. Each one is the author's own words. Staff can hide one if it's abusive or off-topic; maintainers don't moderate use reports.
     </p>
-    {% if can_attest %}
-    <p><a class="primary button" href="{% url 'attestations:new' project.slug %}">Add your attestation</a></p>
+    {% if can_post %}
+    <p><a class="primary button" href="{% url 'attestations:new' project.slug %}">Add a use report</a></p>
     {% else %}
-    <p class="muted">Sign in to add an attestation.</p>
+    <p class="muted">Sign in to add a use report.</p>
     {% endif %}
 
-    {% if attestations %}
-    <ul class="attestation-list">
-        {% for att in attestations %}
-        <li class="attestation {% if att.endorsement == 'featured' %}attestation-featured{% endif %}">
+    {% if use_reports %}
+    <ul class="use-report-list">
+        {% for report in use_reports %}
+        <li class="use-report">
             <div>
-                {% if att.endorsement %}<span class="badge endorsement">{{ att.get_endorsement_display }}</span>{% endif %}
-                <strong>{% if att.author %}@{{ att.author.get_username }}{% else %}anonymous{% endif %}</strong>
-                <span class="muted small"> &middot; {{ att.created_at|date:"M j, Y" }}{% if att.used_at %} &middot; {{ att.used_at }}{% endif %}</span>
+                <strong>{% if report.author %}@{{ report.author.get_username }}{% else %}anonymous{% endif %}</strong>
+                <span class="muted small"> &middot; {{ report.created_at|date:"M j, Y" }}{% if report.used_at %} &middot; {{ report.used_at }}{% endif %}</span>
             </div>
-            <p>{{ att.narrative|linebreaksbr }}</p>
-            {% if is_maintainer %}
-            <form method="post" action="{% url 'attestations:moderate' project.slug att.pk %}" class="attestation-mod">
+            <p>{{ report.narrative|linebreaksbr }}</p>
+            {% if request.user.is_staff %}
+            <form method="post" action="{% url 'attestations:moderate' project.slug report.pk %}" class="use-report-mod">
                 {% csrf_token %}
-                <button type="submit" name="action" value="endorse" class="ghost">Acknowledge</button>
-                <button type="submit" name="action" value="feature" class="ghost">Feature</button>
-                {% if att.endorsement %}<button type="submit" name="action" value="unendorse" class="ghost">Clear endorsement</button>{% endif %}
-                <button type="submit" name="action" value="hide" class="ghost">Hide</button>
+                <button type="submit" name="action" value="hide" class="ghost">Hide (staff)</button>
             </form>
             {% endif %}
         </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted">No attestations yet.</p>
+    <p class="muted">No use reports yet.</p>
     {% endif %}
 </section>
+</article>
 {% endblock %}

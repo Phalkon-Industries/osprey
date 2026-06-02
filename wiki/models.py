@@ -84,6 +84,17 @@ class WikiRevision(models.Model):
     )
     title = models.CharField(max_length=200)
     body = models.TextField(blank=True, default="")
+    base_title = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Page title at the moment this revision was started.",
+    )
+    base_body = models.TextField(
+        blank=True,
+        default="",
+        help_text="Page body at the moment this revision was started.",
+    )
     summary = models.CharField(
         max_length=200,
         blank=True,

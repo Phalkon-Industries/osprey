@@ -14,6 +14,11 @@ urlpatterns = [
         name="mark_answer",
     ),
     path(
+        "<slug:slug>/discussion/<int:thread_id>/accept/",
+        views.accept_answer,
+        name="accept_answer",
+    ),
+    path(
         "<slug:slug>/discussion/<int:thread_id>/close/",
         views.close_thread,
         name="close",

@@ -4,49 +4,49 @@
 
 {% block content %}
 <article>
-    <p class="muted small">
-        <a href="{{ project.get_absolute_url }}">&larr; Back to {{ project.title }}</a>
-    </p>
-    <h1>{{ project.title }} — versions</h1>
-    {% if zenodo_deposit and zenodo_deposit.concept_doi %}
-    <p>
-        <strong>Project DOI</strong>:
-        <a href="https://doi.org/{{ zenodo_deposit.concept_doi }}" rel="noopener"><code>{{ zenodo_deposit.concept_doi }}</code></a>
-        — always points at the latest version.
-    </p>
-    {% endif %}
+    {% include "projects/_project_hero.html" with current_tab="versions" %}
+    <section>
+        <h1 style="margin-top:1rem">Versions</h1>
+        {% if zenodo_deposit and zenodo_deposit.concept_doi %}
+        <p>
+            <strong>Project DOI</strong>:
+            <a href="https://doi.org/{{ zenodo_deposit.concept_doi }}" rel="noopener"><code>{{ zenodo_deposit.concept_doi }}</code></a>
+            — always points at the latest version.
+        </p>
+        {% endif %}
 
-    {% if versions %}
-    <ol class="version-list" reversed>
-        {% for v in versions %}
-        <li class="version-entry">
-            <h2>
-                v{{ v.version_index }}
-                <span class="muted small">&middot; {{ v.published_at|date:"Y-m-d" }}</span>
-            </h2>
-            <p class="muted small">
-                {% if v.doi %}
-                DOI: <a href="https://doi.org/{{ v.doi }}" rel="noopener"><code>{{ v.doi }}</code></a>
+        {% if versions %}
+        <ol class="version-list" reversed>
+            {% for v in versions %}
+            <li class="version-entry">
+                <h2>
+                    v{{ v.version_index }}
+                    <span class="muted small">&middot; {{ v.published_at|date:"Y-m-d" }}</span>
+                </h2>
+                <p class="muted small">
+                    {% if v.doi %}
+                    DOI: <a href="https://doi.org/{{ v.doi }}" rel="noopener"><code>{{ v.doi }}</code></a>
+                    {% endif %}
+                    {% if v.external_url %}&middot; <a href="{{ v.external_url }}" rel="noopener">Open Zenodo record</a>{% endif %}
+                    {% if v.repo_link %}&middot; <a href="{{ v.repo_link }}" rel="noopener">Repository link</a>{% endif %}
+                </p>
+                {% if v.changelog %}
+                <div class="version-changelog">{{ v.changelog|markdown }}</div>
+                {% else %}
+                <p class="muted small"><em>No changelog recorded.</em></p>
                 {% endif %}
-                {% if v.external_url %}&middot; <a href="{{ v.external_url }}" rel="noopener">Open Zenodo record</a>{% endif %}
-                {% if v.repo_link %}&middot; <a href="{{ v.repo_link }}" rel="noopener">Repository link</a>{% endif %}
-            </p>
-            {% if v.changelog %}
-            <div class="version-changelog">{{ v.changelog|markdown }}</div>
-            {% else %}
-            <p class="muted small"><em>No changelog recorded.</em></p>
-            {% endif %}
-        </li>
-        {% endfor %}
-    </ol>
-    {% else %}
-    <p class="muted">No versions have been published yet.</p>
-    {% if can_edit %}
-    <p>
-        Once you have synced and published the project to Zenodo, future
-        versions will appear here.
-    </p>
-    {% endif %}
-    {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="muted">No versions have been published yet.</p>
+        {% if can_edit %}
+        <p>
+            Once you have synced and published the project to Zenodo, future
+            versions will appear here.
+        </p>
+        {% endif %}
+        {% endif %}
+    </section>
 </article>
 {% endblock %}

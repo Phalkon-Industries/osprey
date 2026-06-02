@@ -15,14 +15,14 @@ class Notification(models.Model):
 
     KIND_FEEDBACK_REPLY = "feedback_reply"
     KIND_PROJECT_COMMENT = "project_comment"
-    KIND_ATTESTATION = "attestation"
+    KIND_USE_REPORT = "use_report"
     KIND_WIKI_SUGGESTION = "wiki_suggestion"
     KIND_GENERIC = "generic"
 
     KIND_CHOICES = [
         (KIND_FEEDBACK_REPLY, "Feedback reply"),
         (KIND_PROJECT_COMMENT, "Project comment"),
-        (KIND_ATTESTATION, "Project attestation"),
+        (KIND_USE_REPORT, "Project use report"),
         (KIND_WIKI_SUGGESTION, "Wiki suggestion"),
         (KIND_GENERIC, "General"),
     ]

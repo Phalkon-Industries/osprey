@@ -2,9 +2,10 @@
 {% block title %}Lineage &middot; {{ project.title }} &middot; OSPREY{% endblock %}
 
 {% block content %}
+<article>
+{% include "projects/_project_hero.html" with current_tab="lineage" %}
 <section>
-    <p class="muted small"><a href="{% url 'projects:detail' project.slug %}">&larr; {{ project.title }}</a></p>
-    <h1>Lineage</h1>
+    <h1 style="margin-top:1rem">Lineage</h1>
     <p class="muted">
         How this project relates to others. Derivatives are projects built on
         top of this one. New versions are successor releases.
@@ -44,12 +45,69 @@
 
     <h2>Diagram</h2>
     {% if parents or children %}
-    <pre class="lineage-graph">
-{% for edge in parents %}{{ edge.parent.title }}  --[{{ edge.get_relation_display }}]-->  {{ project.title }}
-{% endfor %}{% for edge in children %}{{ project.title }}  --[{{ edge.get_relation_display }}]-->  {{ edge.child.title }}
-{% endfor %}</pre>
+    {% with parent_count=parents|length child_count=children|length %}
+    <div class="lineage-graph" data-lineage-graph>
+        <svg viewBox="0 0 800 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lineage diagram">
+            <defs>
+                <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                    <path d="M0,0 L8,4 L0,8 Z" fill="var(--fg-muted)"></path>
+                </marker>
+            </defs>
+            {% for edge in parents %}
+            {% with cx=forloop.counter0|add:1 %}
+            <g class="lineage-edge">
+                <line x1="400" y1="160" x2="{% widthratio cx parent_count|add:1 800 %}" y2="82" stroke="var(--fg-muted)" stroke-width="1.5" marker-end="url(#arrowhead)"></line>
+                <text x="{% widthratio cx parent_count|add:1 800 %}" y="115" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}</text>
+            </g>
+            {% endwith %}
+            {% endfor %}
+            {% for edge in parents %}
+            {% with cx=forloop.counter0|add:1 %}
+            <a href="{{ edge.parent.get_absolute_url }}" class="lineage-node-link">
+                <g class="lineage-node">
+                    <title>{{ edge.parent.title }}{% if edge.parent.summary %} — {{ edge.parent.summary|truncatechars:120 }}{% endif %}</title>
+                    <rect x="{% widthratio cx parent_count|add:1 800 %}" y="20" width="160" height="60" rx="8" transform="translate(-80, 0)" fill="var(--bg-elev)" stroke="var(--border)"></rect>
+                    <text x="{% widthratio cx parent_count|add:1 800 %}" y="45" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">{{ edge.parent.title|truncatechars:24 }}</text>
+                    <text x="{% widthratio cx parent_count|add:1 800 %}" y="65" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.parent.field|default:""|truncatechars:28 }}</text>
+                </g>
+            </a>
+            {% endwith %}
+            {% endfor %}
+
+            <g class="lineage-node lineage-node-current">
+                <title>{{ project.title }}{% if project.summary %} — {{ project.summary|truncatechars:120 }}{% endif %}</title>
+                <rect x="320" y="160" width="160" height="60" rx="8" fill="var(--accent)" fill-opacity="0.18" stroke="var(--accent)" stroke-width="1.5"></rect>
+                <text x="400" y="185" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)">{{ project.title|truncatechars:24 }}</text>
+                <text x="400" y="205" text-anchor="middle" font-size="11" fill="var(--fg-muted)">this project</text>
+            </g>
+
+            {% for edge in children %}
+            {% with cx=forloop.counter0|add:1 %}
+            <g class="lineage-edge">
+                <line x1="{% widthratio cx child_count|add:1 800 %}" y1="290" x2="400" y2="222" stroke="var(--fg-muted)" stroke-width="1.5" marker-end="url(#arrowhead)"></line>
+                <text x="{% widthratio cx child_count|add:1 800 %}" y="260" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}</text>
+            </g>
+            {% endwith %}
+            {% endfor %}
+            {% for edge in children %}
+            {% with cx=forloop.counter0|add:1 %}
+            <a href="{{ edge.child.get_absolute_url }}" class="lineage-node-link">
+                <g class="lineage-node">
+                    <title>{{ edge.child.title }}{% if edge.child.summary %} — {{ edge.child.summary|truncatechars:120 }}{% endif %}</title>
+                    <rect x="{% widthratio cx child_count|add:1 800 %}" y="290" width="160" height="60" rx="8" transform="translate(-80, 0)" fill="var(--bg-elev)" stroke="var(--border)"></rect>
+                    <text x="{% widthratio cx child_count|add:1 800 %}" y="315" text-anchor="middle" font-size="13" font-weight="600" fill="var(--fg)">{{ edge.child.title|truncatechars:24 }}</text>
+                    <text x="{% widthratio cx child_count|add:1 800 %}" y="335" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.child.field|default:""|truncatechars:28 }}</text>
+                </g>
+            </a>
+            {% endwith %}
+            {% endfor %}
+        </svg>
+        <p class="muted small">Hover a node for a summary; click to open that project.</p>
+    </div>
+    {% endwith %}
     {% else %}
     <p class="muted">Diagram will appear once lineage edges are added.</p>
     {% endif %}
 </section>
+</article>
 {% endblock %}

@@ -10,23 +10,51 @@
     </p>
     <h1>Pending wiki suggestions</h1>
     {% if pending %}
-    {% for rev in pending %}
+    {% for item in pending %}
+    {% with rev=item.rev %}
     <article class="wiki-revision">
         <h2><a href="{% url 'wiki:detail' project.slug rev.page.slug %}">{{ rev.title }}</a></h2>
         <p class="muted small">
             From @{{ rev.author.get_username }} on {{ rev.created_at|date:"M j, Y H:i" }}
+            {% if item.is_new_page %}&middot; <strong>new page</strong>{% endif %}
             {% if rev.summary %}&middot; {{ rev.summary }}{% endif %}
         </p>
+        {% if item.has_conflict %}
+        <p class="warn small">
+            <strong>Conflict.</strong> Part of this suggestion overlaps with an edit that already landed on this page since the suggestion was made. The conflicting lines were skipped in the merge below; review the text in the box before applying, or reject and ask the contributor to rebase.
+        </p>
+        {% elif not item.is_rebased and not item.is_new_page %}
+        <p class="muted small">Note: the page changed since this suggestion was written. The merge below applies the suggester's change on top of the current page.</p>
+        {% endif %}
+        <details open>
+            <summary>Suggested change ({% if item.is_new_page %}new page{% else %}before &rarr; after{% endif %})</summary>
+            <pre class="wiki-diff">{% for line in item.diff_lines %}{% if line|slice:":1" == "+" and line|slice:":3" != "+++" %}<span class="diff-add">{{ line }}</span>
+{% elif line|slice:":1" == "-" and line|slice:":3" != "---" %}<span class="diff-remove">{{ line }}</span>
+{% else %}{{ line }}
+{% endif %}{% endfor %}</pre>
+        </details>
         <details>
-            <summary>Show proposed body</summary>
+            <summary>Show proposed body in full</summary>
             {{ rev.body|markdown }}
         </details>
         <form method="post" action="{% url 'wiki:review_action' project.slug rev.pk %}" style="margin-top:.5rem">
             {% csrf_token %}
+            <p>
+                <label><strong>Edit before applying (optional)</strong><br>
+                    <span class="muted small">The textarea is pre-filled with the merged result. Adjust if you want to tweak wording.</span><br>
+                    <input type="text" name="edited_title" value="{{ item.merged_title }}" style="width:100%">
+                </label>
+            </p>
+            <p>
+                <label>
+                    <textarea name="edited_body" rows="14" style="width:100%">{{ item.merged_body }}</textarea>
+                </label>
+            </p>
             <button type="submit" name="action" value="apply" class="primary">Apply</button>
             <button type="submit" name="action" value="reject" class="ghost">Reject</button>
         </form>
     </article>
+    {% endwith %}
     {% endfor %}
     {% else %}
     <p class="muted">No pending suggestions.</p>
