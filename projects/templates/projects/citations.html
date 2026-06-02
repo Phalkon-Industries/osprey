@@ -9,7 +9,7 @@
     <p class="muted">
         Works that reference this project. Maintainers can add citations directly.
         Anyone signed in can submit a citation through an
-        <a href="{% url 'attestations:new' project.slug %}">use report</a>;
+        <a href="{% url 'use_reports:new' project.slug %}">use report</a>;
         those are listed under <em>User-submitted</em>.
     </p>
 
@@ -41,7 +41,7 @@
         {% for c in use_report_citations %}
         <li>
             {{ c.text }}
-            <br><span class="muted small">from a <a href="{% url 'attestations:index' project.slug %}">use report</a>{% if c.submitted_by %} by @{{ c.submitted_by.get_username }}{% endif %}</span>
+            <br><span class="muted small">from a <a href="{% url 'use_reports:index' project.slug %}">use report</a>{% if c.submitted_by %} by @{{ c.submitted_by.get_username }}{% endif %}</span>
         </li>
         {% endfor %}
     </ul>

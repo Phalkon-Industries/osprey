@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "feedback",
     "notifications",
     "wiki",
-    "attestations",
+    "use_reports",
     "conversations",
 ]
 

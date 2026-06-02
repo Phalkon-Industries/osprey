@@ -28,7 +28,7 @@ def index(request, slug):
     qs = project.use_reports.filter(visibility=UseReport.VIS_PUBLIC)
     return render(
         request,
-        "attestations/index.html",
+        "use_reports/index.html",
         {
             "project": project,
             "use_reports": qs,
@@ -72,17 +72,17 @@ def new(request, slug):
                     kind="use_report",
                     title=f"New use report on {project.title}",
                     body=f"@{request.user.get_username()} shared how they used your project.",
-                    url=reverse("attestations:index", args=[project.slug]),
+                    url=reverse("use_reports:index", args=[project.slug]),
                     project_slug=project.slug,
                     use_report_id=report.pk,
                 )
             messages.success(request, "Thanks for sharing how you used this project.")
-            return redirect("attestations:index", slug=project.slug)
+            return redirect("use_reports:index", slug=project.slug)
     else:
         form = UseReportForm()
     return render(
         request,
-        "attestations/new.html",
+        "use_reports/new.html",
         {"project": project, "form": form},
     )
 
@@ -104,6 +104,6 @@ def moderate(request, slug, use_report_id):
     elif action == "show":
         report.visibility = UseReport.VIS_PUBLIC
     else:
-        return redirect("attestations:index", slug=project.slug)
+        return redirect("use_reports:index", slug=project.slug)
     report.save()
-    return redirect("attestations:index", slug=project.slug)
+    return redirect("use_reports:index", slug=project.slug)

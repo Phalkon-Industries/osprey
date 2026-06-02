@@ -33,7 +33,7 @@ class UseReportTests(TestCase):
             visibility=UseReport.VIS_HIDDEN,
         )
         response = self.client.get(
-            reverse("attestations:index", args=[self.project.slug])
+            reverse("use_reports:index", args=[self.project.slug])
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "visible")
@@ -42,7 +42,7 @@ class UseReportTests(TestCase):
     def test_signed_in_user_can_post_use_report(self):
         self.client.force_login(self.user)
         response = self.client.post(
-            reverse("attestations:new", args=[self.project.slug]),
+            reverse("use_reports:new", args=[self.project.slug]),
             {"narrative": "I used this on a cruise.", "used_at": "2024"},
         )
         self.assertEqual(response.status_code, 302)
@@ -57,7 +57,7 @@ class UseReportTests(TestCase):
         )
         self.client.force_login(self.owner)
         response = self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
+            reverse("use_reports:moderate", args=[self.project.slug, report.pk]),
             {"action": "hide"},
         )
         self.assertEqual(response.status_code, 403)
@@ -74,7 +74,7 @@ class UseReportTests(TestCase):
         )
         self.client.force_login(staff)
         self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
+            reverse("use_reports:moderate", args=[self.project.slug, report.pk]),
             {"action": "hide"},
         )
         report.refresh_from_db()
@@ -86,14 +86,14 @@ class UseReportTests(TestCase):
         )
         self.client.force_login(self.user)
         response = self.client.post(
-            reverse("attestations:moderate", args=[self.project.slug, report.pk]),
+            reverse("use_reports:moderate", args=[self.project.slug, report.pk]),
             {"action": "hide"},
         )
         self.assertEqual(response.status_code, 403)
 
     def test_anonymous_cannot_post(self):
         response = self.client.post(
-            reverse("attestations:new", args=[self.project.slug]),
+            reverse("use_reports:new", args=[self.project.slug]),
             {"narrative": "anon"},
         )
         self.assertEqual(response.status_code, 302)

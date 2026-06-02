@@ -28,7 +28,7 @@ urlpatterns = [
     path("projects/", include(("wiki.urls", "wiki"), namespace="wiki")),
     path(
         "projects/",
-        include(("attestations.urls", "attestations"), namespace="attestations"),
+        include(("use_reports.urls", "use_reports"), namespace="use_reports"),
     ),
     path(
         "projects/",

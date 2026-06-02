@@ -10,7 +10,7 @@
         First-hand accounts from people who used this project. Each one is the author's own words. Staff can hide one if it's abusive or off-topic; maintainers don't moderate use reports.
     </p>
     {% if can_post %}
-    <p><a class="primary button" href="{% url 'attestations:new' project.slug %}">Add a use report</a></p>
+    <p><a class="primary button" href="{% url 'use_reports:new' project.slug %}">Add a use report</a></p>
     {% else %}
     <p class="muted">Sign in to add a use report.</p>
     {% endif %}
@@ -25,7 +25,7 @@
             </div>
             <p>{{ report.narrative|linebreaksbr }}</p>
             {% if request.user.is_staff %}
-            <form method="post" action="{% url 'attestations:moderate' project.slug report.pk %}" class="use-report-mod">
+            <form method="post" action="{% url 'use_reports:moderate' project.slug report.pk %}" class="use-report-mod">
                 {% csrf_token %}
                 <button type="submit" name="action" value="hide" class="ghost">Hide (staff)</button>
             </form>

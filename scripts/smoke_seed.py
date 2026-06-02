@@ -24,7 +24,7 @@ from projects.models import (
     Tag,
     TagAssignment,
 )
-from attestations.models import UseReport
+from use_reports.models import UseReport
 from wiki.models import WikiPage, WikiRevision
 
 # Clean up the old two-project shape (whoi-pump-v1 + whoi-pump-v2 as siblings)
@@ -607,12 +607,8 @@ TagAssignment.objects.get_or_create(project=firmware_fork, tag=tag_pump)
 # --- Lineage edges -------------------------------------------------------------
 
 LineageEdge.objects.get_or_create(parent=pump, child=deriv, relation="derived_from")
-LineageEdge.objects.get_or_create(
-    parent=pump_mark_i, child=pump, relation="replaces"
-)
-LineageEdge.objects.get_or_create(
-    parent=osh_pump, child=pump, relation="inspired_by"
-)
+LineageEdge.objects.get_or_create(parent=pump_mark_i, child=pump, relation="replaces")
+LineageEdge.objects.get_or_create(parent=osh_pump, child=pump, relation="inspired_by")
 LineageEdge.objects.get_or_create(
     parent=pump, child=firmware_fork, relation="forked_from"
 )

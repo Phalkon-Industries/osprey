@@ -8,25 +8,45 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('attestations', '0001_initial'),
-        ('projects', '0022_alter_project_wiki_requires_approval'),
+        ("use_reports", "0001_initial"),
+        ("projects", "0022_alter_project_wiki_requires_approval"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='citation',
-            name='attestation',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='citations', to='attestations.attestation'),
+            model_name="citation",
+            name="attestation",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="citations",
+                to="use_reports.attestation",
+            ),
         ),
         migrations.AddField(
-            model_name='citation',
-            name='source',
-            field=models.CharField(choices=[('maintainer', 'Maintainer-added'), ('user', 'User-submitted'), ('attestation', 'From attestation')], default='maintainer', max_length=20),
+            model_name="citation",
+            name="source",
+            field=models.CharField(
+                choices=[
+                    ("maintainer", "Maintainer-added"),
+                    ("user", "User-submitted"),
+                    ("attestation", "From attestation"),
+                ],
+                default="maintainer",
+                max_length=20,
+            ),
         ),
         migrations.AddField(
-            model_name='citation',
-            name='submitted_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='submitted_citations', to=settings.AUTH_USER_MODEL),
+            model_name="citation",
+            name="submitted_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="submitted_citations",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

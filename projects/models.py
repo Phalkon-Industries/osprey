@@ -739,7 +739,7 @@ class Citation(models.Model):
         related_name="submitted_citations",
     )
     use_report = models.ForeignKey(
-        "attestations.UseReport",
+        "use_reports.UseReport",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

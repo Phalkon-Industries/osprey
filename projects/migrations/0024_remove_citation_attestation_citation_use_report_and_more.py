@@ -7,23 +7,37 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('attestations', '0002_remove_attestation_author_and_more'),
-        ('projects', '0023_citation_attestation_citation_source_and_more'),
+        ("use_reports", "0002_remove_attestation_author_and_more"),
+        ("projects", "0023_citation_attestation_citation_source_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='citation',
-            name='attestation',
+            model_name="citation",
+            name="attestation",
         ),
         migrations.AddField(
-            model_name='citation',
-            name='use_report',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='citations', to='attestations.usereport'),
+            model_name="citation",
+            name="use_report",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="citations",
+                to="use_reports.usereport",
+            ),
         ),
         migrations.AlterField(
-            model_name='citation',
-            name='source',
-            field=models.CharField(choices=[('maintainer', 'Maintainer-added'), ('user', 'User-submitted'), ('use_report', 'From use report')], default='maintainer', max_length=20),
+            model_name="citation",
+            name="source",
+            field=models.CharField(
+                choices=[
+                    ("maintainer", "Maintainer-added"),
+                    ("user", "User-submitted"),
+                    ("use_report", "From use report"),
+                ],
+                default="maintainer",
+                max_length=20,
+            ),
         ),
     ]
