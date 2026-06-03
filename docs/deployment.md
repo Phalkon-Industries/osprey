@@ -134,7 +134,7 @@ ORCID and Zenodo values:
 ```bash
 ~/osprey/scripts/new_env.sh prod | sudo -u osprey tee /etc/osprey/.env.prod > /dev/null
 sudo chmod 640 /etc/osprey/.env.prod
-sudoedit /etc/osprey/.env.prod   # fill in ORCID + Zenodo placeholders
+sudo nano /etc/osprey/.env.prod   # fill in ORCID + Zenodo placeholders
 ```
 
 The template covers:
@@ -156,7 +156,7 @@ For a sandbox stack on the same VPS:
 ```bash
 ~/osprey/scripts/new_env.sh sandbox | sudo -u osprey tee /etc/osprey/.env.sandbox > /dev/null
 sudo chmod 640 /etc/osprey/.env.sandbox
-sudoedit /etc/osprey/.env.sandbox
+sudo nano /etc/osprey/.env.sandbox
 ```
 
 The helper regenerates a different `DJANGO_SECRET_KEY` and
