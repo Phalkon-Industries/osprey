@@ -32,8 +32,16 @@ cd /home/osprey/osprey
 
 git fetch --tags --prune origin
 if [[ -n "$REF" ]]; then
-    echo "Deploying $STACK ref: $REF"
-    git checkout --detach "$REF"
+    # Resolve the ref. Prefer the remote-tracking branch (origin/<ref>) so a
+    # stale local branch can't silently roll the working tree back, but fall
+    # through to the bare ref for tags and explicit SHAs.
+    if git rev-parse --verify --quiet "refs/remotes/origin/$REF" >/dev/null; then
+        RESOLVED="origin/$REF"
+    else
+        RESOLVED="$REF"
+    fi
+    echo "Deploying $STACK ref: $REF (resolved to $RESOLVED)"
+    git checkout --detach "$RESOLVED"
 else
     echo "Deploying $STACK tip of current branch"
     git pull --ff-only
