@@ -219,6 +219,66 @@ later you'll pin prod to a tag (see [Routine deploys](#routine-deploys)).
 That's a full server. If it worked you should be able to hit the public
 hostname in a browser and get a working OSPREY.
 
+### 7. Grant yourself admin access
+
+OSPREY doesn't ship with a baked-in superuser. After your first ORCID sign-in
+on the live site, promote your account:
+
+```bash
+./scripts/manage.sh prod promote jonathanapfeifer --superuser
+```
+
+Then `/admin/` works. Use `--demote` to revoke, or omit `--superuser` to
+grant plain staff (queue and moderation tools, but not the Django admin's
+full power). The command takes a username with or without the leading `@`.
+
+`scripts/manage.sh` is a thin wrapper around `docker compose exec ... python
+manage.py`. It handles the project name, env file, override file, container
+user, and the `sg docker` wrapper, so you don't have to. Same shape for any
+management command:
+
+```bash
+./scripts/manage.sh prod shell
+./scripts/manage.sh sandbox migrate
+./scripts/manage.sh prod createsuperuser
+```
+
+### Alternative: a dedicated superuser
+
+If you'd rather not couple admin access to your own ORCID account, or you
+want a rescue account in case your ORCID is ever locked out,
+create a local-auth superuser:
+
+```bash
+./scripts/manage.sh prod createsuperuser
+```
+
+This is Django's built-in command. It walks you through prompts in your
+terminal:
+
+```text
+Username: osprey-admin
+Email address: jonathan+osprey-admin@example.com
+Password: ********
+Password (again): ********
+Superuser created successfully.
+```
+
+Pick a username that won't collide with a real `@` tag (e.g. `osprey-admin`,
+`break-glass`). Email is optional but useful for the password-reset flow.
+The password is hashed and stored in the same `auth_user` table as ORCID
+accounts; only difference is this row has a usable password and no linked
+ORCID social account.
+
+Sign in at `/admin/login/` (the Django admin's username/password form). The
+main site's `/accounts/orcid/login/` button still goes to ORCID; this rescue
+account doesn't show up there because it isn't ORCID-backed.
+
+Keep the password in a password manager and don't use the account for
+day-to-day work — it has no ORCID iD attached, so anything it does has no
+verified author behind it. Promoting your real ORCID account is the default;
+a `createsuperuser` account is for rescue and shared-team scenarios.
+
 ## Running prod and sandbox side by side
 
 One repo checkout, two stacks. `host_setup.sh` already made both directory
