@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Report #{{ report.pk }} - OSPREY{% endblock %}
+{% block content %}
+<section class="narrow">
+    <h1>Report #{{ report.pk }}</h1>
+    <dl>
+        <dt>Status</dt><dd>{{ report.get_status_display }}</dd>
+        <dt>Category</dt><dd>{{ report.get_category_display }}</dd>
+        <dt>Filed</dt><dd>{{ report.created_at|date:"Y-m-d H:i" }}{% if report.reporter %} by @{{ report.reporter.get_username }}{% endif %}</dd>
+        <dt>Target</dt><dd>{{ report.target_repr|default:"(deleted)" }} <span class="muted small">({{ report.target_ct.app_label }}.{{ report.target_ct.model }} #{{ report.target_id }})</span></dd>
+        {% if report.context_url %}<dt>Context</dt><dd><a href="{{ report.context_url }}">{{ report.context_url }}</a></dd>{% endif %}
+        <dt>Reason</dt><dd>{{ report.reason|default:"(none)"|linebreaksbr }}</dd>
+        {% if report.review_note %}<dt>Review note</dt><dd>{{ report.review_note|linebreaksbr }}</dd>{% endif %}
+    </dl>
+
+    {% if target %}
+    <h2>Quick actions on target</h2>
+    <ul>
+        {% if report.target_ct.app_label == "projects" and report.target_ct.model == "project" %}
+        <li>
+            <form method="post" action="{% url 'moderation:project_hide' target.pk %}" style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'moderation:report_detail' report.pk %}">
+                <input type="text" name="reason" placeholder="Reason (optional)" maxlength="300">
+                <button type="submit">Staff-hide project</button>
+            </form>
+            {% if target.is_staff_hidden %}<span class="muted">(currently hidden)</span>{% endif %}
+        </li>
+        <li>
+            <form method="post" action="{% url 'moderation:project_unhide' target.pk %}" style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'moderation:report_detail' report.pk %}">
+                <button type="submit" class="ghost">Restore</button>
+            </form>
+        </li>
+        {% if target.created_by %}
+        <li>
+            <a href="{% url 'moderation:user_suspend' target.created_by.pk %}">Suspend submitter @{{ target.created_by.get_username }}</a>
+        </li>
+        {% endif %}
+        {% endif %}
+        {% if report.target_ct.app_label == "auth" and report.target_ct.model == "user" %}
+        <li><a href="{% url 'moderation:user_suspend' target.pk %}">Suspend @{{ target.get_username }}</a></li>
+        <li><a href="{% url 'moderation:user_purge' target.pk %}">Purge content</a></li>
+        {% endif %}
+    </ul>
+    {% endif %}
+
+    <h2>Resolve report</h2>
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <label>Review note (optional)</label>
+            <textarea name="review_note" rows="3" cols="60"></textarea>
+        </p>
+        <p>
+            <button type="submit" name="action" value="action">Mark actioned</button>
+            <button type="submit" name="action" value="dismiss" class="ghost">Dismiss</button>
+            <a href="{% url 'moderation:queue' %}" class="ghost">Back to queue</a>
+        </p>
+    </form>
+</section>
+{% endblock %}

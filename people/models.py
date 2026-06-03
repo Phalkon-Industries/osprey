@@ -59,6 +59,15 @@ class Profile(models.Model):
         default=False,
         help_text="Whether the user's local @ tag has been finalized.",
     )
+    suspended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp the account was suspended by staff. The auth.User.is_active flag is the gate.",
+    )
+    suspended_reason = models.TextField(
+        blank=True,
+        help_text="Staff-only note explaining why this account is suspended.",
+    )
 
     def __str__(self) -> str:
         return self.display_name or self.user.get_username()

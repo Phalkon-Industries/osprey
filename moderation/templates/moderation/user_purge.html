@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Purge content for @{{ target_user.get_username }} - OSPREY{% endblock %}
+{% block content %}
+<section class="narrow">
+    <h1>Purge content for @{{ target_user.get_username }}</h1>
+    <p class="warning">
+        This is irreversible. It will delete:
+    </p>
+    <ul>
+        <li>Projects where this user is the sole verified contributor (and the project creator).</li>
+        <li>Their Contribution rows on shared projects (the project itself is kept).</li>
+        <li>All wiki revisions they authored.</li>
+        <li>All use reports they filed.</li>
+        <li>All conversation threads and replies they authored.</li>
+        <li>All feedback submissions they made.</li>
+        <li>All reports they filed.</li>
+    </ul>
+    <p>The user account itself is left in place. Suspend it separately if you want them locked out.</p>
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <label>Reason (recorded in audit log)</label>
+            <textarea name="reason" rows="3" cols="60" required></textarea>
+        </p>
+        <p>
+            <label>Type <code>{{ target_user.get_username }}</code> to confirm</label>
+            <input type="text" name="confirm" autocomplete="off" required>
+        </p>
+        <p>
+            <button type="submit">Purge content</button>
+            <a href="{% url 'moderation:queue' %}" class="ghost">Cancel</a>
+        </p>
+    </form>
+</section>
+{% endblock %}

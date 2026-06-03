@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -8,6 +9,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from allauth.socialaccount.models import SocialAccount
+from django_ratelimit.decorators import ratelimit
 
 from .forms import (
     FIELD_SUGGESTIONS,
@@ -93,6 +95,7 @@ def _visible_projects_for(user):
     qs = Project.objects.prefetch_related("tags", "images", "contributions__user")
     if user.is_authenticated and user.is_staff:
         return qs
+    qs = qs.filter(is_staff_hidden=False)
     public_q = Q(visibility=Project.VISIBILITY_PUBLIC)
     if user.is_authenticated:
         return qs.filter(
@@ -377,6 +380,9 @@ def _attach_verified_submitter(project: Project, user, orcid_id: str) -> None:
 
 
 @login_required
+@ratelimit(
+    key="user", rate=settings.RATELIMIT_PROJECT_CREATE, method="POST", block=True
+)
 def project_new(request):
     if request.method == "POST":
         action = request.POST.get("action", "draft")
@@ -412,7 +418,10 @@ def project_new(request):
                         f"Project published on {zenodo_mode_label()}.",
                     )
             else:
-                messages.success(request, f"Draft saved as “{project.title}.” You can find it on your profile page under Your projects.")
+                messages.success(
+                    request,
+                    f"Draft saved as “{project.title}.” You can find it on your profile page under Your projects.",
+                )
             return redirect(project.get_absolute_url())
     else:
         form = ProjectForm()

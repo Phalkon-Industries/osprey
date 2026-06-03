@@ -56,6 +56,7 @@
             {% if user.is_staff %}
             <span class="staff-links" aria-label="Admin links">
                 <a href="{% url 'core:staff_dashboard' %}">Admin dashboard</a>
+                <a href="{% url 'moderation:queue' %}">Moderation</a>
                 <a href="{% url 'feedback:review' %}">Feedback</a>
                 <a href="{% url 'admin:index' %}">Database admin</a>
             </span>

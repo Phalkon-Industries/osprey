@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import models
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django_ratelimit.decorators import ratelimit
 
 from feedback.models import Feedback
 from people.models import Profile
@@ -27,6 +28,7 @@ def about(request):
     return render(request, "core/about.html")
 
 
+@ratelimit(key="ip", rate=settings.RATELIMIT_LOGIN_PER_IP, block=True)
 def login(request):
     if request.user.is_authenticated:
         return redirect("home")

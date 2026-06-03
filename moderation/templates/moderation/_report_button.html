@@ -1,0 +1,4 @@
+{# Usage: {% include "moderation/_report_button.html" with app_label="projects" model="project" target_id=project.pk %} #}
+{% if user.is_authenticated %}
+<a class="report-link" href="{% url 'moderation:report_new' app_label model target_id %}?next={{ request.path|urlencode }}" title="Report this content to OSPREY staff">Report</a>
+{% endif %}

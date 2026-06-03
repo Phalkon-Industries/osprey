@@ -46,6 +46,10 @@ urlpatterns = [
     ),
     path("feedback/", include("feedback.urls")),
     path(
+        "moderation/",
+        include(("moderation.urls", "moderation"), namespace="moderation"),
+    ),
+    path(
         "inbox/",
         include(("notifications.urls", "notifications"), namespace="notifications"),
     ),

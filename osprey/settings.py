@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "wiki",
     "use_reports",
     "conversations",
+    "moderation",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,28 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 OSPREY_IS_SANDBOX = _env_bool("OSPREY_IS_SANDBOX", default=False)
+
+# ORCID verified-domain sign-in gate. When ORCID_REQUIRE_VERIFIED_DOMAIN is
+# true, new ORCID sign-ins are only allowed if the ORCID record exposes at
+# least one verified institutional email domain via the public API, or if
+# the ORCID iD is on ORCID_SIGNIN_ALLOWLIST.
+ORCID_REQUIRE_VERIFIED_DOMAIN = _env_bool(
+    "ORCID_REQUIRE_VERIFIED_DOMAIN", default=False
+)
+ORCID_SIGNIN_ALLOWLIST = [
+    o.strip()
+    for o in os.environ.get("ORCID_SIGNIN_ALLOWLIST", "").split(",")
+    if o.strip()
+]
+
+# Rate limits for write endpoints. Per-user unless noted. Setting the env
+# var to an empty string disables the limit (useful for tests).
+RATELIMIT_ENABLE = _env_bool("RATELIMIT_ENABLE", default=False)
+RATELIMIT_PROJECT_CREATE = os.environ.get("RATELIMIT_PROJECT_CREATE", "5/h")
+RATELIMIT_WIKI_EDIT = os.environ.get("RATELIMIT_WIKI_EDIT", "30/h")
+RATELIMIT_CONVERSATION_POST = os.environ.get("RATELIMIT_CONVERSATION_POST", "20/h")
+RATELIMIT_REPORT_SUBMIT = os.environ.get("RATELIMIT_REPORT_SUBMIT", "10/h")
+RATELIMIT_LOGIN_PER_IP = os.environ.get("RATELIMIT_LOGIN_PER_IP", "20/h")
 
 ZENODO_USE_SANDBOX = _env_bool("ZENODO_USE_SANDBOX", default=True)
 ZENODO_ACCESS_TOKEN = os.environ.get("ZENODO_ACCESS_TOKEN", "")

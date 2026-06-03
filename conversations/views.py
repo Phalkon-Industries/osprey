@@ -1,9 +1,11 @@
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db.models import Exists, OuterRef
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from projects.models import Project
 
@@ -42,6 +44,9 @@ def thread_index(request, slug: str):
 
 
 @login_required
+@ratelimit(
+    key="user", rate=settings.RATELIMIT_CONVERSATION_POST, method="POST", block=True
+)
 def thread_new(request, slug: str):
     project = _get_project(request, slug)
     if request.method == "POST":
@@ -59,6 +64,12 @@ def thread_new(request, slug: str):
     )
 
 
+@ratelimit(
+    key="user_or_ip",
+    rate=settings.RATELIMIT_CONVERSATION_POST,
+    method="POST",
+    block=True,
+)
 def thread_detail(request, slug: str, thread_id: int):
     project = _get_project(request, slug)
     thread = get_object_or_404(ProjectThread, pk=thread_id, project=project)

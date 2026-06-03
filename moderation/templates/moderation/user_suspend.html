@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Suspend @{{ target_user.get_username }} - OSPREY{% endblock %}
+{% block content %}
+<section class="narrow">
+    <h1>Suspend @{{ target_user.get_username }}</h1>
+    <p>Suspending blocks the user from signing in and posting. Their existing public content stays visible unless you also hide it below.</p>
+    {% if target_user.is_superuser %}
+    <p class="warning">This user is a superuser and cannot be suspended from this page.</p>
+    {% else %}
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <label>Reason (recorded in audit log)</label>
+            <textarea name="reason" rows="3" cols="60" required></textarea>
+        </p>
+        <p>
+            <label><input type="checkbox" name="hide_content" value="1"> Also staff-hide all projects this user created</label>
+        </p>
+        <p>
+            <button type="submit">Suspend account</button>
+            <a href="{% url 'moderation:queue' %}" class="ghost">Cancel</a>
+        </p>
+    </form>
+    {% endif %}
+    {% if not target_user.is_active %}
+    <h2>Reinstate</h2>
+    <form method="post" action="{% url 'moderation:user_reinstate' target_user.pk %}">
+        {% csrf_token %}
+        <p><textarea name="reason" rows="2" cols="60" placeholder="Reason"></textarea></p>
+        <p><button type="submit">Reinstate account</button></p>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}

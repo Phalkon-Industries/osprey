@@ -10,6 +10,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
+from django.conf import settings
+from django_ratelimit.decorators import ratelimit
 
 from projects.models import Project
 from notifications.models import send as notify
@@ -24,9 +26,7 @@ def _get_project(slug):
 
 
 def _can_view_project(project, user):
-    if project.visibility == Project.VISIBILITY_PUBLIC:
-        return True
-    return project.editable_by(user)
+    return project.viewable_by(user)
 
 
 def index(request, slug):
@@ -89,6 +89,7 @@ def history(request, slug, page_slug):
 
 
 @login_required
+@ratelimit(key="user", rate=settings.RATELIMIT_WIKI_EDIT, method="POST", block=True)
 def edit(request, slug, page_slug=None):
     project = _get_project(slug)
     if not _can_view_project(project, request.user):

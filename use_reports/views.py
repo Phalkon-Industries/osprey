@@ -21,9 +21,7 @@ def _get_project(slug):
 
 def index(request, slug):
     project = _get_project(slug)
-    if project.visibility != Project.VISIBILITY_PUBLIC and not project.editable_by(
-        request.user
-    ):
+    if not project.viewable_by(request.user):
         raise Http404
     qs = project.use_reports.filter(visibility=UseReport.VIS_PUBLIC)
     return render(
@@ -41,9 +39,7 @@ def index(request, slug):
 @login_required
 def new(request, slug):
     project = _get_project(slug)
-    if project.visibility != Project.VISIBILITY_PUBLIC and not project.editable_by(
-        request.user
-    ):
+    if not project.viewable_by(request.user):
         raise Http404
     if request.method == "POST":
         form = UseReportForm(request.POST)

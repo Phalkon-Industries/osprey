@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Report content - OSPREY{% endblock %}
+{% block content %}
+<section class="narrow">
+    <h1>Report this content</h1>
+    <p class="muted">Reporting: <strong>{{ target_label }}</strong></p>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="context_url" value="{{ context_url }}">
+        <p>
+            <label for="id_category">Category</label>
+            {{ form.category }}
+        </p>
+        <p>
+            <label for="id_reason">Reason (optional)</label>
+            {{ form.reason }}
+        </p>
+        {% if form.errors %}<ul class="errors">{% for field, errors in form.errors.items %}{% for error in errors %}<li>{{ field }}: {{ error }}</li>{% endfor %}{% endfor %}</ul>{% endif %}
+        <p>
+            <button type="submit">Submit report</button>
+            {% if context_url %}<a href="{{ context_url }}" class="ghost">Cancel</a>{% endif %}
+        </p>
+    </form>
+    <p class="muted small">Reports are reviewed by OSPREY staff. False or abusive reports can themselves be grounds for moderation.</p>
+</section>
+{% endblock %}

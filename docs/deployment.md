@@ -352,6 +352,49 @@ doesn't write to anyone's ORCID record.
 6. Test sign-in from a private browser window. The OAuth authorize URL should
    be on `orcid.org`, not `sandbox.orcid.org`.
 
+### Optional ORCID hardening
+
+Two env vars gate who can sign in:
+
+```env
+ORCID_REQUIRE_VERIFIED_DOMAIN=0
+ORCID_SIGNIN_ALLOWLIST=0000-0001-2345-6789,0000-0002-3456-7890
+```
+
+- `ORCID_REQUIRE_VERIFIED_DOMAIN=1` rejects ORCID sign-ins unless the iD has at
+  least one email address marked verified by a third party (i.e. an institution
+  that itself wrote the verified email to the record). Self-asserted emails do
+  not count. This relies on the public ORCID API and only sees data the user
+  has set to "Everyone" visibility. Use it sparingly; many real researchers
+  keep their institutional email private.
+- `ORCID_SIGNIN_ALLOWLIST` is a comma-separated list of ORCID iDs that bypass
+  the domain gate. Put seed accounts and known collaborators here.
+
+If the verification lookup fails (network error, ORCID 5xx) the gate fails
+closed and the user sees a "couldn't verify your ORCID record" message.
+
+### Moderation and rate limits
+
+```env
+RATELIMIT_ENABLE=1
+RATELIMIT_PROJECT_CREATE=5/h
+RATELIMIT_WIKI_EDIT=30/h
+RATELIMIT_CONVERSATION_POST=20/h
+RATELIMIT_REPORT_SUBMIT=10/h
+RATELIMIT_LOGIN_PER_IP=20/h
+```
+
+Rate limiting is off by default so local tests don't trip it. Turn it on in
+production. The defaults are deliberately generous; tune as needed.
+
+Rate-limit counters live in Django's cache. With more than one worker process,
+configure a shared cache backend (Redis, memcached, or `db.DatabaseCache`).
+The default `LocMemCache` only counts per-process and will undercount.
+
+Staff users can review reports at `/moderation/` and suspend, reinstate, or
+purge content from problem accounts. Suspending a user blocks future ORCID
+sign-ins for that account until staff reinstates it.
+
 ## Backups
 
 A nightly cron job for the `osprey` user. Single stack:

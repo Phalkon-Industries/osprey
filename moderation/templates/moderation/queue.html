@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Moderation queue - OSPREY{% endblock %}
+{% block content %}
+<section class="narrow">
+    <h1>Moderation queue</h1>
+    <p>
+        <a href="?status=open"{% if status == 'open' %} class="active"{% endif %}>Open ({{ open_count }})</a>
+        &nbsp;|&nbsp;
+        <a href="?status=actioned"{% if status == 'actioned' %} class="active"{% endif %}>Actioned</a>
+        &nbsp;|&nbsp;
+        <a href="?status=dismissed"{% if status == 'dismissed' %} class="active"{% endif %}>Dismissed</a>
+    </p>
+    {% if reports %}
+    <table class="data">
+        <thead><tr><th>When</th><th>Category</th><th>Target</th><th>Reporter</th><th>Reason</th><th></th></tr></thead>
+        <tbody>
+        {% for r in reports %}
+        <tr>
+            <td>{{ r.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ r.get_category_display }}</td>
+            <td>{{ r.target_repr|default:"(deleted)" }}{% if r.context_url %}<br><a href="{{ r.context_url }}" class="muted small">open</a>{% endif %}</td>
+            <td>{% if r.reporter %}@{{ r.reporter.get_username }}{% else %}(anonymous){% endif %}</td>
+            <td>{{ r.reason|truncatechars:120 }}</td>
+            <td><a href="{% url 'moderation:report_detail' r.pk %}">Review</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No reports in this state.</p>
+    {% endif %}
+
+    <h2>Recent moderation actions</h2>
+    {% if recent_log %}
+    <table class="data">
+        <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Reason</th></tr></thead>
+        <tbody>
+        {% for l in recent_log %}
+        <tr>
+            <td>{{ l.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{% if l.actor %}@{{ l.actor.get_username }}{% else %}(system){% endif %}</td>
+            <td>{{ l.get_action_display }}</td>
+            <td>{{ l.target_repr|default:"-" }}</td>
+            <td>{{ l.reason|truncatechars:80 }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No actions logged yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

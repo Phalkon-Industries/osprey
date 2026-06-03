@@ -65,13 +65,21 @@ class ProjectAdmin(admin.ModelAdmin):
         "title",
         "slug",
         "visibility",
+        "is_staff_hidden",
         "field",
         "artifact_type",
         "institution",
         "updated_at",
     )
-    list_filter = ("visibility", "field", "artifact_type", "institution")
+    list_filter = (
+        "visibility",
+        "is_staff_hidden",
+        "field",
+        "artifact_type",
+        "institution",
+    )
     search_fields = ("title", "slug", "summary", "description", "readme")
+    actions = ["staff_hide_selected", "staff_unhide_selected"]
     prepopulated_fields = {"slug": ("title",)}
     inlines = [
         ContributionInline,
@@ -81,11 +89,47 @@ class ProjectAdmin(admin.ModelAdmin):
         ProjectDepositInline,
     ]
 
+    @admin.action(description="Staff-hide selected projects")
+    def staff_hide_selected(self, request, queryset):
+        from moderation.helpers import log_action
+
+        count = 0
+        for project in queryset:
+            if project.is_staff_hidden:
+                continue
+            project.is_staff_hidden = True
+            project.save(update_fields=["is_staff_hidden", "updated_at"])
+            log_action(
+                request.user, "project_hide", target=project, reason="Bulk admin action"
+            )
+            count += 1
+        self.message_user(request, f"Hid {count} project(s).")
+
+    @admin.action(description="Restore selected projects (un-hide)")
+    def staff_unhide_selected(self, request, queryset):
+        from moderation.helpers import log_action
+
+        count = 0
+        for project in queryset:
+            if not project.is_staff_hidden:
+                continue
+            project.is_staff_hidden = False
+            project.save(update_fields=["is_staff_hidden", "updated_at"])
+            log_action(
+                request.user,
+                "project_unhide",
+                target=project,
+                reason="Bulk admin action",
+            )
+            count += 1
+        self.message_user(request, f"Restored {count} project(s).")
+
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
+
 
 admin.site.register(ArtifactLink)
 admin.site.register(ProjectImage)
@@ -98,14 +142,36 @@ class ContributionAdmin(admin.ModelAdmin):
     search_fields = ("display_name", "role", "credit_statement", "orcid_id")
     autocomplete_fields = ("project", "user")
     readonly_fields = ("orcid_id",)
-    fields = ("project", "user", "orcid_id", "display_name", "role", "credit_statement", "order")
+    fields = (
+        "project",
+        "user",
+        "orcid_id",
+        "display_name",
+        "role",
+        "credit_statement",
+        "order",
+    )
 
 
 @admin.register(ProjectDeposit)
 class ProjectDepositAdmin(admin.ModelAdmin):
-    list_display = ("project", "provider", "sandbox", "state", "doi", "record_id", "updated_at")
+    list_display = (
+        "project",
+        "provider",
+        "sandbox",
+        "state",
+        "doi",
+        "record_id",
+        "updated_at",
+    )
     list_filter = ("provider", "sandbox", "state")
-    search_fields = ("project__title", "project__slug", "deposition_id", "record_id", "doi")
+    search_fields = (
+        "project__title",
+        "project__slug",
+        "deposition_id",
+        "record_id",
+        "doi",
+    )
     readonly_fields = (
         "project",
         "provider",

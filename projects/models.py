@@ -131,6 +131,13 @@ class Project(models.Model):
         default=VISIBILITY_PRIVATE,
         help_text="Drafts default to private. Flip to public when ready to share.",
     )
+    is_staff_hidden = models.BooleanField(
+        default=False,
+        help_text=(
+            "Staff-only takedown flag. When true, the project is invisible to "
+            "everyone except staff, regardless of the owner's visibility setting."
+        ),
+    )
     wiki_requires_approval = models.BooleanField(
         default=True,
         help_text=(
@@ -246,6 +253,8 @@ class Project(models.Model):
         return self.visibility == self.VISIBILITY_PUBLIC
 
     def viewable_by(self, user) -> bool:
+        if self.is_staff_hidden:
+            return bool(user and user.is_authenticated and user.is_staff)
         if self.is_public:
             return True
         if user is None or not user.is_authenticated:
