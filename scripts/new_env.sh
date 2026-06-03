@@ -17,7 +17,7 @@ case "$STACK" in
         ZENODO_SANDBOX=0
         ;;
     sandbox)
-        HOST="sandbox.osprey.phalkon.io"
+        HOST="ospreysandbox.phalkon.io"
         DEBUG=0
         IS_SANDBOX=1
         ZENODO_SANDBOX=1

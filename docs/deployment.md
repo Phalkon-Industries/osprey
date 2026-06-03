@@ -43,11 +43,11 @@ different inputs.
 - Compose: `docker-compose.yml` plus `docker-compose.prod.yml`.
 - Env file: `/etc/osprey/.env.prod` on the server, owned by `osprey`, mode 640.
   No `.env` on the server.
-- Compose project name `osprey-prod`. Web bound to `127.0.0.1:8000`. Postgres
+- Compose project name `osprey-prod`. Web bound to `127.0.0.1:8002`. Postgres
   data, static, and media in `/srv/osprey-prod/`. `DJANGO_DEBUG=0`, real
   secret, real ORCID credentials.
 
-**Sandbox** is what serves `sandbox.osprey.phalkon.io` on the same VPS:
+**Sandbox** is what serves `ospreysandbox.phalkon.io` on the same VPS:
 
 - Compose: `docker-compose.yml` plus `docker-compose.sandbox.yml`.
 - Env file: `/etc/osprey/.env.sandbox`. Same shape as prod, *different*
@@ -185,7 +185,7 @@ sudo certbot --nginx -d osprey.phalkon.io
 Or both, if you're running sandbox too:
 
 ```bash
-sudo certbot --nginx -d osprey.phalkon.io -d sandbox.osprey.phalkon.io
+sudo certbot --nginx -d osprey.phalkon.io -d ospreysandbox.phalkon.io
 ```
 
 certbot installs its own renewal timer, so this is roughly set-and-forget.
@@ -194,7 +194,7 @@ I still check `sudo certbot renew --dry-run` once after install to confirm.
 ### 6. First deploy
 
 ```bash
-cd ~/osprey && ./scripts/deploy.sh prod
+cd ~/osprey && ./scripts/deploy.sh prod main
 ```
 
 If you're running sandbox too:
@@ -202,6 +202,12 @@ If you're running sandbox too:
 ```bash
 ./scripts/deploy.sh sandbox main
 ```
+
+The second argument is the git ref to deploy. Both stacks share one repo
+checkout, so HEAD on disk reflects whichever stack you deployed last. Passing
+an explicit ref every time avoids accidentally running prod's pinned tag on
+sandbox (or vice versa). For the first bring-up, `main` is fine on both;
+later you'll pin prod to a tag (see [Routine deploys](#routine-deploys)).
 
 That's a full server. If it worked you should be able to hit the public
 hostname in a browser and get a working OSPREY.
@@ -215,7 +221,7 @@ time:
 - Compose project name: `-p osprey-prod` vs `-p osprey-sandbox`.
 - Host paths and env file: `/srv/osprey-prod/` + `.env.prod` vs
   `/srv/osprey-sandbox/` + `.env.sandbox`.
-- Host bind port: `127.0.0.1:8000` for prod, `127.0.0.1:8001` for sandbox.
+- Host bind port: `127.0.0.1:8002` for prod, `127.0.0.1:8001` for sandbox.
 
 If any one of those collides between the two stacks, things break in weird
 ways.
@@ -224,7 +230,7 @@ What you actually need on the box:
 
 1. `/etc/osprey/.env.sandbox` populated as described above.
 2. The shipped [deploy/nginx.conf](../deploy/nginx.conf) already has a second
-   server block for `sandbox.osprey.phalkon.io` pointing at `127.0.0.1:8001`.
+   server block for `ospreysandbox.phalkon.io` pointing at `127.0.0.1:8001`.
 3. The shipped `docker-compose.sandbox.yml` already binds the sandbox web
    container to port 8001 and mounts `/srv/osprey-sandbox/`.
 4. Deploy with `./scripts/deploy.sh sandbox`.
@@ -253,10 +259,10 @@ ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./scripts/deploy.sh prod v0.1.0'
 ```
 
 `scripts/deploy.sh` takes an optional ref as the second argument. With no ref
-it fast-forwards the current branch, which is handy when you've already
-pushed to `main` and just want the server to catch up. With a tag it checks
-the tag out in detached-HEAD mode. With a branch name it forces the server to
-that branch's tip, useful for rolling forward past a hotfix.
+it fast-forwards the current branch, which only does something sensible if
+HEAD is actually on a branch. After a prod deploy HEAD is detached on a tag,
+so always pass an explicit ref: a tag for prod, `main` (or a feature branch)
+for sandbox.
 
 Under the hood the script does the same five things every time: git fetch,
 checkout, build, migrate, collectstatic, up -d.
