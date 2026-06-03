@@ -39,7 +39,12 @@ mkdir -p \
   /srv/osprey-sandbox/postgres /srv/osprey-sandbox/staticfiles /srv/osprey-sandbox/media \
   /etc/osprey
 chown -R "${OSPREY_USER}:${OSPREY_USER}" /srv/osprey-prod /srv/osprey-sandbox /etc/osprey
-chmod 750 /srv/osprey-prod /srv/osprey-sandbox /etc/osprey
+# Stack dirs need world-execute so nginx (www-data) can traverse into
+# staticfiles/ and media/ to serve assets. The subdirs and files keep their
+# default 755/644 perms, which are already world-readable.
+chmod 711 /srv/osprey-prod /srv/osprey-sandbox
+# /etc/osprey holds env files with secrets — keep it group-readable only.
+chmod 750 /etc/osprey
 
 systemctl enable docker
 systemctl enable containerd

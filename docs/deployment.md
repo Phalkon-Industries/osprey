@@ -122,6 +122,12 @@ adds `osprey` to the `docker` group, creates the `/srv/osprey-prod/` and
 `/srv/osprey-sandbox/` directory trees, and creates `/etc/osprey/` for the env
 files.
 
+The stack dirs are mode `711` (osprey-owned, world-executable but not
+listable) so nginx (`www-data`) can descend into `staticfiles/` and `media/`
+to serve assets without being able to enumerate the parent. If you're
+upgrading from a host that pre-dated this fix and CSS comes back 403, run
+`sudo chmod 711 /srv/osprey-prod /srv/osprey-sandbox` once.
+
 Log out and back in as `osprey` afterwards so the new docker group membership
 actually applies to your shell.
 
