@@ -1,163 +1,238 @@
-# OSPREY deployment runbook
+# Setting up an OSPREY server
 
-Single-VPS Hetzner deploy. Ubuntu 24.04. nginx + certbot on the host, Postgres
-and the Django app under Docker Compose. See [planning/demo-architecture.md](../planning/demo-architecture.md) §11
-for the design rationale; this file is the executable runbook.
+This is the runbook I use to bring up an OSPREY VPS from scratch. It's written
+for Ubuntu 24.04 on Hetzner, but anything Debian-flavored should be close. The
+stack is Postgres and Django under Docker Compose, with nginx and certbot
+running on the host (not in containers).
 
-## Script entrypoints
+## What's in the repo
 
-From the repo root on the VPS:
+A few scripts you'll touch on the server:
 
-- `./scripts/host_setup.sh` — apply the host baseline (apt packages, ufw, docker, `/srv/osprey-*` dirs). Run as root, after the repo is cloned. Idempotent.
-- `./scripts/deploy.sh {prod|sandbox} [ref]` — deploy the named stack at `ref` (default: tip of current branch).
-- `./deploy.sh [ref]` — backwards-compatible wrapper for `./scripts/deploy.sh prod`.
+- `scripts/host_setup.sh` brings a fresh host up to baseline: apt packages,
+  ufw, docker, the `/srv/osprey-*` directories. Run it once as root after
+  you've cloned the repo. It's safe to re-run if you want to confirm the host
+  still matches baseline.
+- `scripts/new_env.sh {prod|sandbox}` prints an env-file template with random
+  `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD` already filled in. Pipe the
+  output into `/etc/osprey/.env.prod` or `.env.sandbox` and fill in the
+  remaining placeholders (ORCID, Zenodo).
+- `scripts/deploy.sh {prod|sandbox} [ref]` deploys one stack. With no ref it
+  fast-forwards the current branch; with a ref it checks out that tag or
+  commit before rebuilding.
+- `deploy.sh` at the repo root is a backwards-compatible wrapper that runs
+  `scripts/deploy.sh prod`.
 
-## How Compose env files work
+## The three environments
 
-Two different env-file ideas in Docker Compose, and this is where things get
-confusing:
+OSPREY runs in three places, all driven by the same `docker-compose.yml` plus
+an override file and an env file. The pattern is the same in each, just with
+different inputs.
 
-- `docker compose --env-file /etc/osprey/.env.prod ...` tells the Compose CLI
-  what variables to use while it reads the compose files. This is how
-  `${POSTGRES_PASSWORD}` and friends get resolved.
-- `env_file: /etc/osprey/.env.prod` inside a service injects those variables
-  into the running container.
+**Local dev** is what you run on your laptop:
 
-Production uses `/etc/osprey/.env.prod`, never a repo-local `.env`. Local
-development still uses the repo-local `.env` because `docker-compose.yml` names
-that file directly. `scripts/deploy.sh prod` runs Compose like this:
+- Compose: `docker-compose.yml` only, no override.
+- Env file: repo-local `.env` (gitignored). Named directly by
+  `docker-compose.yml`, so plain `docker compose up` picks it up.
+- Postgres data, static, and media live in the repo's `media/` and a Docker
+  volume. `DJANGO_DEBUG=1`, weak secret, ORCID pointed at sandbox or a
+  Cloudflare-tunneled dev hostname.
+
+**Production** is what serves `osprey.phalkon.io`:
+
+- Compose: `docker-compose.yml` plus `docker-compose.prod.yml`.
+- Env file: `/etc/osprey/.env.prod` on the server, owned by `osprey`, mode 640.
+  No `.env` on the server.
+- Compose project name `osprey-prod`. Web bound to `127.0.0.1:8000`. Postgres
+  data, static, and media in `/srv/osprey-prod/`. `DJANGO_DEBUG=0`, real
+  secret, real ORCID credentials.
+
+**Sandbox** is what serves `sandbox.osprey.phalkon.io` on the same VPS:
+
+- Compose: `docker-compose.yml` plus `docker-compose.sandbox.yml`.
+- Env file: `/etc/osprey/.env.sandbox`. Same shape as prod, *different*
+  `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`, sandbox hostnames.
+- Compose project name `osprey-sandbox`. Web bound to `127.0.0.1:8001`.
+  Postgres data, static, and media in `/srv/osprey-sandbox/`.
+
+`scripts/deploy.sh` handles prod and sandbox by stitching together the right
+project name, env file, and override file:
 
 ```bash
+# prod
 docker compose -p osprey-prod --env-file /etc/osprey/.env.prod \
   -f docker-compose.yml -f docker-compose.prod.yml ...
+
+# sandbox
+docker compose -p osprey-sandbox --env-file /etc/osprey/.env.sandbox \
+  -f docker-compose.yml -f docker-compose.sandbox.yml ...
 ```
 
-The `-p osprey-prod` is what keeps the prod and sandbox stacks from colliding
-(Compose prefixes container/network/volume names with the project name).
+One nuance worth knowing because it bit me: Compose's `--env-file` and a
+service's `env_file:` directive are two different things. `--env-file` tells
+the *Compose CLI* what variables exist while it's parsing the YAML, so
+`${POSTGRES_PASSWORD}` resolves. `env_file:` inside a service injects those
+same variables into the *running container*. Prod and sandbox use both, and
+they both point at the same file.
 
-## First deploy
+## Bringing up a fresh server
 
-Four phases. Phase A is genuinely manual; Phase B is one script; Phase C is
-secrets and per-host config that can't be scripted safely; Phase D is the
-deploy.
+Roughly six steps. Only one of them is a single script; the rest is manual
+because it involves secrets, per-host decisions, or interactive prompts.
 
-### Phase A — pre-clone (as root on the fresh VPS)
+### 1. Make a deploy user (as root)
+
+After Hetzner hands you a fresh box and you've SSH'd in as root:
 
 ```bash
 adduser osprey
 usermod -aG sudo osprey
 rsync --archive --chown=osprey:osprey ~/.ssh /home/osprey/
-# Disable root SSH and password auth in /etc/ssh/sshd_config, then reload sshd.
 ```
 
-Then, as the `osprey` user:
+Then edit `/etc/ssh/sshd_config` to disable root login and password auth and
+reload sshd. From this point on you should be logging in as `osprey` with your
+SSH key.
+
+### 2. Clone the repo (as osprey)
+
+Generate a deploy key and add the public half to GitHub under the repo's
+Settings → Deploy keys. Read-only is fine.
 
 ```bash
-# Generate a deploy key for the repo, register the public half on GitHub:
 ssh-keygen -t ed25519 -f ~/.ssh/osprey_deploy -C "osprey-vps-deploy"
 cat ~/.ssh/osprey_deploy.pub
-# Add it to GitHub → repo → Settings → Deploy keys (read-only is fine).
-
-git clone git@github.com:<org>/osprey.git ~/osprey
 ```
 
-### Phase B — host baseline (one command, as root)
+Once GitHub knows about it:
+
+```bash
+git clone git@github.com:Phalkon-Industries/osprey.git ~/osprey
+```
+
+### 3. Run the host baseline script (as root)
 
 ```bash
 sudo ~/osprey/scripts/host_setup.sh
 ```
 
-Installs apt packages (`ufw`, `nginx`, `certbot`), opens firewall ports 22/80/443,
-installs Docker, adds `osprey` to the `docker` group, creates `/srv/osprey-prod/`
-and `/srv/osprey-sandbox/` directories with the right ownership, creates
-`/etc/osprey/`, and enables Docker at boot.
+This installs ufw, nginx, certbot, and Docker, opens firewall ports 22/80/443,
+adds `osprey` to the `docker` group, creates the `/srv/osprey-prod/` and
+`/srv/osprey-sandbox/` directory trees, and creates `/etc/osprey/` for the env
+files.
 
-After this, log out and back in as `osprey` so the new docker group membership
-takes effect.
+Log out and back in as `osprey` afterwards so the new docker group membership
+actually applies to your shell.
 
-### Phase C — secrets, env files, nginx, TLS (manual, per-host)
+### 4. Write the env files
 
-Write the prod env file:
+The host_setup script can't do this for you because it's secrets. There's a
+helper that prints a template with random `DJANGO_SECRET_KEY` and
+`POSTGRES_PASSWORD` already filled in. Pipe it into place and edit in the
+ORCID and Zenodo values:
 
 ```bash
-sudo -u osprey tee /etc/osprey/.env.prod > /dev/null <<'ENV'
-DJANGO_SECRET_KEY=<generate a long random string>
-DJANGO_DEBUG=0
-DJANGO_ALLOWED_HOSTS=osprey.phalkon.io
-DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.phalkon.io
-DJANGO_SESSION_COOKIE_SECURE=1
-DJANGO_CSRF_COOKIE_SECURE=1
-POSTGRES_DB=osprey
-POSTGRES_USER=osprey
-POSTGRES_PASSWORD=<long random>
-DATABASE_URL=postgres://osprey:<long random>@db:5432/osprey
-ORCID_USE_SANDBOX=0
-ORCID_CLIENT_ID=<orcid production client id>
-ORCID_CLIENT_SECRET=<orcid production client secret>
-ENV
+~/osprey/scripts/new_env.sh prod | sudo -u osprey tee /etc/osprey/.env.prod > /dev/null
 sudo chmod 640 /etc/osprey/.env.prod
+sudoedit /etc/osprey/.env.prod   # fill in ORCID + Zenodo placeholders
 ```
 
-If you also want a sandbox stack on the same VPS, write
-`/etc/osprey/.env.sandbox` the same way, with a sandbox hostname and a
-different `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`:
+The template covers:
 
-```env
-DJANGO_ALLOWED_HOSTS=sandbox.osprey.phalkon.io
-DJANGO_CSRF_TRUSTED_ORIGINS=https://sandbox.osprey.phalkon.io
+- `DJANGO_*` — secret key, debug off, allowed hosts, CSRF origins, secure
+  cookies.
+- `POSTGRES_*` and `DATABASE_URL` — local Postgres in the compose stack. The
+  password is generated; `DATABASE_URL` already substitutes it in.
+- `ORCID_*` — placeholders. Fill in with credentials from your production
+  ORCID API client (see the ORCID section below).
+- `ZENODO_*` — placeholders. `ZENODO_USE_SANDBOX=0` points at real Zenodo;
+  `ZENODO_ACCESS_TOKEN` is a personal access token from
+  [zenodo.org/account/settings/applications/](https://zenodo.org/account/settings/applications/).
+  Leave `ZENODO_DEFAULT_COMMUNITY` empty unless you've made an OSPREY
+  community on Zenodo.
+
+For a sandbox stack on the same VPS:
+
+```bash
+~/osprey/scripts/new_env.sh sandbox | sudo -u osprey tee /etc/osprey/.env.sandbox > /dev/null
+sudo chmod 640 /etc/osprey/.env.sandbox
+sudoedit /etc/osprey/.env.sandbox
 ```
 
-Install the nginx site and issue TLS certs:
+The helper regenerates a different `DJANGO_SECRET_KEY` and
+`POSTGRES_PASSWORD` for sandbox, so the two stacks never share secrets. If
+you don't have a separate ORCID sandbox client, real ORCID credentials are
+fine for sign-in testing; just keep `ORCID_USE_SANDBOX=0`.
+
+### 5. nginx and TLS
 
 ```bash
 sudo cp ~/osprey/deploy/nginx.conf /etc/nginx/sites-available/osprey
 sudo ln -s /etc/nginx/sites-available/osprey /etc/nginx/sites-enabled/osprey
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
+```
 
-# Prod only:
+Then ask certbot for certs. One hostname:
+
+```bash
 sudo certbot --nginx -d osprey.phalkon.io
-# Prod + sandbox:
+```
+
+Or both, if you're running sandbox too:
+
+```bash
 sudo certbot --nginx -d osprey.phalkon.io -d sandbox.osprey.phalkon.io
 ```
 
-### Phase D — first deploy
+certbot installs its own renewal timer, so this is roughly set-and-forget.
+I still check `sudo certbot renew --dry-run` once after install to confirm.
+
+### 6. First deploy
 
 ```bash
 cd ~/osprey && ./scripts/deploy.sh prod
-# Sandbox too, if running both:
+```
+
+If you're running sandbox too:
+
+```bash
 ./scripts/deploy.sh sandbox main
 ```
 
-## Running prod and sandbox on one VPS
+That's a full server. If it worked you should be able to hit the public
+hostname in a browser and get a working OSPREY.
 
-One repo checkout can run both stacks. The host_setup script already creates
-both directory trees, so the only extras are:
+## Running prod and sandbox side by side
 
-1. `/etc/osprey/.env.sandbox` with sandbox values (see Phase C).
-2. A second nginx server block for `sandbox.osprey.phalkon.io` proxying to
-   `127.0.0.1:8001` with static/media under `/srv/osprey-sandbox/`. The
-   shipped [deploy/nginx.conf](../deploy/nginx.conf) already includes this.
-3. `docker-compose.sandbox.yml` in the repo root. The shipped file binds the
-   sandbox web container to `127.0.0.1:8001`, mounts `/srv/osprey-sandbox/`,
-   and reads `/etc/osprey/.env.sandbox`.
-4. `./scripts/deploy.sh sandbox` to deploy it.
+One repo checkout, two stacks. `host_setup.sh` already made both directory
+trees. The rest is making sure these three things are different at the same
+time:
 
-Separation comes from three things being different at the same time:
+- Compose project name: `-p osprey-prod` vs `-p osprey-sandbox`.
+- Host paths and env file: `/srv/osprey-prod/` + `.env.prod` vs
+  `/srv/osprey-sandbox/` + `.env.sandbox`.
+- Host bind port: `127.0.0.1:8000` for prod, `127.0.0.1:8001` for sandbox.
 
-1. Compose project name (`-p osprey-prod` vs `-p osprey-sandbox`)
-2. Host paths and env files (`/srv/osprey-prod/...` vs `/srv/osprey-sandbox/...`)
-3. Host bind port (`127.0.0.1:8000` vs `127.0.0.1:8001`)
+If any one of those collides between the two stacks, things break in weird
+ways.
 
-If any of those is shared, the stacks collide.
+What you actually need on the box:
+
+1. `/etc/osprey/.env.sandbox` populated as described above.
+2. The shipped [deploy/nginx.conf](../deploy/nginx.conf) already has a second
+   server block for `sandbox.osprey.phalkon.io` pointing at `127.0.0.1:8001`.
+3. The shipped `docker-compose.sandbox.yml` already binds the sandbox web
+   container to port 8001 and mounts `/srv/osprey-sandbox/`.
+4. Deploy with `./scripts/deploy.sh sandbox`.
 
 ## Routine deploys
 
-The recommended flow is to **tag a release on GitHub, then ssh in and tell the
-server to move to that tag**. This keeps prod on a named, reproducible point in
-history rather than whatever happens to be on `main`.
+The way I do this: tag a release on GitHub, then ssh to the server and point
+it at the tag. Prod sits on a named version rather than whatever happened to
+be on `main` when I last pulled.
 
-From a dev machine, on a clean `main`:
+From a dev machine on a clean `main`:
 
 ```bash
 git pull --ff-only
@@ -165,96 +240,88 @@ git tag -a v0.1.0 -m "v0.1.0: short note about what changed"
 git push origin v0.1.0
 ```
 
-Then on GitHub, **Releases → Draft a new release**, pick the tag, and write
-the release notes there.
+Then go to GitHub → Releases → Draft a new release, pick the tag, and write
+the real release notes there. That's the public log of what's in prod.
 
-Move prod to that tag:
+Move prod to it:
 
 ```bash
 ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./scripts/deploy.sh prod v0.1.0'
 ```
 
-`deploy.sh` accepts an optional ref as the second argument:
+`scripts/deploy.sh` takes an optional ref as the second argument. With no ref
+it fast-forwards the current branch, which is handy when you've already
+pushed to `main` and just want the server to catch up. With a tag it checks
+the tag out in detached-HEAD mode. With a branch name it forces the server to
+that branch's tip, useful for rolling forward past a hotfix.
 
-- `./scripts/deploy.sh prod` — fast-forward the current branch to its remote
-  tip (still works for emergency hotfixes).
-- `./scripts/deploy.sh prod v0.1.0` — check out that tag in detached-HEAD mode.
-- `./scripts/deploy.sh prod main` — force prod to the tip of `main` (useful
-  for rolling forward after a hotfix tag).
+Under the hood the script does the same five things every time: git fetch,
+checkout, build, migrate, collectstatic, up -d.
 
-In every case the script:
+Never edit anything on the server. If you find yourself wanting to, that's a
+sign the deploy script is missing something; fix it there.
 
-1. `git fetch --tags --prune origin`
-2. Checks out the requested ref
-3. `docker compose ... build web`
-4. `python manage.py migrate --noinput`
-5. `python manage.py collectstatic --noinput`
-6. `docker compose ... up -d`
-
-No editing on the server. Ever.
-
-### Rollback
+### Rolling back
 
 ```bash
 ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./scripts/deploy.sh prod v0.0.9'
 ```
 
-Rolling back across a migration that drops or renames a column will not restore
-data on its own. Irreversible migrations need a database restore from the most
-recent backup.
+Honest caveat: if a migration between v0.0.9 and v0.1.0 dropped or renamed a
+column, this rollback won't bring the data back. Irreversible migrations need
+a database restore from the most recent backup.
 
 ## Autostart after reboot
 
-Two things must both be true for the stack to come back automatically:
+Two things have to be true. Both are already set up by the rest of the
+runbook:
 
-1. The Docker daemon starts at boot. `host_setup.sh` enables `docker.service`
-   and `containerd.service`, so this is already done.
-2. App containers use `restart: unless-stopped`, which the prod and sandbox
-   compose overrides already set.
+- `docker.service` and `containerd.service` start at boot. `host_setup.sh`
+  enables them.
+- The app containers use `restart: unless-stopped`, set in the prod and
+  sandbox compose overrides.
 
-### Verify after first `up -d`
+After your first `up -d` it's worth confirming:
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Status}}'
 docker inspect $(docker ps -q) --format '{{.Name}} -> {{.HostConfig.RestartPolicy.Name}}'
 ```
 
-You should see `unless-stopped` for the app containers.
-
-### Reboot test
+You should see `unless-stopped` for the app containers. To actually verify
+autostart works, reboot the box:
 
 ```bash
 sudo reboot
-# reconnect after ~1 minute
-docker ps --format 'table {{.Names}}\t{{.Status}}'
+# wait about a minute, reconnect
+docker ps
 ```
 
-For a dual-stack host, both project namespaces should be back (`osprey-prod_*`
-and `osprey-sandbox_*`) if both were running before reboot.
+If both stacks were up before the reboot, both should be back.
 
-`unless-stopped` means reboot/daemon restart brings containers back, but a
-manual `docker stop` keeps them stopped until you explicitly start them. That's
-usually what you want for maintenance windows.
+One subtlety worth knowing: `unless-stopped` only restarts containers Docker
+stopped on its own. If you `docker stop` something by hand, it stays stopped
+until you start it again, which is usually what you want during maintenance.
 
-## ORCID setup
+## ORCID
 
-The app is wired for ORCID through django-allauth. Longer design notes live in
-[planning/features/orcid-signin.md](../planning/features/orcid-signin.md).
-ORCID iDs are collected through ORCID sign-in, never typed into OSPREY forms.
+OSPREY uses ORCID through django-allauth for sign-in. The longer design notes
+are in [planning/features/orcid-signin.md](../planning/features/orcid-signin.md).
+The short version: ORCID iDs come in through OAuth only, nobody types them
+into a form.
 
-### Local ORCID test
+### Testing locally
 
-ORCID may reject `localhost` redirect URIs. For repeat local testing, use the
-Cloudflare tunnel hostname and register this full callback URL with ORCID:
+ORCID doesn't always accept `localhost` as a callback host, so for repeat
+local testing the easiest thing is a Cloudflare tunnel pointing a public
+hostname at `http://localhost:8000`. Register this exact callback URL with
+ORCID:
 
 ```text
 https://ospreydev.phalkon.io/accounts/orcid/login/callback/
 ```
 
-The tunnel should point that public hostname at local Django, usually
-`http://localhost:8000` (the local dev server speaks HTTP; Cloudflare provides
-the public HTTPS endpoint). Put matching credentials in local `.env` and include
-the tunnel hostname in `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS`:
+Then in your local `.env`:
 
 ```env
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,ospreydev.phalkon.io
@@ -264,62 +331,42 @@ ORCID_CLIENT_ID=<orcid application id>
 ORCID_CLIENT_SECRET=<orcid secret>
 ```
 
-Use `ORCID_USE_SANDBOX=1` only with sandbox credentials. Production ORCID
-credentials are okay for beta sign-in testing because OSPREY asks only for
-authentication and does not write to anyone's ORCID record.
+Only set `ORCID_USE_SANDBOX=1` if you're actually using sandbox credentials.
+Real ORCID is fine for sign-in testing because OSPREY only reads the iD; it
+doesn't write to anyone's ORCID record.
 
 ### Production ORCID
 
-1. Sign into a real ORCID account at `https://orcid.org/` and register a
-   public API client there.
+1. Register a public API client at https://orcid.org/.
 2. Add the production callback URL:
-
-   ```text
-   https://osprey.phalkon.io/accounts/orcid/login/callback/
-   ```
-
-   Only add other callback URLs if those hostnames will actually serve OSPREY.
-
-3. In `/etc/osprey/.env.prod`, set:
-
-   ```env
-   ORCID_USE_SANDBOX=0
-   ORCID_CLIENT_ID=<production application id>
-   ORCID_CLIENT_SECRET=<production secret>
-   ```
-
-4. Confirm the production env file has the public host names:
-
-   ```env
-   DJANGO_ALLOWED_HOSTS=osprey.phalkon.io
-   DJANGO_CSRF_TRUSTED_ORIGINS=https://osprey.phalkon.io
-   ```
-
-5. Deploy and restart:
-
-   ```bash
-   ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./scripts/deploy.sh prod'
-   ```
-
-6. Test sign-in from a private browser window. The authorize URL should be on
-   `orcid.org`, not `sandbox.orcid.org`.
+   `https://osprey.phalkon.io/accounts/orcid/login/callback/`. Don't add
+   hostnames that aren't actually going to serve OSPREY.
+3. Put the client ID and secret in `/etc/osprey/.env.prod`, with
+   `ORCID_USE_SANDBOX=0`.
+4. Make sure that file also lists the public hostname in
+   `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS`.
+5. Deploy: `ssh osprey@osprey.phalkon.io 'cd ~/osprey && ./scripts/deploy.sh prod'`.
+6. Test sign-in from a private browser window. The OAuth authorize URL should
+   be on `orcid.org`, not `sandbox.orcid.org`.
 
 ## Backups
 
-Cron job for the `osprey` user. Single-stack host:
+A nightly cron job for the `osprey` user. Single stack:
 
 ```cron
 15 4 * * * cd /home/osprey/osprey && docker compose -p osprey-prod --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml exec -T db pg_dump -U osprey osprey | gzip > /home/osprey/backups/osprey-prod-$(date +\%Y\%m\%d).sql.gz
 ```
 
-Dual-stack host (use distinct times and filenames so restores are unambiguous):
+Dual stack (offset the times and use distinct filenames so a restore isn't
+ambiguous):
 
 ```cron
 15 4 * * * cd /home/osprey/osprey && docker compose -p osprey-prod --env-file /etc/osprey/.env.prod -f docker-compose.yml -f docker-compose.prod.yml exec -T db pg_dump -U osprey osprey | gzip > /home/osprey/backups/osprey-prod-$(date +\%Y\%m\%d).sql.gz
 45 4 * * * cd /home/osprey/osprey && docker compose -p osprey-sandbox --env-file /etc/osprey/.env.sandbox -f docker-compose.yml -f docker-compose.sandbox.yml exec -T db pg_dump -U osprey osprey | gzip > /home/osprey/backups/osprey-sandbox-$(date +\%Y\%m\%d).sql.gz
 ```
 
-Then sync `~/backups/` off-VPS (Backblaze B2, Tailscale rsync, etc.).
+A dump sitting on the same VPS isn't really a backup, so push `~/backups/`
+off-box. I use Backblaze B2; Tailscale plus rsync to a NAS works fine too.
 
 ## Restore
 
@@ -329,3 +376,6 @@ gunzip -c /path/to/dump.sql.gz | \
     -f docker-compose.yml -f docker-compose.prod.yml exec -T db \
     psql -U osprey -d osprey
 ```
+
+If you're restoring across schema versions, deploy the matching code first so
+the database schema matches what `pg_dump` actually produced.
