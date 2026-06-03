@@ -150,6 +150,9 @@ The template covers:
   [zenodo.org/account/settings/applications/](https://zenodo.org/account/settings/applications/).
   Leave `ZENODO_DEFAULT_COMMUNITY` empty unless you've made an OSPREY
   community on Zenodo.
+- `OSPREY_IS_SANDBOX` — set to `1` on the sandbox stack and `0` on prod. When
+  on, every page shows a banner warning that DOIs don't resolve and the
+  database can be wiped. `new_env.sh sandbox` sets this for you.
 
 For a sandbox stack on the same VPS:
 

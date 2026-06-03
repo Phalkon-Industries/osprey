@@ -42,6 +42,21 @@ class CoreViewTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class SandboxBannerTests(TestCase):
+    def test_banner_hidden_when_not_sandbox(self):
+        with override_settings(OSPREY_IS_SANDBOX=False):
+            response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "sandbox-banner")
+
+    def test_banner_shown_when_sandbox(self):
+        with override_settings(OSPREY_IS_SANDBOX=True):
+            response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "sandbox-banner")
+        self.assertContains(response, "OSPREY sandbox")
+
+
 @override_settings(ALLOWED_HOSTS=["localhost", "127.0.0.1", "testserver"])
 class BrowserSmokeTests(StaticLiveServerTestCase):
     def setUp(self):

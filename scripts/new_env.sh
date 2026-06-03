@@ -13,10 +13,14 @@ case "$STACK" in
     prod)
         HOST="osprey.phalkon.io"
         DEBUG=0
+        IS_SANDBOX=0
+        ZENODO_SANDBOX=0
         ;;
     sandbox)
         HOST="sandbox.osprey.phalkon.io"
         DEBUG=0
+        IS_SANDBOX=1
+        ZENODO_SANDBOX=1
         ;;
     *)
         echo "Usage: $0 {prod|sandbox}" >&2
@@ -35,6 +39,8 @@ DJANGO_CSRF_TRUSTED_ORIGINS=https://${HOST}
 DJANGO_SESSION_COOKIE_SECURE=1
 DJANGO_CSRF_COOKIE_SECURE=1
 
+OSPREY_IS_SANDBOX=${IS_SANDBOX}
+
 POSTGRES_DB=osprey
 POSTGRES_USER=osprey
 POSTGRES_PASSWORD=${PG_PASSWORD}
@@ -44,7 +50,7 @@ ORCID_USE_SANDBOX=0
 ORCID_CLIENT_ID=<orcid production client id>
 ORCID_CLIENT_SECRET=<orcid production client secret>
 
-ZENODO_USE_SANDBOX=0
+ZENODO_USE_SANDBOX=${ZENODO_SANDBOX}
 ZENODO_ACCESS_TOKEN=<zenodo personal access token>
 ZENODO_DEFAULT_COMMUNITY=
 ENV

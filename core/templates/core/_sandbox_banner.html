@@ -1,0 +1,13 @@
+{% if osprey_is_sandbox %}
+<div class="sandbox-banner" role="status" aria-label="Sandbox instance notice">
+    <span class="sandbox-banner-icon" aria-hidden="true">&#9888;</span>
+    <span class="sandbox-banner-text">
+        <strong>This is the OSPREY sandbox.</strong>
+        DOIs minted here don't resolve, and the database may be wiped or
+        overwritten at any time. Use it to try out submissions, edits, and
+        other features without affecting production. The real instance lives
+        at <a href="https://osprey.phalkon.io/">osprey.phalkon.io</a>.
+    </span>
+    <span class="sandbox-banner-icon" aria-hidden="true">&#9888;</span>
+</div>
+{% endif %}

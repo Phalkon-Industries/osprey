@@ -177,6 +177,39 @@ main.narrow {
     max-width: 44rem;
 }
 
+/* ---- Sandbox banner ---- */
+
+.sandbox-banner {
+    background: #3a2a06;
+    color: #ffd87a;
+    border-bottom: 1px solid #5a4010;
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+    line-height: 1.35;
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    justify-content: center;
+    text-align: center;
+}
+
+.sandbox-banner-icon {
+    color: #ffb347;
+    font-size: 1.1rem;
+    line-height: 1.2;
+    flex: 0 0 auto;
+}
+
+.sandbox-banner-text {
+    max-width: 60rem;
+}
+
+.sandbox-banner a {
+    color: #ffe6a8;
+    text-decoration: underline;
+}
+
+
 /* ---- Type ---- */
 
 h1,
@@ -1573,6 +1606,7 @@ button.ghost:hover,
     background: var(--accent, #6cb6ff);
     transition: width 0.15s linear;
 }
+
 /* Wiki diff (suggestion review) */
 .wiki-diff {
     background: var(--surface-2, #1a1d23);
@@ -1584,20 +1618,33 @@ button.ghost:hover,
     overflow-x: auto;
     white-space: pre;
 }
-.wiki-diff .diff-add { color: #6ee7b7; display: block; }
-.wiki-diff .diff-remove { color: #fca5a5; display: block; }
+
+.wiki-diff .diff-add {
+    color: #6ee7b7;
+    display: block;
+}
+
+.wiki-diff .diff-remove {
+    color: #fca5a5;
+    display: block;
+}
 
 /* Asker-accepted reply highlight */
 .reply.asker-accepted {
     border-left: 3px solid #6ee7b7;
     padding-left: .75rem;
 }
+
 .reply.maintainer-pick {
     border-left: 3px solid var(--accent, #6cb6ff);
     padding-left: .75rem;
 }
+
 .thread-solution,
 .thread-maintainer-pick {
     margin-top: 1.25rem;
 }
-.warn { color: #fbbf24; }
+
+.warn {
+    color: #fbbf24;
+}

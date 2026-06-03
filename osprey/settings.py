@@ -77,6 +77,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "notifications.context_processors.unread_notification_count",
+                "core.context_processors.osprey_instance",
             ],
         },
     },
@@ -171,6 +172,8 @@ SOCIALACCOUNT_PROVIDERS = {
         },
     }
 }
+
+OSPREY_IS_SANDBOX = _env_bool("OSPREY_IS_SANDBOX", default=False)
 
 ZENODO_USE_SANDBOX = _env_bool("ZENODO_USE_SANDBOX", default=True)
 ZENODO_ACCESS_TOKEN = os.environ.get("ZENODO_ACCESS_TOKEN", "")
