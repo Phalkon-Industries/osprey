@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in /etc/osprey/.env.prod}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in /etc/osprey/.env.prod}
     volumes:
-      - /srv/osprey/postgres:/var/lib/postgresql/data
+      - /srv/osprey-prod/postgres:/var/lib/postgresql/data
     restart: unless-stopped
 
   web:
@@ -16,8 +16,8 @@ services:
         INSTALL_PLAYWRIGHT: "0"
     command: gunicorn osprey.wsgi:application --bind 0.0.0.0:8000 --workers 3
     volumes:
-      - /srv/osprey/staticfiles:/app/staticfiles
-      - /srv/osprey/media:/app/media
+      - /srv/osprey-prod/staticfiles:/app/staticfiles
+      - /srv/osprey-prod/media:/app/media
     ports:
       - "127.0.0.1:8000:8000"
     env_file:

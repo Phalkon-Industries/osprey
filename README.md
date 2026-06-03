@@ -137,4 +137,4 @@ scope for the current demo. ORCID sign-in is the beta-onboarding path; see
 
 ## Deploy
 
-See [deploy/README.md](deploy/README.md).
+See [docs/deployment.md](docs/deployment.md).
