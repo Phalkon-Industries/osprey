@@ -31,9 +31,10 @@ different inputs.
 
 **Local dev** is what you run on your laptop:
 
-- Compose: `docker-compose.yml` only, no override.
-- Env file: repo-local `.env` (gitignored). Named directly by
-  `docker-compose.yml`, so plain `docker compose up` picks it up.
+- Compose: `docker-compose.yml` plus the auto-loaded `docker-compose.override.yml`.
+  The override has the dev-only bits (runserver, bind-mounted repo, port 8000,
+  the repo-local `.env`). Plain `docker compose up` picks both up.
+- Env file: repo-local `.env` (gitignored).
 - Postgres data, static, and media live in the repo's `media/` and a Docker
   volume. `DJANGO_DEBUG=1`, weak secret, ORCID pointed at sandbox or a
   Cloudflare-tunneled dev hostname.
