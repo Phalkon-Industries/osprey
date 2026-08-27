@@ -14,7 +14,7 @@ services:
     build:
       args:
         INSTALL_PLAYWRIGHT: "0"
-    command: gunicorn osprey.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    command: gunicorn osprey.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 600 --graceful-timeout 90
     volumes:
       - /srv/osprey-prod/staticfiles:/app/staticfiles
       - /srv/osprey-prod/media:/app/media

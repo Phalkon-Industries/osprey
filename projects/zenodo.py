@@ -708,6 +708,12 @@ def start_new_version_for_deposit(
     changelog = (changelog or "").strip()
     if not changelog:
         raise ZenodoError("A changelog is required when starting a new version.")
+    # Persist the user's typed changelog and repo link BEFORE the first
+    # network call. If Zenodo is down or the request dies mid-flight, the
+    # text survives on the deposit row and prefills the form next time.
+    deposit.pending_changelog = changelog
+    deposit.repo_link = (repo_link or "").strip()
+    deposit.save(update_fields=["pending_changelog", "repo_link", "updated_at"])
     client = ZenodoClient.from_settings()
     project = deposit.project
     try:
@@ -721,8 +727,6 @@ def start_new_version_for_deposit(
         deposit.doi = ids["doi"] or deposit.doi
         deposit.concept_doi = ids["concept_doi"] or deposit.concept_doi
         deposit.state = ProjectDeposit.STATE_DRAFT
-        deposit.pending_changelog = changelog
-        deposit.repo_link = (repo_link or "").strip()
         deposit.save()
 
         metadata_response = client.update_deposition_metadata(

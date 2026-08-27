@@ -1208,3 +1208,134 @@ class ContributorOrcidTemplateTests(ProjectTestCase):
         self.assertIn("orcid-search/", body)
         # ORCID iD must only render as a hidden input on the form.
         self.assertNotIn("ORCID iD (optional)", body)
+
+
+class DraftDataLossRegressionTests(ProjectTestCase):
+    """Regressions for the draft data-loss bug tracked in planning/to-do.md.
+
+    The reported failure: a form POST carrying typed work plus a zip dies,
+    the browser lands on an error page, and everything typed is gone. Each
+    test pins one path that must either succeed or re-render the bound
+    form; none of them may escalate to a 500.
+    """
+
+    def _zip_upload(self, name: str = "archive.zip", payload_bytes: int = 3 * 1024 * 1024):
+        # Bigger than FILE_UPLOAD_MAX_MEMORY_SIZE (2 MiB) so Django parses
+        # the upload through a TemporaryUploadedFile on disk, matching how
+        # a real project archive arrives. os.urandom doesn't compress, so
+        # the zip stays over the threshold.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("payload.bin", os.urandom(payload_bytes))
+        buffer.seek(0)
+        return SimpleUploadedFile(name, buffer.read(), content_type="application/zip")
+
+    def _edit_post_data(self, **overrides) -> dict:
+        data = self.project_form_post_data(action="save")
+        data["contributions-INITIAL_FORMS"] = "1"
+        data["contributions-0-id"] = str(self.private_project.contributions.first().pk)
+        data.update(overrides)
+        return data
+
+    def test_edit_draft_with_large_zip_saves_everything(self):
+        self.client.force_login(self.owner)
+        data = self._edit_post_data(title="Edited With Zip")
+        data["attachment_files"] = self._zip_upload()
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.private_project.refresh_from_db()
+        self.assertEqual(self.private_project.title, "Edited With Zip")
+        attachment = self.private_project.attachments.get()
+        self.assertGreater(attachment.size_bytes, 2 * 1024 * 1024)
+        with attachment.file.open("rb") as fh:
+            self.assertEqual(fh.read(2), b"PK")
+
+    @patch("projects.views.publish_project_now")
+    def test_unexpected_publish_crash_on_new_keeps_draft(self, publish_mock):
+        publish_mock.side_effect = RuntimeError("simulated crash mid-upload")
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="publish")
+        data["title"] = "Crash Survivor"
+
+        response = self.client.post(reverse("projects:new"), data)
+
+        # Must not 500: the draft is saved, the user is told, the work survives.
+        self.assertEqual(response.status_code, 302)
+        project = Project.objects.get(title="Crash Survivor")
+        self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
+
+    @patch("projects.views.publish_project_now")
+    def test_unexpected_publish_crash_on_edit_keeps_changes(self, publish_mock):
+        publish_mock.side_effect = RuntimeError("simulated crash mid-upload")
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+        data = self._edit_post_data(action="publish", title="Edited Crash Survivor")
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.private_project.refresh_from_db()
+        self.assertEqual(self.private_project.title, "Edited Crash Survivor")
+        self.assertEqual(
+            self.private_project.visibility, Project.VISIBILITY_PRIVATE
+        )
+
+    def test_tampered_management_form_rerenders_instead_of_500(self):
+        self.client.force_login(self.owner)
+        data = self._edit_post_data(title="Typed And Precious")
+        del data["contributions-TOTAL_FORMS"]
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
+
+        # A broken management form (JS glitch, truncated POST) must come
+        # back as the bound form with the typed data still in it.
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Typed And Precious")
+
+    def test_tampered_management_form_on_new_rerenders_instead_of_500(self):
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="draft")
+        data["title"] = "New And Precious"
+        del data["contributions-TOTAL_FORMS"]
+
+        response = self.client.post(reverse("projects:new"), data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "New And Precious")
+
+    @override_settings(
+        ZENODO_USE_SANDBOX=True,
+        ZENODO_ACCESS_TOKEN="fake-token",
+        ZENODO_API_BASE_URL="https://sandbox.zenodo.org",
+    )
+    @patch("projects.zenodo.ZenodoClient")
+    def test_new_version_changelog_survives_zenodo_failure(self, client_class):
+        from .zenodo import start_new_version_for_deposit
+
+        client = client_class.from_settings.return_value
+        client.create_new_version.side_effect = ZenodoError("zenodo is down")
+        deposit = ProjectDeposit.objects.create(
+            project=self.public_project,
+            provider=ProjectDeposit.PROVIDER_ZENODO,
+            state=ProjectDeposit.STATE_PUBLISHED,
+            deposition_id="123",
+        )
+
+        with self.assertRaises(ZenodoError):
+            start_new_version_for_deposit(
+                deposit, changelog="Fixed the seal spec", user=self.owner
+            )
+
+        # The user's changelog must be stored before the first network
+        # call, so a failed or killed request can't eat it.
+        deposit.refresh_from_db()
+        self.assertEqual(deposit.pending_changelog, "Fixed the seal spec")

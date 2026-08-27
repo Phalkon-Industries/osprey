@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -30,7 +32,17 @@ from .zenodo import (
     zenodo_mode_label,
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024  # 500 MiB per attached file
+
+# Shown when a publish blows up in a way the Zenodo client didn't wrap.
+# The user's form data is already committed by the time publishing starts,
+# so the honest message is "your work is safe," not a 500 page.
+PUBLISH_CRASH_MESSAGE = (
+    "Something unexpected went wrong while publishing. Your work is saved "
+    "as a draft; please try publishing again from the project page."
+)
 
 
 def _looks_like_zip(upload) -> bool:
@@ -412,6 +424,14 @@ def project_new(request):
                         request,
                         f"Could not publish on Zenodo: {exc}. Saved as a draft.",
                     )
+                except Exception:  # noqa: BLE001 - the draft is already saved;
+                    # a publish crash must never become a 500 that eats it.
+                    logger.exception(
+                        "Unexpected error publishing new project %s", project.slug
+                    )
+                    project.visibility = Project.VISIBILITY_PRIVATE
+                    project.save(update_fields=["visibility"])
+                    messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
                     messages.success(
                         request,
@@ -473,6 +493,14 @@ def project_edit(request, slug: str):
                         request,
                         f"Could not publish on Zenodo: {exc}. Saved as a draft.",
                     )
+                except Exception:  # noqa: BLE001 - edits are already saved;
+                    # a publish crash must never become a 500 that eats them.
+                    logger.exception(
+                        "Unexpected error publishing project %s", saved.slug
+                    )
+                    saved.visibility = Project.VISIBILITY_PRIVATE
+                    saved.save(update_fields=["visibility"])
+                    messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
                     messages.success(
                         request,
@@ -487,6 +515,15 @@ def project_edit(request, slug: str):
                     messages.warning(
                         request,
                         f"Saved on OSPREY, but could not update Zenodo metadata: {exc}",
+                    )
+                except Exception:  # noqa: BLE001 - same rule: never 500 after save.
+                    logger.exception(
+                        "Unexpected error syncing metadata for %s", saved.slug
+                    )
+                    messages.warning(
+                        request,
+                        "Saved on OSPREY, but the Zenodo metadata sync failed "
+                        "unexpectedly. Edit and save again to retry the sync.",
                     )
                 else:
                     messages.success(
@@ -574,6 +611,16 @@ def project_zenodo_new_version(request, slug: str):
                     )
                 except ZenodoError as exc:
                     messages.error(request, f"Could not publish new version: {exc}")
+                except Exception:  # noqa: BLE001 - changelog and archive are
+                    # already stored; re-render instead of a data-eating 500.
+                    logger.exception(
+                        "Unexpected error publishing new version of %s", project.slug
+                    )
+                    messages.error(
+                        request,
+                        "Something unexpected went wrong while publishing the new "
+                        "version. Your changelog and archive are saved; try again.",
+                    )
                 else:
                     messages.success(
                         request,
@@ -593,6 +640,15 @@ def project_zenodo_new_version(request, slug: str):
                     )
                 except ZenodoError as exc:
                     messages.error(request, f"Could not save new version draft: {exc}")
+                except Exception:  # noqa: BLE001 - same rule as the publish branch.
+                    logger.exception(
+                        "Unexpected error saving new version draft of %s", project.slug
+                    )
+                    messages.error(
+                        request,
+                        "Something unexpected went wrong while saving the version "
+                        "draft. Your changelog and archive are saved; try again.",
+                    )
                 else:
                     messages.success(
                         request,

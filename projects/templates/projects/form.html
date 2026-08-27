@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{% if mode == 'edit' %}Edit{% else %}Submit{% endif %} project — OSPREY{% endblock %}
 
 {% block content %}
@@ -8,7 +9,7 @@
     Everything else is optional.
 </p>
 
-<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form>
+<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave>
     {% csrf_token %}
     {% if form.non_field_errors %}
     <p style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
@@ -252,6 +253,7 @@
     </div>
 </div>
 
+<script src="{% static 'projects/form_autosave.js' %}" defer></script>
 <script>
     (function () {
         // Prevent Enter from implicitly submitting the form except when focus
