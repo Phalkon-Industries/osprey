@@ -122,8 +122,6 @@ planning/               Source-of-truth planning documents
   links back to the upstream repositories or archives.
 - Sign in with ORCID for verified submitter identity. Contributor rows can name
   other people now; their ORCID iDs are added only after they authenticate.
-- Export the entire public database as a single JSON document at
-  `/api/v1/export/`. That endpoint is the survivability promise made concrete.
 - Capture closed-beta feedback from logged-in users through the floating
   feedback widget. Staff can review it at `/feedback/review/` or in the
   Django admin.

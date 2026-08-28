@@ -25,6 +25,10 @@ class Command(BaseCommand):
             raise CommandError(
                 "No recipient: pass an address or set one in the admin panel."
             )
-        send_test_email(to_address)
-        state = "Mailjet" if config.enabled else "console output (email disabled)"
+        mode = send_test_email(to_address)
+        state = (
+            "the delivery provider"
+            if mode == "provider"
+            else "console output (email disabled or provider unconfigured)"
+        )
         self.stdout.write(f"Test email to {to_address} handed to {state}.")

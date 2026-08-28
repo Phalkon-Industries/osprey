@@ -225,13 +225,33 @@ CSRF_COOKIE_SECURE = _env_bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
 SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
 
 # Email. All outgoing mail routes through the OSPREY backend, which reads
-# the admin-configured EmailSettings singleton at send time: it delegates
-# to Mailjet when email is enabled there and keys are present, and writes
-# to console/log output otherwise. Django's test runner overrides this
-# with the in-memory backend automatically.
+# the admin-configured EmailSettings singleton at send time and, when
+# email is enabled there, delegates to the provider backend below; when
+# disabled or unconfigured it writes to console/log output instead.
+# Django's test runner overrides this with the in-memory backend
+# automatically.
 EMAIL_BACKEND = os.environ.get(
     "DJANGO_EMAIL_BACKEND", "notifications.email.OspreyEmailBackend"
 )
+
+# The delivery provider, as a Django email backend path. Provider-agnostic
+# on purpose: anymail ships a backend per provider (mailjet, amazon_ses,
+# postmark, ...) and Django's own SMTP backend works too. Switching
+# providers is an env change, never a code change.
+EMAIL_DELIVERY_BACKEND = os.environ.get(
+    "EMAIL_DELIVERY_BACKEND", "anymail.backends.mailjet.EmailBackend"
+)
+
+# Provider credentials for anymail backends, assembled generically from
+# ANYMAIL_-prefixed env vars (e.g. ANYMAIL_MAILJET_API_KEY becomes
+# ANYMAIL["MAILJET_API_KEY"]). Secrets live only in the environment,
+# never in the database.
+ANYMAIL = {
+    key[len("ANYMAIL_"):]: value
+    for key, value in os.environ.items()
+    if key.startswith("ANYMAIL_")
+}
+
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL", "OSPREY <notify@osprey.phalkon.io>"
 )

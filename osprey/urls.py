@@ -8,9 +8,9 @@ from api.urls import api
 from core import views as core_views
 from projects import views as project_views
 
-admin.site.site_header = "OSPREY database admin"
+admin.site.site_header = "OSPREY admin"
 admin.site.site_title = "OSPREY admin"
-admin.site.index_title = "Data tables and maintenance"
+admin.site.index_title = "Site administration"
 
 urlpatterns = [
     path("", core_views.home, name="home"),

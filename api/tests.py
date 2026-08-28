@@ -101,17 +101,10 @@ class ApiTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_export_contains_public_survivable_data_only(self):
+    def test_export_endpoint_is_gone(self):
+        # The full-database export was removed on purpose: the database
+        # now holds operational secrets and, later, opt-in emails. A
+        # public "download everything" endpoint has no place here.
         response = self.client.get("/api/v1/export/")
 
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        project_slugs = {project["slug"] for project in payload["projects"]}
-        deposit_dois = {deposit["doi"] for deposit in payload["project_deposits"]}
-        contribution_orcids = {row["orcid_id"] for row in payload["contributions"]}
-
-        self.assertIn("public-pump", project_slugs)
-        self.assertNotIn("private-pump", project_slugs)
-        self.assertIn("10.5072/zenodo.123", deposit_dois)
-        self.assertNotIn("10.5072/zenodo.999", deposit_dois)
-        self.assertEqual(contribution_orcids, {"0000-0001-2345-6789"})
+        self.assertEqual(response.status_code, 404)

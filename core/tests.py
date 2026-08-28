@@ -81,7 +81,7 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 for path, expected_text in [
                     ("/", "OSPREY"),
                     ("/projects/", "Browser Pump"),
-                    ("/api/v1/export/", "browser-pump"),
+                    ("/api/v1/projects/", "browser-pump"),
                 ]:
                     response = page.goto(f"{self.live_server_url}{path}")
                     self.assertIsNotNone(response, path)

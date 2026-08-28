@@ -9,21 +9,21 @@ from django.db import models
 class EmailSettings(models.Model):
     """Singleton row: admin-editable email transport configuration.
 
-    Keys and the from address live here so staff can manage email from
-    /admin/ without touching .env or restarting containers. Env vars
-    (MAILJET_API_KEY, MAILJET_SECRET_KEY, DEFAULT_FROM_EMAIL) seed the
-    row on first load and act as fallbacks while fields are blank.
-
-    The API key is stored in the database by design (an accepted
-    trade-off, see planning notes): use a send-only Mailjet key and
-    rotate it if the database is ever exposed.
+    Holds only non-secret operational settings: the master switch, the
+    from address, and the test recipient. Delivery-provider credentials
+    are deliberately NOT here: secrets live in env files only, never in
+    the database, where backups, dumps, and admin-account compromise
+    would expose them. The provider itself is env-configured too
+    (settings.EMAIL_DELIVERY_BACKEND); this model knows nothing about
+    which one is in use.
     """
 
     enabled = models.BooleanField(
         default=False,
         help_text=(
-            "Master switch. When off (or when keys are missing), outgoing "
-            "mail is written to the server log instead of being sent."
+            "Master switch. When off (or when the delivery provider is "
+            "not configured), outgoing mail is written to the server log "
+            "instead of being sent."
         ),
     )
     from_email = models.CharField(
@@ -32,8 +32,6 @@ class EmailSettings(models.Model):
         default="",
         help_text='Sender address, e.g. "OSPREY <notify@osprey.phalkon.io>".',
     )
-    mailjet_api_key = models.CharField(max_length=128, blank=True, default="")
-    mailjet_secret_key = models.CharField(max_length=128, blank=True, default="")
     test_recipient = models.EmailField(
         blank=True,
         default="",
@@ -58,11 +56,7 @@ class EmailSettings(models.Model):
     def load(cls) -> "EmailSettings":
         obj, _created = cls.objects.get_or_create(
             pk=1,
-            defaults={
-                "from_email": os.environ.get("DEFAULT_FROM_EMAIL", ""),
-                "mailjet_api_key": os.environ.get("MAILJET_API_KEY", ""),
-                "mailjet_secret_key": os.environ.get("MAILJET_SECRET_KEY", ""),
-            },
+            defaults={"from_email": os.environ.get("DEFAULT_FROM_EMAIL", "")},
         )
         return obj
 
