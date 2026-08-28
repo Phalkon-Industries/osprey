@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80" fill="none" role="img" aria-label="OSPREY logo">
+  <!-- Light mode: royal-blue mark on warm off-white background -->
+
+  <!-- Background -->
+  <rect width="160" height="80" rx="8" fill="#faf7f2" />
+
+  <!-- Osprey mark -->
+  <g transform="translate(80, 32) scale(1.4)" stroke="#1d4ed8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-10 7 C -5 2, -1 1, 2 -1 L 10 -6 L 7 1 C 5 6, 1 9, -4 10 L -10 7 Z" />
+    <path d="M2 -1 L -1 4" />
+  </g>
+
+  <!-- OSPREY text -->
+  <text x="80" y="62" text-anchor="middle" fill="#1c2530"
+        font-family="system-ui, -apple-system, sans-serif" font-weight="750"
+        font-size="16" letter-spacing="1.28">OSPREY</text>
+</svg>
