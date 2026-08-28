@@ -4,6 +4,7 @@ gunicorn>=22.0
 django-ninja>=1.1
 django-allauth[socialaccount]>=65.0,<66
 django-ratelimit>=4.1
+django-anymail[mailjet]>=13.0
 python-dotenv>=1.0
 Pillow>=10.0
 markdown>=3.6

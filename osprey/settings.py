@@ -223,3 +223,15 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = _env_bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEBUG)
 CSRF_COOKIE_SECURE = _env_bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
 SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
+
+# Email. All outgoing mail routes through the OSPREY backend, which reads
+# the admin-configured EmailSettings singleton at send time: it delegates
+# to Mailjet when email is enabled there and keys are present, and writes
+# to console/log output otherwise. Django's test runner overrides this
+# with the in-memory backend automatically.
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND", "notifications.email.OspreyEmailBackend"
+)
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "OSPREY <notify@osprey.phalkon.io>"
+)
