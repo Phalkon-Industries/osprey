@@ -5,7 +5,6 @@ __pycache__
 .env.*
 !.env.example
 planning/
-!planning/features/
 node_modules/
 .venv/
 .coverage

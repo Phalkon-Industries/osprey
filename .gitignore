@@ -211,3 +211,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# OSPREY internal planning documents. Working notes, drafts, and strategy
+# docs that are not part of the public repository.
+planning/

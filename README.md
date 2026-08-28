@@ -128,12 +128,54 @@ planning/               Source-of-truth planning documents
   feedback widget. Staff can review it at `/feedback/review/` or in the
   Django admin.
 
-## What the demo does not do
+## Roadmap
 
-Real DOI minting, citation exports, lineage graphs, federation imports from
-GitHub or Zenodo, the wiki layer, and reuse attestations are deliberately out of
-scope for the current demo. ORCID sign-in is the beta-onboarding path; see
-[planning/features/orcid-signin.md](planning/features/orcid-signin.md).
+What OSPREY can do today and where it is heading. If you have a
+suggestion, open an issue or get in touch directly.
+
+### What works today
+
+- **Sign in with ORCID.** Contributions are tied to a verified researcher
+  identity.
+- **Project pages.** Cover image, summary, full description, contributor
+  list, tags, and links to the source repository.
+- **Citable DOIs.** Publishing a project deposits a snapshot to
+  [Zenodo](https://zenodo.org) and mints a DOI.
+- **New versions.** Significant updates get their own version DOI; the
+  project DOI keeps pointing at whatever is latest.
+- **Contributor credit.** Contributors are listed with a role and a credit
+  statement, with an inline ORCID search to find the right person.
+- **Project wikis.** Per-project documentation with suggested edits and a
+  review queue with side-by-side diffs.
+- **Use reports.** Structured "I used this and here's what happened" notes
+  from other researchers.
+- **Project discussions.** Question-and-answer threads with accepted
+  answers.
+- **Reporting and moderation.** Users can report content; staff have a
+  real moderation queue.
+- **Basic browsing and search**, plus profile pages for every
+  ORCID-verified user.
+
+### Near-term
+
+Loosely in order: notifications and opt-in email (in-app inbox, following
+creators, watching projects), contributor claiming (invite someone to
+verify a credit row), tag suggestions, search and filter improvements, a
+feature documentation page, and save/collect with named collections.
+
+### Later
+
+Live citation tracking so upstream projects get credit for downstream
+citations, and visible lineage (fork, derivation, and version
+relationships between projects).
+
+### Long-term
+
+Federation: institutions running their own OSPREY instances that
+replicate publicly among themselves. Not being built yet; the near-term
+work is keeping the data model from foreclosing it (stable URIs, globally
+unique identifiers, origin tracking). If running a federated instance
+interests you, get in touch.
 
 ## Deploy
 

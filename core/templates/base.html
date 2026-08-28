@@ -39,7 +39,6 @@
         <nav>
             <a href="{% url 'projects:list' %}">Projects</a>
             <a href="{% url 'about' %}">About</a>
-            <a href="{% url 'roadmap' %}">Roadmap</a>
             {% if user.is_authenticated %}
             <a href="{% url 'projects:new' %}">Submit</a>
             <a href="{% url 'people:me' %}">Your profile</a>

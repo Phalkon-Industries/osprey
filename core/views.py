@@ -1,10 +1,7 @@
-from pathlib import Path
-
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.db import models
-from django.http import Http404
 from django.shortcuts import redirect, render
 from django_ratelimit.decorators import ratelimit
 
@@ -12,10 +9,6 @@ from feedback.models import Feedback
 from people.models import Profile
 from projects.models import Project
 from projects.views import _visible_projects_for
-
-# Single curated public-facing roadmap file.
-_ROADMAP_FILE = Path(settings.BASE_DIR) / "planning" / "roadmap-public.md"
-
 
 def home(request):
     qs = _visible_projects_for(request.user)
@@ -49,18 +42,6 @@ def markdown_guide(request):
 
 def derivative_guide(request):
     return render(request, "core/derivative_guide.html")
-
-
-def roadmap(request):
-    """Public roadmap page rendered from planning/roadmap-public.md."""
-    if not _ROADMAP_FILE.is_file():
-        raise Http404("Roadmap not available.")
-    text = _ROADMAP_FILE.read_text(encoding="utf-8")
-    return render(
-        request,
-        "core/roadmap.html",
-        {"title": "OSPREY roadmap", "body_md": text},
-    )
 
 
 @staff_member_required

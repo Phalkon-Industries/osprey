@@ -18,7 +18,6 @@ urlpatterns = [
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/derivatives/", core_views.derivative_guide, name="derivative_guide"),
-    path("roadmap/", core_views.roadmap, name="roadmap"),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
     path("accounts/", include("allauth.urls")),

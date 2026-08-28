@@ -14,6 +14,11 @@ instructions cover both.
 
 ## Source-of-truth documents
 
+The `planning/` folder is deliberately untracked: it holds in-progress
+strategy and scoping notes and is not part of the repository. The links
+below work in a local working copy that has the folder; they will not
+resolve in a fresh clone.
+
 Read these before suggesting changes that touch their domain:
 
 - [planning/vision.md](../planning/vision.md) — the why, future picture, and pump anecdote. Narrative source of truth.

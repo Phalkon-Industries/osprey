@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - dependency is installed in Docker
 
 class CoreViewTests(TestCase):
     def test_static_pages_render(self):
-        for url_name in ["home", "about", "license_guide", "roadmap"]:
+        for url_name in ["home", "about", "license_guide"]:
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200, url_name)
 
@@ -31,14 +31,9 @@ class CoreViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], reverse("home"))
 
-    def test_roadmap_renders_curated_markdown(self):
-        response = self.client.get(reverse("roadmap"))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "OSPREY roadmap")
-
-    def test_old_roadmap_entry_url_is_gone(self):
-        response = self.client.get("/roadmap/anything/")
+    def test_roadmap_page_is_retired(self):
+        # The roadmap moved to the README; the old page must 404, not crash.
+        response = self.client.get("/roadmap/")
         self.assertEqual(response.status_code, 404)
 
 
@@ -86,7 +81,6 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                 for path, expected_text in [
                     ("/", "OSPREY"),
                     ("/projects/", "Browser Pump"),
-                    ("/roadmap/", "OSPREY roadmap"),
                     ("/api/v1/export/", "browser-pump"),
                 ]:
                     response = page.goto(f"{self.live_server_url}{path}")
