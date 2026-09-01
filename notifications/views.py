@@ -39,3 +39,21 @@ def mark_all_read(request):
         is_read=True, read_at=timezone.now()
     )
     return HttpResponseRedirect(reverse("notifications:inbox"))
+
+
+@login_required
+def menu(request):
+    """HTML fragment behind the header bell: the latest notifications.
+
+    Fetched lazily by the dropdown so pages don't pay for it unless the
+    bell is opened.
+    """
+    qs = request.user.notifications.all()[:10]
+    return render(
+        request,
+        "notifications/menu.html",
+        {
+            "notifications": qs,
+            "unread_count": request.user.notifications.filter(is_read=False).count(),
+        },
+    )

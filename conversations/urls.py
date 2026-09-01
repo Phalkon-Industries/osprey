@@ -9,6 +9,11 @@ urlpatterns = [
     path("<slug:slug>/discussion/new/", views.thread_new, name="new"),
     path("<slug:slug>/discussion/<int:thread_id>/", views.thread_detail, name="detail"),
     path(
+        "<slug:slug>/discussion/<int:thread_id>/follow/",
+        views.toggle_follow,
+        name="toggle_follow",
+    ),
+    path(
         "<slug:slug>/discussion/<int:thread_id>/answer/",
         views.mark_answer,
         name="mark_answer",

@@ -1648,3 +1648,63 @@ button.ghost:hover,
 .warn {
     color: #fbbf24;
 }
+/* Header notification bell dropdown */
+.bell-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.bell-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + .5rem);
+    width: 20rem;
+    max-width: 85vw;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+    z-index: 60;
+    text-align: left;
+}
+
+.bell-menu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 22rem;
+    overflow-y: auto;
+}
+
+.bell-menu-item a {
+    display: block;
+    padding: .55rem .75rem;
+    text-decoration: none;
+    color: var(--fg);
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.bell-menu-item a:hover {
+    background: var(--bg-soft);
+}
+
+.bell-menu-item.unread .bell-menu-title {
+    font-weight: 600;
+}
+
+.bell-menu-title,
+.bell-menu-body {
+    display: block;
+}
+
+.bell-menu-empty {
+    padding: .75rem;
+    margin: 0;
+}
+
+.bell-menu-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: .45rem .75rem;
+}

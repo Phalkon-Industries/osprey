@@ -45,6 +45,16 @@ PUBLISH_CRASH_MESSAGE = (
 )
 
 
+def _notify_project_published(project: Project) -> None:
+    """Tell staff a project went public; never let it break the publish."""
+    try:
+        from notifications import events
+
+        events.project_published(project)
+    except Exception:
+        logger.exception("project_published notification failed")
+
+
 def _looks_like_zip(upload) -> bool:
     name = (getattr(upload, "name", "") or "").lower()
     if name.endswith(".zip"):
@@ -433,6 +443,7 @@ def project_new(request):
                     project.save(update_fields=["visibility"])
                     messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
+                    _notify_project_published(project)
                     messages.success(
                         request,
                         f"Project published on {zenodo_mode_label()}.",
@@ -502,6 +513,7 @@ def project_edit(request, slug: str):
                     saved.save(update_fields=["visibility"])
                     messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
+                    _notify_project_published(saved)
                     messages.success(
                         request,
                         f"Project published on {zenodo_mode_label()}.",

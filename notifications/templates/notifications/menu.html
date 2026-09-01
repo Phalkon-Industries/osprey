@@ -1,0 +1,24 @@
+{% if notifications %}
+<ul class="bell-menu-list">
+    {% for n in notifications %}
+    <li class="bell-menu-item{% if not n.is_read %} unread{% endif %}">
+        <a href="{% url 'notifications:open' n.pk %}">
+            <span class="bell-menu-title">{{ n.title }}</span>
+            {% if n.body %}<span class="bell-menu-body muted small">{{ n.body|truncatechars:90 }}</span>{% endif %}
+            <span class="muted small">{{ n.created_at|date:"Y-m-d H:i" }}</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="muted small bell-menu-empty">Nothing yet. Activity on your projects and threads shows up here.</p>
+{% endif %}
+<div class="bell-menu-footer">
+    <a href="{% url 'notifications:inbox' %}">View all</a>
+    {% if unread_count %}
+    <form method="post" action="{% url 'notifications:mark_all_read' %}" style="display:inline;margin:0">
+        {% csrf_token %}
+        <button type="submit" class="ghost small">Mark all read</button>
+    </form>
+    {% endif %}
+</div>

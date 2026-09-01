@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from notifications.models import send as notify
+from notifications import events
 from projects.models import Project
 
 from .forms import UseReportForm
@@ -58,20 +58,7 @@ def new(request, slug):
                     submitted_by=request.user,
                     use_report=report,
                 )
-            for c in project.contributions.filter(user__isnull=False).select_related(
-                "user"
-            ):
-                if c.user_id == request.user.id:
-                    continue
-                notify(
-                    c.user,
-                    kind="use_report",
-                    title=f"New use report on {project.title}",
-                    body=f"@{request.user.get_username()} shared how they used your project.",
-                    url=reverse("use_reports:index", args=[project.slug]),
-                    project_slug=project.slug,
-                    use_report_id=report.pk,
-                )
+            events.use_report_created(report)
             messages.success(request, "Thanks for sharing how you used this project.")
             return redirect("use_reports:index", slug=project.slug)
     else:
@@ -102,4 +89,5 @@ def moderate(request, slug, use_report_id):
     else:
         return redirect("use_reports:index", slug=project.slug)
     report.save()
+    events.use_report_moderated(report, hidden=(action == "hide"))
     return redirect("use_reports:index", slug=project.slug)

@@ -53,16 +53,19 @@
         <span class="auth">
             {% if user.is_authenticated %}
             {% if user.is_staff %}
-            <span class="staff-links" aria-label="Admin links">
-                <a href="{% url 'core:staff_dashboard' %}">Admin dashboard</a>
+            <span class="staff-links" aria-label="Staff links">
+                <a href="{% url 'core:staff_dashboard' %}">Staff dashboard</a>
                 <a href="{% url 'moderation:queue' %}">Moderation</a>
                 <a href="{% url 'feedback:review' %}">Feedback</a>
-                <a href="{% url 'admin:index' %}">Database admin</a>
+                <a href="{% url 'admin:index' %}">Admin</a>
             </span>
             {% endif %}
-            <a href="{% url 'notifications:inbox' %}" class="inbox-link" title="Inbox">
-                Inbox{% if unread_notification_count %} <span class="badge">{{ unread_notification_count }}</span>{% endif %}
-            </a>
+            <span class="bell-wrap" data-bell>
+                <a href="{% url 'notifications:inbox' %}" class="inbox-link" title="Notifications" aria-label="Notifications" data-bell-toggle>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>{% if unread_notification_count %} <span class="badge">{{ unread_notification_count }}</span>{% endif %}
+                </a>
+                <div class="bell-menu" data-bell-menu hidden data-menu-url="{% url 'notifications:menu' %}"></div>
+            </span>
             <span class="muted">@{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
                 {% csrf_token %}
@@ -113,6 +116,52 @@
             });
         })();
     </script>
+    {% if user.is_authenticated %}
+    <script>
+        (function () {
+            // Header bell: first click opens a lazily-fetched dropdown of
+            // recent notifications; without JS the link goes to /inbox/.
+            var wrap = document.querySelector('[data-bell]');
+            if (!wrap) return;
+            var toggle = wrap.querySelector('[data-bell-toggle]');
+            var menu = wrap.querySelector('[data-bell-menu]');
+            var loaded = false;
+            toggle.addEventListener('click', function (event) {
+                event.preventDefault();
+                if (!menu.hidden) {
+                    menu.hidden = true;
+                    return;
+                }
+                menu.hidden = false;
+                if (!loaded) {
+                    menu.innerHTML = '<p class="muted small bell-menu-empty">Loading…</p>';
+                    fetch(menu.dataset.menuUrl, { credentials: 'same-origin' })
+                        .then(function (response) {
+                            if (!response.ok) throw new Error(response.status);
+                            return response.text();
+                        })
+                        .then(function (html) {
+                            menu.innerHTML = html;
+                            loaded = true;
+                        })
+                        .catch(function () {
+                            menu.innerHTML =
+                                '<p class="muted small bell-menu-empty">Could not load. <a href="' +
+                                toggle.getAttribute('href') + '">Open the inbox</a>.</p>';
+                        });
+                }
+            });
+            document.addEventListener('click', function (event) {
+                if (!menu.hidden && !wrap.contains(event.target)) {
+                    menu.hidden = true;
+                }
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') menu.hidden = true;
+            });
+        })();
+    </script>
+    {% endif %}
     {% if user.is_authenticated and request.path|slice:":7" != "/admin/" %}
     <div id="feedback-widget" data-endpoint="{% url 'feedback:submit' %}" data-csrf="{{ csrf_token }}"></div>
     <script src="{% static 'feedback/html2canvas-pro.min.js' %}" defer></script>

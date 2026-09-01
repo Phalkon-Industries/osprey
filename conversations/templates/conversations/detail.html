@@ -11,6 +11,12 @@
         {% if solution_reply %}<span class="badge ok">answered</span>{% endif %}
         {% if thread.answer_id %}<span class="badge ok">maintainer answered</span>{% endif %}
         <span class="spacer"></span>
+        {% if user.is_authenticated %}
+        <form method="post" action="{% url 'conversations:toggle_follow' project.slug thread.id %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="button ghost" title="{% if is_following %}Stop getting notified about replies on this thread{% else %}Get notified about replies on this thread{% endif %}">{% if is_following %}Unfollow{% else %}Follow{% endif %}</button>
+        </form>
+        {% endif %}
         {% if is_maintainer %}
         <form method="post" action="{% url 'conversations:close' project.slug thread.id %}" style="display:inline">
             {% csrf_token %}

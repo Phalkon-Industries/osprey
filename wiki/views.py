@@ -14,7 +14,7 @@ from django.conf import settings
 from django_ratelimit.decorators import ratelimit
 
 from projects.models import Project
-from notifications.models import send as notify
+from notifications import events
 
 from .forms import WikiPageForm, WikiRevisionReviewForm
 from .merge import three_way_merge
@@ -125,7 +125,7 @@ def edit(request, slug, page_slug=None):
                         body="",
                         last_edited_by=request.user,
                     )
-                WikiRevision.objects.create(
+                revision = WikiRevision.objects.create(
                     page=target_page,
                     author=request.user,
                     title=title,
@@ -135,21 +135,7 @@ def edit(request, slug, page_slug=None):
                     summary=summary,
                     status=WikiRevision.STATUS_PENDING,
                 )
-                # Notify maintainers.
-                for c in project.contributions.filter(
-                    user__isnull=False
-                ).select_related("user"):
-                    if c.user_id == request.user.id:
-                        continue
-                    notify(
-                        c.user,
-                        kind="wiki_suggestion",
-                        title=f"Wiki suggestion on {project.title}",
-                        body=f"{request.user.get_username()} suggested an edit to '{title}'.",
-                        url=reverse("wiki:review", args=[project.slug]),
-                        project_slug=project.slug,
-                        page_slug=target_page.slug,
-                    )
+                events.wiki_suggestion_created(revision, project, target_page)
                 messages.success(request, "Suggestion submitted for maintainer review.")
                 return redirect(
                     "wiki:detail", slug=project.slug, page_slug=target_page.slug
@@ -297,21 +283,15 @@ def review_action(request, slug, revision_id):
         page.save()
         revision.status = WikiRevision.STATUS_APPLIED
         if revision.author and revision.author_id != request.user.id:
-            notify(
-                revision.author,
-                kind="wiki_suggestion",
-                title=f"Your wiki suggestion was applied on {project.title}",
-                url=reverse("wiki:detail", args=[project.slug, page.slug]),
+            events.wiki_suggestion_reviewed(
+                revision, project, approved=True, page_slug=page.slug
             )
         messages.success(request, "Suggestion applied.")
     else:
         revision.status = WikiRevision.STATUS_REJECTED
         if revision.author and revision.author_id != request.user.id:
-            notify(
-                revision.author,
-                kind="wiki_suggestion",
-                title=f"Your wiki suggestion was declined on {project.title}",
-                url=reverse("wiki:detail", args=[project.slug, revision.page.slug]),
+            events.wiki_suggestion_reviewed(
+                revision, project, approved=False, page_slug=revision.page.slug
             )
         messages.info(request, "Suggestion rejected.")
 

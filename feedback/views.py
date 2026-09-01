@@ -7,6 +7,7 @@ in-app inbox, with the Django admin kept as the lower-level back office.
 from __future__ import annotations
 
 import base64
+import logging
 import re
 
 from django.contrib import messages
@@ -17,6 +18,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .models import Feedback, FeedbackReply
+
+logger = logging.getLogger(__name__)
 
 _MAX_MESSAGE_LEN = 4000
 _MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024  # 4 MiB after base64 decode
@@ -117,6 +120,12 @@ def submit(request):
             )
 
     fb.save()
+    try:
+        from notifications import events
+
+        events.feedback_submitted(fb)
+    except Exception:
+        logger.exception("feedback_submitted notification failed")
     return JsonResponse({"ok": True, "id": fb.pk})
 
 
@@ -133,19 +142,12 @@ def review(request):
             reply = FeedbackReply.objects.create(
                 feedback=fb, author=request.user, body=reply_body[:4000]
             )
-            if fb.user_id and fb.user_id != request.user.id:
-                try:
-                    from notifications.models import send as notify
+            try:
+                from notifications import events
 
-                    notify(
-                        fb.user,
-                        kind="feedback_reply",
-                        title="A maintainer replied to your feedback",
-                        body=reply.body[:200],
-                        url="/feedback/mine/",
-                    )
-                except Exception:
-                    pass
+                events.feedback_replied(reply)
+            except Exception:
+                logger.exception("feedback_replied notification failed")
         status = request.POST.get("status") or Feedback.STATUS_NEW
         if status in dict(Feedback.STATUS_CHOICES):
             fb.status = status

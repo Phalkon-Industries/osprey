@@ -97,7 +97,7 @@ class NotificationBadgeTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Inbox")
+        self.assertContains(response, "data-bell")
         self.assertContains(response, ">2<")
 
 
@@ -316,3 +316,238 @@ class EmailAdminAndCommandTests(TestCase):
         config.save()
         with self.assertRaises(CommandError):
             call_command("send_test_email")
+
+
+class EventLayerTests(TestCase):
+    """The phase-2 event layer: emitters, subscriptions, dedup, registry."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="owner")
+        self.asker = User.objects.create_user(username="asker")
+        self.replier = User.objects.create_user(username="replier")
+        self.staff = User.objects.create_user(username="staffer", is_staff=True)
+        from projects.models import Project
+
+        self.project = Project.objects.create(
+            slug="pump",
+            title="Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+
+    def _thread(self, author=None):
+        from conversations.models import ProjectThread
+
+        return ProjectThread.objects.create(
+            project=self.project, author=author or self.asker, title="Q", body="?"
+        )
+
+    def test_unregistered_kind_is_refused(self):
+        from notifications import events
+
+        self.assertIsNone(
+            events._emit(self.owner, kind="not-a-kind", title="x")
+        )
+
+    def test_thread_created_notifies_owner_not_author(self):
+        from notifications import events
+
+        events.thread_created(self._thread())
+        kinds = list(
+            Notification.objects.values_list("user_id", "kind")
+        )
+        self.assertEqual(kinds, [(self.owner.pk, "project_question")])
+
+    def test_thread_created_by_owner_notifies_nobody(self):
+        from notifications import events
+
+        events.thread_created(self._thread(author=self.owner))
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_reply_notifies_subscribers_minus_actor(self):
+        from conversations.models import ProjectReply, ensure_subscribed
+        from notifications import events
+
+        thread = self._thread()
+        ensure_subscribed(self.asker, thread)
+        ensure_subscribed(self.owner, thread)
+        reply = ProjectReply.objects.create(
+            thread=thread, author=self.replier, body="try this"
+        )
+        events.thread_replied(reply)
+        recipients = set(
+            Notification.objects.filter(kind="thread_reply").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.asker.pk, self.owner.pk})
+
+    def test_unfollow_is_persistent_and_stops_notifications(self):
+        from conversations.models import (
+            ProjectReply,
+            ThreadSubscription,
+            ensure_subscribed,
+        )
+        from notifications import events
+
+        thread = self._thread()
+        ensure_subscribed(self.asker, thread)
+        ThreadSubscription.objects.filter(user=self.asker, thread=thread).update(
+            subscribed=False
+        )
+        # Auto-follow after contributing must NOT override the mute.
+        ensure_subscribed(self.asker, thread)
+        reply = ProjectReply.objects.create(
+            thread=thread, author=self.replier, body="x"
+        )
+        events.thread_replied(reply)
+        self.assertEqual(
+            Notification.objects.filter(kind="thread_reply").count(), 0
+        )
+
+    def test_reply_flow_through_view_subscribes_and_notifies(self):
+        thread = self._thread()
+        from conversations.models import ensure_subscribed
+
+        ensure_subscribed(self.asker, thread)
+        self.client.force_login(self.replier)
+        response = self.client.post(
+            reverse(
+                "conversations:detail", args=[self.project.slug, thread.pk]
+            ),
+            {"body": "did you check the seal?"},
+        )
+        self.assertEqual(response.status_code, 302)
+        # Asker heard about it; the replier is now subscribed but was not
+        # notified about their own reply.
+        self.assertEqual(
+            set(
+                Notification.objects.filter(kind="thread_reply").values_list(
+                    "user_id", flat=True
+                )
+            ),
+            {self.asker.pk},
+        )
+        self.assertTrue(
+            thread.subscriptions.filter(
+                user=self.replier, subscribed=True
+            ).exists()
+        )
+
+    def test_follow_toggle_view(self):
+        thread = self._thread()
+        self.client.force_login(self.replier)
+        url = reverse(
+            "conversations:toggle_follow", args=[self.project.slug, thread.pk]
+        )
+        self.client.post(url)
+        self.assertTrue(
+            thread.subscriptions.get(user=self.replier).subscribed
+        )
+        self.client.post(url)
+        self.assertFalse(
+            thread.subscriptions.get(user=self.replier).subscribed
+        )
+
+    def test_answer_accepted_notifies_reply_author(self):
+        from conversations.models import ProjectReply
+        from notifications import events
+
+        thread = self._thread()
+        reply = ProjectReply.objects.create(
+            thread=thread, author=self.replier, body="fix"
+        )
+        events.answer_accepted(reply)
+        n = Notification.objects.get(kind="answer_accepted")
+        self.assertEqual(n.user, self.replier)
+
+    def test_use_report_notifies_owner_only(self):
+        from notifications import events
+        from use_reports.models import UseReport
+
+        report = UseReport.objects.create(
+            project=self.project, author=self.replier, narrative="used it"
+        )
+        events.use_report_created(report)
+        recipients = list(
+            Notification.objects.filter(kind="use_report").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, [self.owner.pk])
+
+    def test_use_report_moderated_notifies_author(self):
+        from notifications import events
+        from use_reports.models import UseReport
+
+        report = UseReport.objects.create(
+            project=self.project, author=self.replier, narrative="used it"
+        )
+        events.use_report_moderated(report, hidden=True)
+        n = Notification.objects.get(kind="use_report_moderated")
+        self.assertEqual(n.user, self.replier)
+        self.assertIn("hidden", n.title)
+
+    def test_wiki_suggestion_dedups_per_page(self):
+        from notifications import events
+        from wiki.models import WikiPage, WikiRevision
+
+        page = WikiPage.objects.create(
+            project=self.project, title="Build notes", body=""
+        )
+        for i in range(2):
+            revision = WikiRevision.objects.create(
+                page=page,
+                author=self.replier,
+                title="Build notes",
+                body=f"v{i}",
+                status=WikiRevision.STATUS_PENDING,
+            )
+            events.wiki_suggestion_created(revision, self.project, page)
+        self.assertEqual(
+            Notification.objects.filter(kind="wiki_suggestion").count(), 1
+        )
+
+    def test_feedback_submitted_notifies_staff(self):
+        from feedback.models import Feedback
+        from notifications import events
+
+        fb = Feedback.objects.create(user=self.asker, message="the button is odd")
+        events.feedback_submitted(fb)
+        recipients = list(
+            Notification.objects.filter(kind="feedback_submitted").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, [self.staff.pk])
+
+    def test_project_published_notifies_staff_with_dedup(self):
+        from notifications import events
+
+        events.project_published(self.project)
+        events.project_published(self.project)
+        self.assertEqual(
+            Notification.objects.filter(kind="project_published").count(), 1
+        )
+        n = Notification.objects.get(kind="project_published")
+        self.assertEqual(n.user, self.staff)
+
+    def test_project_hidden_notifies_owner(self):
+        from notifications import events
+
+        events.project_hidden(self.project, hidden=True)
+        n = Notification.objects.get(kind="project_hidden")
+        self.assertEqual(n.user, self.owner)
+
+    def test_menu_fragment(self):
+        send(self.owner, kind="generic", title="Hello bell")
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("notifications:menu"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hello bell")
+        self.assertContains(response, "Mark all read")
+
+    def test_menu_requires_login(self):
+        response = self.client.get(reverse("notifications:menu"))
+        self.assertEqual(response.status_code, 302)

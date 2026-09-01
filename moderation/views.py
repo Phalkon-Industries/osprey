@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -11,6 +13,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+
+from notifications import events
+
+logger = logging.getLogger(__name__)
 from django_ratelimit.decorators import ratelimit
 
 from .forms import ReportForm
@@ -59,7 +65,7 @@ def report_new(request, app_label: str, model: str, target_id: int):
         form = ReportForm(request.POST)
         context_url = (request.POST.get("context_url") or context_url)[:500]
         if form.is_valid():
-            Report.objects.create(
+            report = Report.objects.create(
                 reporter=request.user,
                 target_ct=ct,
                 target_id=target.pk,
@@ -68,6 +74,10 @@ def report_new(request, app_label: str, model: str, target_id: int):
                 category=form.cleaned_data["category"],
                 reason=form.cleaned_data["reason"],
             )
+            try:
+                events.content_report_filed(report)
+            except Exception:
+                logger.exception("content_report notification failed")
             messages.success(request, "Thanks. OSPREY staff will review this shortly.")
             if context_url:
                 return redirect(context_url)
@@ -153,6 +163,10 @@ def project_hide(request, project_id: int):
     project.is_staff_hidden = True
     project.save(update_fields=["is_staff_hidden", "updated_at"])
     log_action(request.user, "project_hide", target=project, reason=reason)
+    try:
+        events.project_hidden(project, hidden=True)
+    except Exception:
+        logger.exception("project_hidden notification failed")
     messages.success(request, f"Hidden '{project.title}'.")
     return redirect(request.POST.get("next") or "projects:list")
 
@@ -167,6 +181,10 @@ def project_unhide(request, project_id: int):
     project.is_staff_hidden = False
     project.save(update_fields=["is_staff_hidden", "updated_at"])
     log_action(request.user, "project_unhide", target=project, reason=reason)
+    try:
+        events.project_hidden(project, hidden=False)
+    except Exception:
+        logger.exception("project_hidden notification failed")
     messages.success(request, f"Restored '{project.title}'.")
     return redirect(request.POST.get("next") or "projects:list")
 

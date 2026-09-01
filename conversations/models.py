@@ -62,3 +62,42 @@ class ProjectReply(models.Model):
 
     def __str__(self) -> str:
         return f"reply {self.pk} on thread {self.thread_id}"
+
+
+class ThreadSubscription(models.Model):
+    """Follows a thread. Contributing to a thread creates one by default.
+
+    An explicit unfollow is a persistent row with subscribed=False, so
+    replying again later never silently re-subscribes someone who muted
+    the thread.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="thread_subscriptions",
+    )
+    thread = models.ForeignKey(
+        ProjectThread, on_delete=models.CASCADE, related_name="subscriptions"
+    )
+    subscribed = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "thread"], name="unique_thread_subscription"
+            )
+        ]
+
+    def __str__(self) -> str:
+        state = "follows" if self.subscribed else "muted"
+        return f"{self.user_id} {state} thread {self.thread_id}"
+
+
+def ensure_subscribed(user, thread) -> None:
+    """Auto-follow on contribution; never overrides an explicit unfollow."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return
+    ThreadSubscription.objects.get_or_create(user=user, thread=thread)
