@@ -551,3 +551,353 @@ class EventLayerTests(TestCase):
     def test_menu_requires_login(self):
         response = self.client.get(reverse("notifications:menu"))
         self.assertEqual(response.status_code, 302)
+
+
+class EventEdgeCaseTests(TestCase):
+    """Edge cases: deleted users, ownerless projects, self-actions,
+    inactive recipients, dedup semantics, and field truncation."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="owner")
+        self.other = User.objects.create_user(username="other")
+        self.staff_a = User.objects.create_user(username="staff_a", is_staff=True)
+        self.staff_b = User.objects.create_user(username="staff_b", is_staff=True)
+        from projects.models import Project
+
+        self.project = Project.objects.create(
+            slug="edge-pump",
+            title="Edge Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+
+    def test_send_truncates_long_title_and_url(self):
+        n = send(
+            self.owner,
+            kind="generic",
+            title="t" * 500,
+            url="/x/" + "y" * 500,
+        )
+        self.assertEqual(len(n.title), 200)
+        self.assertEqual(len(n.url), 400)
+
+    def test_thread_created_on_ownerless_project_is_quiet(self):
+        from conversations.models import ProjectThread
+        from notifications import events
+
+        self.project.created_by = None
+        self.project.save(update_fields=["created_by"])
+        thread = ProjectThread.objects.create(
+            project=self.project, author=self.other, title="Q", body="?"
+        )
+        events.thread_created(thread)  # must not raise
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_reply_on_thread_with_deleted_author_still_notifies_subscribers(self):
+        from conversations.models import (
+            ProjectReply,
+            ProjectThread,
+            ensure_subscribed,
+        )
+        from notifications import events
+
+        thread = ProjectThread.objects.create(
+            project=self.project, author=None, title="Orphan", body="?"
+        )
+        ensure_subscribed(self.owner, thread)
+        reply = ProjectReply.objects.create(
+            thread=thread, author=self.other, body="answer"
+        )
+        events.thread_replied(reply)
+        self.assertEqual(
+            list(
+                Notification.objects.filter(kind="thread_reply").values_list(
+                    "user_id", flat=True
+                )
+            ),
+            [self.owner.pk],
+        )
+
+    def test_accepting_your_own_reply_notifies_nobody(self):
+        from conversations.models import ProjectReply, ProjectThread
+        from notifications import events
+
+        thread = ProjectThread.objects.create(
+            project=self.project, author=self.other, title="Q", body="?"
+        )
+        reply = ProjectReply.objects.create(
+            thread=thread, author=self.other, body="answered myself"
+        )
+        events.answer_accepted(reply)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_accepted_reply_with_deleted_author_is_quiet(self):
+        from conversations.models import ProjectReply, ProjectThread
+        from notifications import events
+
+        thread = ProjectThread.objects.create(
+            project=self.project, author=self.other, title="Q", body="?"
+        )
+        reply = ProjectReply.objects.create(thread=thread, author=None, body="x")
+        events.answer_accepted(reply)  # must not raise
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_inactive_staff_are_not_notified(self):
+        from feedback.models import Feedback
+        from notifications import events
+
+        self.staff_b.is_active = False
+        self.staff_b.save(update_fields=["is_active"])
+        fb = Feedback.objects.create(user=self.other, message="hi")
+        events.feedback_submitted(fb)
+        recipients = set(
+            Notification.objects.filter(kind="feedback_submitted").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.staff_a.pk})
+
+    def test_staff_reporter_is_excluded_from_report_notifications(self):
+        from moderation.models import Report
+        from django.contrib.contenttypes.models import ContentType
+        from notifications import events
+
+        report = Report.objects.create(
+            reporter=self.staff_a,
+            target_ct=ContentType.objects.get_for_model(self.project),
+            target_id=self.project.pk,
+            target_repr="Edge Pump",
+            category="spam",
+            reason="looks off",
+        )
+        events.content_report_filed(report)
+        recipients = set(
+            Notification.objects.filter(kind="content_report").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.staff_b.pk})
+
+    def test_staff_creator_excluded_from_own_publish_event(self):
+        from notifications import events
+        from projects.models import Project
+
+        staff_project = Project.objects.create(
+            slug="staff-pump",
+            title="Staff Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.staff_a,
+        )
+        events.project_published(staff_project)
+        recipients = set(
+            Notification.objects.filter(kind="project_published").values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertEqual(recipients, {self.staff_b.pk})
+
+    def test_dedup_applies_per_user_not_globally(self):
+        from notifications import events
+
+        events._emit(
+            self.staff_a, kind="content_report", title="r", dedup_key="k1"
+        )
+        events._emit(
+            self.staff_b, kind="content_report", title="r", dedup_key="k1"
+        )
+        self.assertEqual(Notification.objects.count(), 2)
+
+    def test_dedup_releases_after_notification_is_read(self):
+        from notifications import events
+
+        first = events._emit(
+            self.owner, kind="project_question", title="q", dedup_key="k2"
+        )
+        # While unread: suppressed.
+        self.assertIsNone(
+            events._emit(
+                self.owner, kind="project_question", title="q", dedup_key="k2"
+            )
+        )
+        first.is_read = True
+        first.save(update_fields=["is_read"])
+        # Once read, new activity may notify again.
+        self.assertIsNotNone(
+            events._emit(
+                self.owner, kind="project_question", title="q", dedup_key="k2"
+            )
+        )
+
+    def test_use_report_restore_says_restored(self):
+        from notifications import events
+        from use_reports.models import UseReport
+
+        report = UseReport.objects.create(
+            project=self.project, author=self.other, narrative="used"
+        )
+        events.use_report_moderated(report, hidden=False)
+        n = Notification.objects.get(kind="use_report_moderated")
+        self.assertIn("restored", n.title)
+
+    def test_project_unhide_notifies_owner_with_restored_wording(self):
+        from notifications import events
+
+        events.project_hidden(self.project, hidden=False)
+        n = Notification.objects.get(kind="project_hidden")
+        self.assertEqual(n.user, self.owner)
+        self.assertIn("restored", n.title)
+
+    def test_wiki_review_of_anonymous_suggestion_is_quiet(self):
+        from notifications import events
+        from wiki.models import WikiPage, WikiRevision
+
+        page = WikiPage.objects.create(project=self.project, title="N", body="")
+        revision = WikiRevision.objects.create(
+            page=page, author=None, title="N", body="v",
+            status=WikiRevision.STATUS_PENDING,
+        )
+        events.wiki_suggestion_reviewed(
+            revision, self.project, approved=True, page_slug=page.slug
+        )
+        self.assertEqual(Notification.objects.count(), 0)
+
+
+class EmitterFailureResilienceTests(TestCase):
+    """A broken notification layer must never break the user's action."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="owner")
+        self.visitor = User.objects.create_user(username="visitor")
+        from projects.models import Project
+
+        self.project = Project.objects.create(
+            slug="resilient-pump",
+            title="Resilient Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+
+    def test_thread_posts_even_if_notifications_explode(self):
+        from conversations.models import ProjectThread
+
+        self.client.force_login(self.visitor)
+        with patch(
+            "notifications.events.thread_created",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self.client.post(
+                reverse("conversations:new", args=[self.project.slug]),
+                {"title": "Survives", "body": "even when the bell breaks"},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ProjectThread.objects.filter(title="Survives").exists()
+        )
+
+    def test_reply_posts_even_if_notifications_explode(self):
+        from conversations.models import ProjectReply, ProjectThread
+
+        thread = ProjectThread.objects.create(
+            project=self.project, author=self.owner, title="Q", body="?"
+        )
+        self.client.force_login(self.visitor)
+        with patch(
+            "notifications.events.thread_replied",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self.client.post(
+                reverse(
+                    "conversations:detail", args=[self.project.slug, thread.pk]
+                ),
+                {"body": "still lands"},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ProjectReply.objects.filter(body="still lands").exists())
+
+
+class MenuAndInboxEdgeTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="alice")
+
+    def test_menu_caps_at_ten_items(self):
+        for i in range(12):
+            send(self.user, kind="generic", title=f"item-{i}")
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("notifications:menu"))
+        self.assertEqual(response.content.decode().count("bell-menu-item"), 10)
+
+    def test_menu_escapes_html_in_titles(self):
+        send(self.user, kind="generic", title="<script>alert(1)</script>")
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("notifications:menu"))
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertContains(response, "&lt;script&gt;")
+
+    def test_menu_orders_newest_first(self):
+        send(self.user, kind="generic", title="older")
+        send(self.user, kind="generic", title="newer")
+        self.client.force_login(self.user)
+        body = self.client.get(reverse("notifications:menu")).content.decode()
+        self.assertLess(body.index("newer"), body.index("older"))
+
+    def test_open_notification_without_url_falls_back_to_inbox(self):
+        n = send(self.user, kind="generic", title="no destination")
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("notifications:open", args=[n.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("notifications:inbox"))
+
+    def test_anonymous_pages_render_without_badge_errors(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "data-bell")
+
+
+class EmailAdminAccessTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.regular = User.objects.create_user(username="regular")
+        self.staff = User.objects.create_superuser(username="root2", password="x")
+
+    def test_email_settings_pages_require_staff(self):
+        config = EmailSettings.load()
+        self.client.force_login(self.regular)
+        for url in [
+            reverse("admin:notifications_emailsettings_changelist"),
+            reverse("admin:notifications_emailsettings_change", args=[config.pk]),
+        ]:
+            response = self.client.get(url)
+            # Django admin bounces non-staff to its login page.
+            self.assertEqual(response.status_code, 302, url)
+            self.assertIn("/admin/login/", response["Location"])
+
+    @override_settings(
+        ANYMAIL={"MAILJET_API_KEY": "k", "MAILJET_SECRET_KEY": "s"}
+    )
+    def test_provider_status_reports_ready(self):
+        from .admin import EmailSettingsAdmin
+
+        status = EmailSettingsAdmin(EmailSettings, None).delivery_provider_status(
+            EmailSettings.load()
+        )
+        self.assertIn("ready", status)
+        self.assertNotIn("not ready", status)
+
+    @override_settings(ANYMAIL={})
+    def test_provider_status_reports_not_ready_with_reason(self):
+        from .admin import EmailSettingsAdmin
+
+        status = EmailSettingsAdmin(EmailSettings, None).delivery_provider_status(
+            EmailSettings.load()
+        )
+        self.assertIn("not ready", status)
+        self.assertIn("env file", status)
+
+    def test_command_falls_back_to_admin_test_recipient(self):
+        config = EmailSettings.load()
+        config.test_recipient = "fallback@example.org"
+        config.save()
+        call_command("send_test_email")
+        self.assertEqual(mail.outbox[0].to, ["fallback@example.org"])

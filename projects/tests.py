@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import tempfile
 import unittest
 import uuid
 import zipfile
@@ -25,6 +26,7 @@ from .models import (
     ArtifactLink,
     Contribution,
     Project,
+    ProjectAttachment,
     ProjectDeposit,
     Tag,
     TagAssignment,
@@ -61,6 +63,11 @@ def add_orcid_account(user, orcid_id: str = "0000-0001-2345-6789") -> SocialAcco
         uid=orcid_id,
         extra_data=orcid_extra(orcid_id),
     )
+
+
+# Isolated media root so file-writing tests never touch the dev media/
+# tree (which may carry root-owned folders from old container runs).
+_TEST_MEDIA_ROOT = tempfile.mkdtemp(prefix="osprey-test-media-")
 
 
 class ProjectTestCase(TestCase):
@@ -1210,6 +1217,7 @@ class ContributorOrcidTemplateTests(ProjectTestCase):
         self.assertNotIn("ORCID iD (optional)", body)
 
 
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
 class DraftDataLossRegressionTests(ProjectTestCase):
     """Regressions for the draft data-loss bug tracked in planning/to-do.md.
 
@@ -1339,3 +1347,165 @@ class DraftDataLossRegressionTests(ProjectTestCase):
         # call, so a failed or killed request can't eat it.
         deposit.refresh_from_db()
         self.assertEqual(deposit.pending_changelog, "Fixed the seal spec")
+
+
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
+class CoverImageProcessingTests(ProjectTestCase):
+    """projects/cover_images.py caused a real production crash once; pin
+    its behavior directly: re-encode, skip, and every failure path."""
+
+    def _png_bytes(self, size=(64, 48), color=(200, 30, 30)) -> bytes:
+        from PIL import Image
+
+        buffer = io.BytesIO()
+        Image.new("RGB", size, color).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def _project(self, **kwargs) -> Project:
+        return Project.objects.create(
+            slug=kwargs.pop("slug", f"cover-{uuid.uuid4().hex[:6]}"),
+            title="Cover Test",
+            visibility=Project.VISIBILITY_PRIVATE,
+            created_by=self.owner,
+            **kwargs,
+        )
+
+    def test_uploaded_png_is_reencoded_to_webp(self):
+        from .cover_images import process_cover_image
+
+        project = self._project()
+        project.cover_image = SimpleUploadedFile(
+            "cover.png", self._png_bytes(), content_type="image/png"
+        )
+        changed = process_cover_image(project)
+        self.assertTrue(changed)
+        self.assertTrue(project.cover_image.name.endswith(".webp"))
+        with project.cover_image.open("rb") as fh:
+            header = fh.read(16)
+        self.assertEqual(header[:4], b"RIFF")
+        self.assertEqual(header[8:12], b"WEBP")
+
+    def test_already_stored_webp_is_left_alone(self):
+        from .cover_images import process_cover_image
+
+        project = self._project()
+        project.cover_image = SimpleUploadedFile(
+            "cover.png", self._png_bytes(), content_type="image/png"
+        )
+        process_cover_image(project)
+        project.save()
+        stored_name = project.cover_image.name
+        # A later save with the processed file in place must be a no-op,
+        # and crucially must not blow up on a closed/consumed file.
+        self.assertFalse(process_cover_image(project))
+        self.assertEqual(project.cover_image.name, stored_name)
+
+    def test_corrupt_upload_fails_soft(self):
+        from .cover_images import process_cover_image
+
+        project = self._project()
+        project.cover_image = SimpleUploadedFile(
+            "cover.png", b"this is not an image", content_type="image/png"
+        )
+        self.assertFalse(process_cover_image(project))
+
+    def test_unreachable_cover_url_fails_soft(self):
+        from unittest.mock import patch as mock_patch
+
+        from .cover_images import process_cover_image
+
+        project = self._project(cover_image_url="https://example.org/gone.png")
+        with mock_patch(
+            "projects.cover_images._fetch_url", return_value=None
+        ) as fetch:
+            self.assertFalse(process_cover_image(project))
+        fetch.assert_called_once()
+
+    def test_cover_url_source_is_reencoded(self):
+        from unittest.mock import patch as mock_patch
+
+        from .cover_images import process_cover_image
+
+        project = self._project(cover_image_url="https://example.org/c.png")
+        with mock_patch(
+            "projects.cover_images._fetch_url", return_value=self._png_bytes()
+        ):
+            self.assertTrue(process_cover_image(project))
+        self.assertTrue(project.cover_image.name.endswith(".webp"))
+
+    def test_no_source_is_a_noop(self):
+        from .cover_images import process_cover_image
+
+        self.assertFalse(process_cover_image(self._project()))
+
+
+
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
+class AttachmentHandlingTests(ProjectTestCase):
+    """The single-zip attachment rules on the project form."""
+
+    def _edit(self, **overrides):
+        data = self.project_form_post_data(action="save")
+        data["contributions-INITIAL_FORMS"] = "1"
+        data["contributions-0-id"] = str(
+            self.private_project.contributions.first().pk
+        )
+        data.update(overrides)
+        self.client.force_login(self.owner)
+        return self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]),
+            data,
+            follow=True,
+        )
+
+    def _small_zip(self, name="a.zip") -> SimpleUploadedFile:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("f.txt", "hello")
+        return SimpleUploadedFile(
+            name, buffer.getvalue(), content_type="application/zip"
+        )
+
+    def test_non_zip_upload_is_rejected_with_message(self):
+        response = self._edit(
+            attachment_files=SimpleUploadedFile(
+                "notes.txt", b"plain text", content_type="text/plain"
+            )
+        )
+        self.assertContains(response, "only .zip archives are accepted")
+        self.assertEqual(self.private_project.attachments.count(), 0)
+
+    def test_zip_detected_by_content_type_without_extension(self):
+        response = self._edit(attachment_files=self._small_zip(name="archive.bin"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.private_project.attachments.count(), 1)
+
+    def test_oversize_upload_is_skipped_with_message(self):
+        with patch("projects.views.MAX_ATTACHMENT_BYTES", 10):
+            response = self._edit(attachment_files=self._small_zip())
+        self.assertContains(response, "exceeds")
+        self.assertEqual(self.private_project.attachments.count(), 0)
+
+    def test_new_zip_replaces_previous_draft_attachment(self):
+        self._edit(attachment_files=self._small_zip(name="first.zip"))
+        self._edit(attachment_files=self._small_zip(name="second.zip"))
+        attachments = list(self.private_project.attachments.all())
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].filename, "second.zip")
+
+    def test_published_attachment_survives_delete_request(self):
+        published = ProjectAttachment.objects.create(
+            project=self.private_project,
+            filename="published.zip",
+            published_to_zenodo=True,
+        )
+        draft = ProjectAttachment.objects.create(
+            project=self.private_project,
+            filename="draft.zip",
+            published_to_zenodo=False,
+        )
+        self._edit(attachment_delete=[str(published.pk), str(draft.pk)])
+        remaining = set(
+            self.private_project.attachments.values_list("filename", flat=True)
+        )
+        self.assertEqual(remaining, {"published.zip"})
