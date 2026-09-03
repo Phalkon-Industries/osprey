@@ -1769,3 +1769,38 @@ class EmailAddRateLimitTests(TestCase):
             follow=True,
         )
         self.assertContains(response, "Confirmation sent")
+
+
+class SendTestNotificationCommandTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="pipeline")
+
+    def test_creates_notification_and_queues_immediate_email(self):
+        _verify_email(self.user, "pipeline@example.org")
+        preference = NotificationPreference.for_user(self.user)
+        preference.projects = "immediate"
+        preference.save()
+        out = StringIO()
+        call_command("send_test_notification", "pipeline", stdout=out)
+        self.assertEqual(Notification.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(QueuedEmail.objects.filter(user=self.user).count(), 1)
+        self.assertIn("queued", out.getvalue())
+
+    def test_deliver_flag_sends_the_mail(self):
+        _verify_email(self.user, "pipeline@example.org")
+        preference = NotificationPreference.for_user(self.user)
+        preference.projects = "immediate"
+        preference.save()
+        call_command("send_test_notification", "pipeline", "--deliver", stdout=StringIO())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Test notification", mail.outbox[0].subject)
+
+    def test_explains_when_no_email_goes_out(self):
+        out = StringIO()
+        call_command("send_test_notification", "pipeline", stdout=out)
+        self.assertEqual(Notification.objects.filter(user=self.user).count(), 1)
+        self.assertIn("No email queued", out.getvalue())
+
+    def test_unknown_user_errors(self):
+        with self.assertRaises(CommandError):
+            call_command("send_test_notification", "nobody-here")
