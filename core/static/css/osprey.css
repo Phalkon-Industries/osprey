@@ -398,29 +398,82 @@ header.site .auth a {
     color: var(--fg);
 }
 
-.staff-links {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding-right: 0.5rem;
-    border-right: 1px solid var(--border);
+/* Header account dropdown (details/summary, so it works without JS) */
+.account-wrap {
+    position: relative;
+    display: inline-block;
 }
 
-.staff-links a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.85rem;
-    padding: 0.28rem 0.55rem;
-    border: 1px solid var(--border);
+.account-wrap>summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.25rem 0.6rem;
     border-radius: 6px;
-    text-decoration: none;
-    font-size: 0.82rem;
+    color: var(--fg);
+    user-select: none;
+}
+
+.account-wrap>summary::-webkit-details-marker {
+    display: none;
+}
+
+.account-wrap>summary:hover,
+.account-wrap[open]>summary {
     background: var(--bg-soft);
 }
 
-.staff-links a:hover {
-    border-color: var(--accent);
-    color: var(--accent-strong);
+.account-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + .5rem);
+    min-width: 12rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+    z-index: 60;
+    padding: .3rem 0;
+    text-align: left;
+}
+
+.account-menu a,
+.account-menu button {
+    display: block;
+    width: 100%;
+    padding: .45rem .85rem;
+    text-decoration: none;
+    color: var(--fg);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    font: inherit;
+    font-size: .9rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.account-menu a:hover,
+.account-menu button:hover {
+    background: var(--bg-soft);
+}
+
+.account-menu hr {
+    border: 0;
+    border-top: 1px solid var(--border-soft);
+    margin: .3rem 0;
+}
+
+.account-menu form {
+    margin: 0;
+}
+
+.account-menu-label {
+    display: block;
+    padding: .2rem .85rem;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--fg-muted);
 }
 
 .inbox-link {

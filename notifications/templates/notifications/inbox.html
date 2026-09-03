@@ -4,7 +4,11 @@
 {% block content %}
 <section>
     <h1>Inbox</h1>
-    <p class="muted">Replies on your projects, suggestions you sent in, and other site activity show up here.</p>
+    <p class="muted">
+        Replies on your projects, suggestions you sent in, and other site
+        activity show up here. Looking for something you sent to staff?
+        See <a href="{% url 'feedback:mine' %}">your staff messages</a>.
+    </p>
 
     {% if unread_count %}
     <form method="post" action="{% url 'notifications:mark_all_read' %}" style="margin-bottom:1rem">
