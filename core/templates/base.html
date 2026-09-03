@@ -66,6 +66,7 @@
                 </a>
                 <div class="bell-menu" data-bell-menu hidden data-menu-url="{% url 'notifications:menu' %}"></div>
             </span>
+            <a href="{% url 'settings' %}">Settings</a>
             <span class="muted">@{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" style="display:inline;margin:0">
                 {% csrf_token %}

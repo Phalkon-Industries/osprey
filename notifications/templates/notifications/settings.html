@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Notification settings — OSPREY{% endblock %}
 {% block content %}
-<h1>Notification settings</h1>
+<h1>Settings</h1>
+{% include "core/_settings_tabs.html" with settings_tab="notifications" %}
 
 <section style="max-width:46rem;margin-bottom:2rem">
     <h2>Email address</h2>

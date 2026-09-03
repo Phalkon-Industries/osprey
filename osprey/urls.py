@@ -19,6 +19,7 @@ urlpatterns = [
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/derivatives/", core_views.derivative_guide, name="derivative_guide"),
     path("about/privacy/", core_views.privacy, name="privacy"),
+    path("settings/", core_views.settings_home, name="settings"),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
     path("accounts/", include("allauth.urls")),

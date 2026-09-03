@@ -89,3 +89,41 @@ class BrowserSmokeTests(StaticLiveServerTestCase):
                     self.assertIn(expected_text, page.content())
             finally:
                 browser.close()
+
+
+class SettingsHubTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="settled")
+        from people.models import Profile
+
+        Profile.objects.filter(user=self.user).update(usertag_locked=True)
+
+    def test_settings_url_lands_on_profile_tab(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/settings/", follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Settings sections")
+        self.assertContains(response, 'aria-current="page"')
+
+    def test_settings_requires_login(self):
+        response = self.client.get("/settings/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    def test_both_settings_pages_share_the_tab_strip(self):
+        self.client.force_login(self.user)
+        profile = self.client.get(reverse("people:edit")).content.decode()
+        notifications = self.client.get(
+            reverse("notifications:settings")
+        ).content.decode()
+        for body in (profile, notifications):
+            self.assertIn("Settings sections", body)
+            self.assertIn(">Profile</a>", body)
+            self.assertIn(">Notifications</a>", body)
+
+    def test_header_links_settings_for_signed_in_users(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get("/"), 'href="/settings/"')
+        self.client.logout()
+        self.assertNotContains(self.client.get("/"), 'href="/settings/"')

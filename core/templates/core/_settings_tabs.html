@@ -1,0 +1,10 @@
+{% comment %}
+Shared tab strip for the account settings pages. Pass `settings_tab`
+("profile" or "notifications") to mark the active tab.
+{% endcomment %}
+<nav class="project-tabs" aria-label="Settings sections" role="tablist">
+    <a href="{% url 'people:edit' %}" class="project-tab{% if settings_tab == 'profile' %} is-active{% endif %}"
+        {% if settings_tab == 'profile' %}aria-current="page"{% endif %}>Profile</a>
+    <a href="{% url 'notifications:settings' %}" class="project-tab{% if settings_tab == 'notifications' %} is-active{% endif %}"
+        {% if settings_tab == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
+</nav>

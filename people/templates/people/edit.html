@@ -2,7 +2,8 @@
 {% load osprey_md %}
 {% block title %}Edit profile — OSPREY{% endblock %}
 {% block content %}
-<h1>Edit your profile</h1>
+<h1>Settings</h1>
+{% include "core/_settings_tabs.html" with settings_tab="profile" %}
 <p class="muted" style="max-width:42rem">
     These details show up on your profile page and on projects you're listed
     on. ORCID is connected through ORCID sign-in, not typed into this form.

@@ -87,3 +87,9 @@ def staff_dashboard(request):
 
 def privacy(request):
     return render(request, "core/privacy.html")
+
+
+@login_required
+def settings_home(request):
+    """Central settings entry point; lands on the first settings tab."""
+    return redirect("people:edit")
