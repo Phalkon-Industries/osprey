@@ -3,120 +3,117 @@
 
 {% block content %}
 <section style="max-width:46rem">
-    <h1>License guide</h1>
-    <p style="color:var(--muted)">
-        A short tour of the licenses that show up in the project form. I'm
-        not a lawyer and this isn't legal advice, just plain-language notes
-        to help you pick something reasonable. When in doubt, ask your
-        institution's tech-transfer office or a colleague who's published
-        open-source work before.
-    </p>
-
-    <h2>What a license actually does</h2>
-    <p>
-        A license tells other people what they're allowed to do with your
-        work. Without one, the default in most countries is "all rights
-        reserved," which means a careful reader can't legally reuse your
-        code or designs even if you posted them publicly. Picking a license
-        is how you grant permission.
-    </p>
-    <p>
-        Different kinds of work want different licenses. Code, hardware
-        designs, documentation, and datasets each have their own
-        conventions. The form lets you pick one license per project; if
-        your project has, say, code and a paper draft and a CAD file, the
-        right answer is usually to license each piece in its own
-        repository and pick whichever one is the project's center of
-        gravity here.
-    </p>
-
-    <h2>Code, permissive</h2>
-    <p>
-        Permissive licenses let people do nearly anything with your code,
-        including using it in proprietary products, as long as they keep
-        your copyright notice.
-    </p>
-    <ul>
-        <li><strong>MIT</strong> — short, well understood, the safe default
-            for most code.</li>
-        <li><strong>BSD-3-Clause</strong> — similar to MIT with an extra
-            clause that says nobody can use your name to endorse their
-            derivative without permission.</li>
-        <li><strong>Apache-2.0</strong> — like MIT plus an explicit patent
-            grant. A good pick when there might be patents in the
-            neighborhood.</li>
-    </ul>
-
-    <h2>Code, copyleft</h2>
-    <p>
-        Copyleft licenses say: you can use this, but if you distribute a
-        modified version, your modifications also have to be open under
-        the same license. The intent is to keep derivatives in the
-        commons.
-    </p>
-    <ul>
-        <li><strong>AGPL-3.0</strong> — strong copyleft that also reaches
-            network/service deployments. OSPREY's recommended copyleft pick
-            when the work is software that may run as a service.</li>
-        <li><strong>GPL-3.0</strong> — strong copyleft for
-            applications. Anyone shipping a product built on top has to
-            release their changes under GPL too.</li>
-        <li><strong>LGPL-3.0</strong> — softer copyleft, designed
-            for libraries. Lets proprietary applications link to your
-            library without having to open up.</li>
-        <li><strong>MPL-2.0</strong> — file-level copyleft. Modifications
-            to MPL files stay open, but you can combine MPL files with
-            proprietary files in the same project.</li>
-    </ul>
-
-    <h2>Open hardware</h2>
-    <p>
-        Hardware needs its own licenses because the things being licensed
-        are schematics, board files, and mechanical drawings, not code.
-        CERN's Open Hardware License family is the most common pick.
-    </p>
-    <ul>
-        <li><strong>CERN-OHL-S-2.0</strong> — strongly reciprocal. Anyone
-            who makes a derivative design has to release it under the same
-            license.</li>
-        <li><strong>CERN-OHL-W-2.0</strong> — weakly reciprocal. Friendlier
-            to mixed open and proprietary hardware.</li>
-        <li><strong>CERN-OHL-P-2.0</strong> — permissive. Closest hardware
-            analog to MIT.</li>
-        <li><strong>TAPR-OHL-1.0</strong> — older copyleft hardware
-            license.</li>
-    </ul>
-
-    <h2>Content and data</h2>
-    <p>
-        For papers, posters, figures, datasets, and documentation, the
-        Creative Commons family is the standard.
-    </p>
-    <ul>
-        <li><strong>CC-BY-4.0</strong> — anyone can reuse and adapt as
-            long as they credit you. The closest CC analog to MIT.</li>
-        <li><strong>CC-BY-SA-4.0</strong> — attribution plus share-alike.
-            Derivatives must use the same license.</li>
-        <li><strong>CC0-1.0</strong> — public-domain dedication. No
-            attribution required, no strings attached.</li>
-    </ul>
-
-    <h2>Public-domain code</h2>
-    <p>
-        <strong>The Unlicense</strong> dedicates code to the public
-        domain. It's a fine pick for tiny utilities, but for anything
-        substantial, MIT or CC0 are usually safer because their wording
-        has held up better in international courts.
-    </p>
+    <h1>Picking a license</h1>
 
 
-    <h2>Other</h2>
+    <h2>What a license does</h2>
     <p>
-        If none of the above fit, pick "Other" and write the SPDX
-        identifier or a short label. Examples: dual licensing, a
-        custom institutional license, a license that isn't on this
-        list yet. If you find yourself reaching for "Other" often, let
-        me know and I'll add the license to the dropdown.
+        Without a license, the legal default is "all rights reserved,"
+        even for code posted publicly. You can look but can't
+        reuse. The license is how you grant permission for others to use it. Every license on
+        this page grants broad permissions, and every one of them is an
+        open license. Only licenses which meet the OSI definition of Open Source are allowed on OSPREY at this time..
+    </p>
+    <p>
+        There is only one big decision to make: <strong>copyleft or
+        permissive</strong>. After that it becomes a lot easier to pick
+        out a license.
+    </p>
+
+    <h2>Copyleft: derivatives must stay open</h2>
+    <p>
+        Copyleft licenses let anyone use, modify, build on, and sell your
+        work, with one condition: whoever publishes a derivative has to
+        publish it under the same license. Nobody can take your work,
+        improve it, and then close the improved version off. The commons only
+        grows.
+    </p>
+    <p>
+        <strong>AGPL-3.0</strong> (software) requires anyone who
+        distributes a modified version, or runs one as a network service
+        that others interact with, to publish their modifications under
+        AGPL too.
+    </p>
+    <p>
+        <strong>CERN-OHL-S-2.0</strong> (hardware) requires derivative
+        designs to be released under the same license. It covers the
+        design files, the firmware, and the documentation, so a hardware
+        project needs no second license.
+    </p>
+    <p>
+        <strong>CC-BY-SA-4.0</strong> (docs and data) is attribution plus
+        share-alike. Adaptations have to carry the same license.
+    </p>
+
+    <h2>Permissive: anything goes, credit stays</h2>
+    <p>
+        Permissive licenses let anyone do nearly anything with your work,
+        including building closed commercial products on top of it. The
+        only obligation usually is keeping your copyright notice and the license 
+        text with any copy. Pick this side when the widest possible reuse
+        matters more to you than keeping derivatives open.
+    </p>
+    <p>
+        <strong>MIT</strong> (software) is the shortest and most widely
+        understood license in software. Derivatives have to keep the notice, otherwise they can do
+        anything, and the author disclaims all warranty, so nobody can
+        come after you when the pump firmware floods their lab. MIT says
+        nothing about patents. If that matters to you, see Apache-2.0
+        below.
+    </p>
+    <p>
+        <strong>CERN-OHL-P-2.0</strong> (hardware) is the hardware analog
+        of MIT. Keep the notices, otherwise do anything, closed products
+        included.
+    </p>
+    <p>
+        <strong>CC-BY-4.0</strong> (docs and data) means reuse and adapt
+        freely with credit. It's the standard for papers, figures, and
+        documentation.
+    </p>
+
+    <h2>Other licenses</h2>
+    <p>
+        These sit under "Other licenses" in the dropdown, for the cases
+        where one of them genuinely fits better.
+    </p>
+    <p>
+        <strong>Apache-2.0</strong> (software, permissive) carries MIT's
+        obligations plus a written patent promise. Every contributor
+        agrees not to sue users for patent infringement over their
+        contribution, and anyone who does sue automatically loses their
+        license to the code. If your work sits near a patent portfolio,
+        or your likely users are institutions that ask about patent
+        language, pick Apache. Otherwise MIT is simpler.
+    </p>
+    <p>
+        <strong>GPL-3.0</strong> (software, copyleft) is AGPL without the
+        network clause, so sharing is triggered only by distribution.
+        Some companies and institutions refuse AGPL code outright, and
+        GPL-3.0 sometimes allowed where AGPL isn't. If your code will
+        never plausibly run as a service, the two are equivalent in
+        practice.
+    </p>
+    <p>
+        <strong>CERN-OHL-W-2.0</strong> (hardware, weak copyleft) is the
+        middle ground of the CERN hardware licenses. Changes to <em>your</em> design stay open, but the
+        design can be a component inside a larger, possibly closed
+        product. Typically published modules meant to be designed into
+        bigger systems.
+    </p>
+    <p>
+        <strong>CC0-1.0</strong> (data, public domain) is a dedication
+        with no attribution required. It's right for datasets and
+        metadata where requiring credit on every reuse would be
+        impractical. For code, use MIT instead.
+    </p>
+
+    <h2>Need a license that isn't listed?</h2>
+    <p>
+        The list is deliberately short so picking stays easy, and it only
+        carries licenses we've checked are genuinely open. If your work
+        needs one that isn't here, ask through the feedback button and
+        we'll review it.
     </p>
 
     <h2>Further reading</h2>

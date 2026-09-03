@@ -122,7 +122,6 @@ class ProjectTestCase(TestCase):
             "cover_image_zoom": "1",
             "institution": "WHOI",
             "license_choice": "MIT",
-            "license_custom": "",
             "tags_input": "pump, controller",
             "contributions-TOTAL_FORMS": "1",
             "contributions-INITIAL_FORMS": "0",
@@ -222,8 +221,7 @@ class ProjectFormTests(ProjectTestCase):
                 "cover_image_focal_y": "50",
                 "cover_image_zoom": "1",
                 "institution": "WHOI",
-                "license_choice": "__other__",
-                "license_custom": "Custom-OHL-1.0",
+                "license_choice": "CERN-OHL-S-2.0",
                 "tags_input": "Pump, pump, CO2",
             }
         )
@@ -231,18 +229,82 @@ class ProjectFormTests(ProjectTestCase):
         self.assertTrue(form.is_valid(), form.errors.as_json())
         with patch("projects.forms.secrets.token_hex", return_value="abcd"):
             project = form.save()
-        self.assertEqual(project.license, "Custom-OHL-1.0")
+        self.assertEqual(project.license, "CERN-OHL-S-2.0")
         self.assertEqual(project.slug, "field-test-pump-abcd")
         self.assertEqual(
             list(project.tags.values_list("name", flat=True)), ["co2", "pump"]
         )
 
-    def test_recommended_licenses_lead_with_agpl(self):
-        from projects.forms import RECOMMENDED_LICENSES
+    def test_license_list_is_curated_and_open_only(self):
+        from projects.forms import COMMON_LICENSES
 
-        ids = [code for code, _ in RECOMMENDED_LICENSES]
-        self.assertEqual(ids[0], "AGPL-3.0")
-        self.assertNotIn("GPL-3.0-or-later", ids)
+        ids = [code for code, _ in COMMON_LICENSES]
+        # The 2026-09 lineup: copyleft picks first (the promoted side),
+        # then permissive, then the four extras.
+        self.assertEqual(
+            ids,
+            [
+                "AGPL-3.0",
+                "CERN-OHL-S-2.0",
+                "CC-BY-SA-4.0",
+                "MIT",
+                "CERN-OHL-P-2.0",
+                "CC-BY-4.0",
+                "Apache-2.0",
+                "GPL-3.0",
+                "CERN-OHL-W-2.0",
+                "CC0-1.0",
+            ],
+        )
+
+    def test_dropdown_groups_lead_with_copyleft(self):
+        rendered = str(ProjectForm()["license_choice"])
+        copyleft_at = rendered.index("Copyleft (derivatives must stay open)")
+        permissive_at = rendered.index("Permissive (closed derivatives allowed)")
+        other_at = rendered.index("Other licenses")
+        self.assertLess(copyleft_at, permissive_at)
+        self.assertLess(permissive_at, other_at)
+
+    def test_no_free_text_license_entry(self):
+        form = ProjectForm()
+        self.assertNotIn("license_custom", form.fields)
+        rendered = str(form["license_choice"])
+        self.assertNotIn("__other__", rendered)
+        self.assertNotIn("Other (write below)", rendered)
+
+    def test_legacy_license_survives_editing(self):
+        self.private_project.license = "BSD-3-Clause"
+        self.private_project.save(update_fields=["license"])
+        form = ProjectForm(instance=self.private_project)
+        rendered = str(form["license_choice"])
+        self.assertIn("Current license: BSD-3-Clause", rendered)
+        # And submitting with the legacy value keeps it.
+        data = self.project_form_post_data(action="save")
+        data["license_choice"] = "BSD-3-Clause"
+        data["contributions-INITIAL_FORMS"] = "1"
+        data["contributions-0-id"] = str(
+            self.private_project.contributions.first().pk
+        )
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
+        self.assertEqual(response.status_code, 302)
+        self.private_project.refresh_from_db()
+        self.assertEqual(self.private_project.license, "BSD-3-Clause")
+
+    def test_license_guide_reflects_curated_list(self):
+        response = self.client.get(reverse("license_guide"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "the firmware, and the documentation")
+        body = response.content.decode()
+        self.assertLess(
+            body.index("Copyleft: derivatives must stay open"),
+            body.index("Permissive: anything goes"),
+        )
+        self.assertContains(response, "feedback button")
+        self.assertNotContains(response, "TAPR")
+        self.assertNotContains(response, "Unlicense")
 
     def test_contribution_formset_requires_at_least_one_contributor(self):
         formset = ContributionFormSet(

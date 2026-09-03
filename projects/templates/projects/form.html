@@ -16,7 +16,7 @@
     {% endif %}
 
     {% for field in form %}
-    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'license_custom' and field.name != 'cover_image_zoom' %}
+    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'cover_image_zoom' %}
     <p>
         <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required %} <span
                 class="req" aria-label="required">*</span>{% else %} <span class="muted"
@@ -71,14 +71,9 @@
                 aria-label="required">*</span></label><br>
         {{ form.license_choice }}
         <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
-            <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.</span>
+            <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.
+            Need a license that isn't listed? Ask through the feedback button.</span>
         {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
-            }}</span>{% endif %}
-    </p>
-    <p id="license-custom-row">
-        <label for="{{ form.license_custom.id_for_label }}">Custom license</label><br>
-        {{ form.license_custom }}
-        {% if form.license_custom.errors %}<br><span style="color:#fca5a5">{{ form.license_custom.errors|join:" "
             }}</span>{% endif %}
     </p>
 
@@ -369,17 +364,6 @@
                 xhr.send(fd);
             });
         }
-    })();
-
-    (function () {
-        var sel = document.getElementById('id_license_choice');
-        var custom = document.getElementById('license-custom-row');
-        if (!sel || !custom) return;
-        function sync() {
-            custom.style.display = (sel.value === '__other__') ? '' : 'none';
-        }
-        sel.addEventListener('change', sync);
-        sync();
     })();
 
     (function () {

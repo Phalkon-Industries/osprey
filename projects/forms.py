@@ -62,35 +62,28 @@ def _examples_text(items: list[str], n: int = 4) -> str:
 
 
 # Common open-source licenses for OSPREY projects, split into a short
-# recommended list (handles most cases) and a longer list of other
-# options. OSPREY is open-source-only; proprietary licenses are not
-# offered. Users can also pick "Other" and type a custom OSI / OSHWA /
-# Creative Commons identifier.
-RECOMMENDED_LICENSES = [
-    (
-        "AGPL-3.0",
-        "AGPL 3.0 — strong copyleft, recommended for code that runs as a service",
-    ),
-    ("MIT", "MIT — permissive code"),
-    ("Apache-2.0", "Apache 2.0 — permissive code, with patent grant"),
-    ("GPL-3.0", "GPL 3.0 — copyleft code"),
-    ("CERN-OHL-S-2.0", "CERN-OHL-S 2.0 — reciprocal open hardware"),
-    ("CC-BY-4.0", "CC BY 4.0 — docs / data, attribution"),
+# The license dropdown is a fixed, curated set of open licenses grouped
+# by what is being licensed. OSPREY is open-source-only, so there is
+# deliberately NO free-text license option: a non-open license must never
+# be enterable. Additions are requested through the feedback widget and
+# added here after review.
+COPYLEFT_LICENSES = [
+    ("AGPL-3.0", "AGPL 3.0 — software"),
+    ("CERN-OHL-S-2.0", "CERN OHL-S 2.0 — hardware"),
+    ("CC-BY-SA-4.0", "CC BY-SA 4.0 — docs and data"),
 ]
-
+PERMISSIVE_LICENSES = [
+    ("MIT", "MIT — software"),
+    ("CERN-OHL-P-2.0", "CERN OHL-P 2.0 — hardware"),
+    ("CC-BY-4.0", "CC BY 4.0 — docs and data"),
+]
 OTHER_LICENSES = [
-    ("BSD-3-Clause", "BSD 3-Clause — permissive code"),
-    ("LGPL-3.0", "LGPL 3.0 — weak copyleft library"),
-    ("MPL-2.0", "MPL 2.0 — file-level copyleft code"),
-    ("CERN-OHL-W-2.0", "CERN-OHL-W 2.0 — weakly reciprocal open hardware"),
-    ("CERN-OHL-P-2.0", "CERN-OHL-P 2.0 — permissive open hardware"),
-    ("TAPR-OHL-1.0", "TAPR Open Hardware License 1.0"),
-    ("CC-BY-SA-4.0", "CC BY-SA 4.0 — docs / data, share-alike"),
-    ("CC0-1.0", "CC0 1.0 — public domain dedication"),
-    ("Unlicense", "The Unlicense — public domain dedication for code"),
+    ("Apache-2.0", "Apache 2.0 — software"),
+    ("GPL-3.0", "GPL 3.0 — software"),
+    ("CERN-OHL-W-2.0", "CERN OHL-W 2.0 — hardware, weak copyleft"),
+    ("CC0-1.0", "CC0 1.0 — data, public-domain dedication"),
 ]
-
-COMMON_LICENSES = RECOMMENDED_LICENSES + OTHER_LICENSES
+COMMON_LICENSES = COPYLEFT_LICENSES + PERMISSIVE_LICENSES + OTHER_LICENSES
 
 
 def _generate_slug(title: str) -> str:
@@ -128,24 +121,16 @@ class _DataListInput(forms.TextInput):
 class ProjectForm(forms.ModelForm):
     """User-facing form for creating or editing a project."""
 
-    # The license selector is split into a dropdown + a custom-text input.
-    # If the user picks "__other__", `license_custom` is what gets saved.
-    LICENSE_CHOICES = (
-        [("", "— pick a license —")]
-        + [("Recommended", RECOMMENDED_LICENSES)]
-        + [("Other licenses", OTHER_LICENSES)]
-        + [("__other__", "Other (write below)")]
-    )
+    LICENSE_CHOICES = [
+        ("", "— pick a license —"),
+        ("Copyleft (derivatives must stay open)", COPYLEFT_LICENSES),
+        ("Permissive (closed derivatives allowed)", PERMISSIVE_LICENSES),
+        ("Other licenses", OTHER_LICENSES),
+    ]
     license_choice = forms.ChoiceField(
         choices=LICENSE_CHOICES,
         required=False,
         label="License",
-    )
-    license_custom = forms.CharField(
-        max_length=80,
-        required=False,
-        label="Custom license",
-        widget=forms.TextInput(attrs={"placeholder": "SPDX identifier or short name"}),
     )
 
     tags_input = forms.CharField(
@@ -290,14 +275,19 @@ class ProjectForm(forms.ModelForm):
         # The short description drives cards and search results, so the
         # form requires it even though old rows may predate the rule.
         self.fields["summary"].required = True
-        # Pre-populate the license dropdown from the saved value.
+        # Pre-populate the license dropdown from the saved value. A saved
+        # license that is no longer on the curated list (all past options
+        # were open licenses) stays valid for this project, so editing
+        # never forces a relicense.
         existing = (self.instance.license or "").strip() if self.instance else ""
         known = {key for key, _label in COMMON_LICENSES}
-        if existing in known:
+        if existing and existing not in known:
+            self.fields["license_choice"].choices = [
+                self.LICENSE_CHOICES[0],
+                (existing, f"Current license: {existing}"),
+            ] + self.LICENSE_CHOICES[1:]
+        if existing:
             self.fields["license_choice"].initial = existing
-        elif existing:
-            self.fields["license_choice"].initial = "__other__"
-            self.fields["license_custom"].initial = existing
         # Pre-populate tags from the saved instance.
         if self.instance and self.instance.pk:
             self.fields["tags_input"].initial = ", ".join(
@@ -306,17 +296,7 @@ class ProjectForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        choice = cleaned.get("license_choice", "")
-        custom = (cleaned.get("license_custom") or "").strip()
-        if choice == "__other__":
-            if not custom:
-                self.add_error(
-                    "license_custom",
-                    "Pick a license from the list or write a custom identifier here.",
-                )
-            cleaned["resolved_license"] = custom
-        else:
-            cleaned["resolved_license"] = choice
+        cleaned["resolved_license"] = cleaned.get("license_choice", "")
         return cleaned
 
     def clean_cover_image(self):
