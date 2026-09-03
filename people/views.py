@@ -3,7 +3,7 @@ from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from projects.models import Project
 
 from .forms import ProfileForm
-from .models import Profile
+from .models import Follow, Profile
 
 
 def _verified_orcid_for(user) -> str:
@@ -57,6 +57,11 @@ def person_detail(request, pk: int):
     else:
         own_projects = None
 
+    is_following = (
+        request.user.is_authenticated
+        and not is_self
+        and Follow.objects.filter(follower=request.user, creator=person).exists()
+    )
     return render(
         request,
         "people/detail.html",
@@ -66,6 +71,7 @@ def person_detail(request, pk: int):
             "is_self": is_self,
             "own_projects": own_projects,
             "verified_orcid": verified_orcid,
+            "is_following": is_following,
         },
     )
 
@@ -165,3 +171,24 @@ def institution_detail(request, slug: str):
             "projects": sorted(matches, key=lambda p: p.updated_at, reverse=True),
         },
     )
+
+
+@login_required
+@require_POST
+def follow_toggle(request, pk: int):
+    """Follow or unfollow a person's new published work."""
+    User = get_user_model()
+    creator = get_object_or_404(User, pk=pk, is_active=True)
+    if creator.pk == request.user.pk:
+        return HttpResponseForbidden("You cannot follow yourself.")
+    # Deliberately silent: the followed person is never notified, and no
+    # counts are shown anywhere. Follows exist to route notifications to
+    # the follower, not as a social metric.
+    existing = Follow.objects.filter(
+        follower=request.user, creator=creator
+    ).first()
+    if existing:
+        existing.delete()
+    else:
+        Follow.objects.create(follower=request.user, creator=creator)
+    return redirect("people:detail", pk=creator.pk)

@@ -15,6 +15,7 @@
 {% endif %}
 <div class="bell-menu-footer">
     <a href="{% url 'notifications:inbox' %}">View all</a>
+    <a href="{% url 'notifications:settings' %}">Settings</a>
     {% if unread_count %}
     <form method="post" action="{% url 'notifications:mark_all_read' %}" style="display:inline;margin:0">
         {% csrf_token %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Privacy — OSPREY{% endblock %}
+{% block content %}
+<h1>Privacy</h1>
+<div style="max-width:46rem">
+    <p>
+        OSPREY stores as little about you as it can get away with. This page
+        says exactly what it keeps and why.
+    </p>
+    <h2>What OSPREY stores</h2>
+    <ul>
+        <li>
+            <strong>Your ORCID iD and public profile basics</strong> (name,
+            and whatever you add to your OSPREY profile: display name, bio,
+            institution, avatar). Sign-in runs through ORCID; OSPREY never
+            sees or stores a password, and it does not keep ORCID access
+            tokens after sign-in completes.
+        </li>
+        <li>
+            <strong>An email address, only if you add one.</strong> It is
+            used for exactly one thing: notifying you about activity on
+            OSPREY — questions on your projects, replies to your threads,
+            use reports, wiki suggestions. No marketing, no newsletters,
+            and it is never shared with or sold to anyone.
+        </li>
+        <li>
+            <strong>What you publish here</strong>: projects, wiki edits,
+            discussion posts, use reports. That content is the point of the
+            platform and is public by design (drafts stay private).
+        </li>
+    </ul>
+    <h2>Your controls</h2>
+    <ul>
+        <li>
+            Every notification email carries one-click unsubscribe links,
+            and <a href="{% url 'notifications:settings' %}">notification
+            settings</a> has a master switch.
+        </li>
+        <li>
+            Removing your email address deletes it outright and cancels any
+            queued mail. Nothing keeps a copy.
+        </li>
+        <li>
+            Email is kept until you remove it or your account is deleted,
+            and no longer.
+        </li>
+    </ul>
+    <p class="muted">
+        Questions or requests about your data: use the feedback widget or
+        contact the maintainer.
+    </p>
+</div>
+{% endblock %}

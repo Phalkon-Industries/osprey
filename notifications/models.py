@@ -4,6 +4,7 @@ import os
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class EmailSettings(models.Model):
@@ -130,3 +131,126 @@ def send(
         url=url[:400],
         payload=payload or {},
     )
+
+
+CADENCE_OFF = "off"
+CADENCE_IMMEDIATE = "immediate"
+CADENCE_DAILY = "daily"
+CADENCE_WEEKLY = "weekly"
+CADENCE_CHOICES = [
+    (CADENCE_OFF, "Off"),
+    (CADENCE_IMMEDIATE, "Immediate"),
+    (CADENCE_DAILY, "Daily summary"),
+    (CADENCE_WEEKLY, "Weekly summary"),
+]
+
+
+class NotificationPreference(models.Model):
+    """Per-user notification behavior and email cadence, one row per user.
+
+    Cadence works like Discourse: a daily summary by default, immediate
+    for people who want the firehose, weekly for people who want quiet.
+    `email_enabled` is the master opt-out; with it off (or with no
+    verified address) no notification email is ever sent, while in-app
+    notifications keep working regardless.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preference",
+    )
+    email_enabled = models.BooleanField(
+        default=True,
+        help_text="Master switch for all notification email to this user.",
+    )
+    projects = models.CharField(
+        max_length=10, choices=CADENCE_CHOICES, default=CADENCE_DAILY
+    )
+    replies = models.CharField(
+        max_length=10, choices=CADENCE_CHOICES, default=CADENCE_DAILY
+    )
+    follows = models.CharField(
+        max_length=10, choices=CADENCE_CHOICES, default=CADENCE_DAILY
+    )
+    account = models.CharField(
+        max_length=10,
+        choices=[(CADENCE_OFF, "Off"), (CADENCE_IMMEDIATE, "Immediate")],
+        default=CADENCE_IMMEDIATE,
+    )
+    staff = models.CharField(
+        max_length=10, choices=CADENCE_CHOICES, default=CADENCE_IMMEDIATE
+    )
+    auto_follow_threads = models.BooleanField(
+        default=True,
+        help_text="Automatically follow threads you start or reply in.",
+    )
+    consented_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the user added their email address (the consent act).",
+    )
+    consent_source = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text="Where the address was added: welcome flow or settings.",
+    )
+    last_daily_digest_at = models.DateTimeField(null=True, blank=True)
+    last_weekly_digest_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"notification preferences for {self.user_id}"
+
+    @classmethod
+    def for_user(cls, user) -> "NotificationPreference":
+        obj, _created = cls.objects.get_or_create(user=user)
+        return obj
+
+    def cadence_for(self, group: str) -> str:
+        return getattr(self, group, CADENCE_OFF)
+
+
+class QueuedEmail(models.Model):
+    """Outbox row: one notification email waiting for the sender command.
+
+    The recipient address is deliberately NOT stored here; it is resolved
+    from the user's verified allauth address at send time, so removing
+    the address really stops everything, including queued mail.
+    """
+
+    STATUS_QUEUED = "queued"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="queued_emails",
+    )
+    group = models.CharField(max_length=20, default="")
+    subject = models.CharField(max_length=300)
+    body_text = models.TextField()
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_QUEUED
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    scheduled_for = models.DateTimeField(default=timezone.now)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["scheduled_for", "id"]
+        indexes = [models.Index(fields=["status", "scheduled_for"])]
+
+    def __str__(self) -> str:
+        return f"{self.status} email to user {self.user_id}: {self.subject[:60]}"

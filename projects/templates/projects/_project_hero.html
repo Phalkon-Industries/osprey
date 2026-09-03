@@ -24,6 +24,12 @@ project Edit button (kept separate from sub-page `can_edit` flags).
     {% if not project.is_public %}<span class="badge private">private</span>{% endif %}
     {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
     <span class="spacer"></span>
+    {% if show_watch and user.is_authenticated %}
+    <form method="post" action="{% url 'projects:watch_toggle' project.slug %}" style="display:inline;margin:0">
+        {% csrf_token %}
+        <button type="submit" class="button ghost" title="{% if is_watching %}Stop getting notified about new versions, wiki pages, and use reports here{% else %}Get notified about new versions, wiki pages, and use reports on this project{% endif %}">{% if is_watching %}Unwatch{% else %}Watch{% endif %}</button>
+    </form>
+    {% endif %}
     {% if project_can_edit %}<a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>{% endif %}
 </header>
 

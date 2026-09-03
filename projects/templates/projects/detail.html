@@ -4,7 +4,7 @@
 
 {% block content %}
 <article>
-    {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit %}
+    {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching %}
 
     {% if project.readme %}
     <section>

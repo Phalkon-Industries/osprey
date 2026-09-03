@@ -1,0 +1,44 @@
+"""Long-running loop for the notifier sidecar container.
+
+Processes the email outbox every INTERVAL seconds and runs the digest
+pass when a day has rolled over since the last one. Deliberately boring:
+no broker, no scheduler dependency, restartable at any moment because
+all state lives in the database.
+"""
+from __future__ import annotations
+
+import time
+
+from django.core.management import call_command
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+INTERVAL_SECONDS = 30
+
+
+class Command(BaseCommand):
+    help = "Run the notification email loop (outbox every 30s, digests daily)."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--once",
+            action="store_true",
+            help="Run a single iteration and exit (for tests and cron).",
+        )
+
+    def handle(self, *args, **options):
+        last_digest_date = None
+        while True:
+            try:
+                call_command("send_queued_email")
+                today = timezone.localdate()
+                if last_digest_date != today:
+                    call_command("send_email_digests")
+                    call_command("prune_notifications")
+                    last_digest_date = today
+            except Exception as exc:  # noqa: BLE001 - the loop must survive
+                # transient DB/provider outages and try again next tick.
+                self.stderr.write(f"notifier iteration failed: {exc}")
+            if options["once"]:
+                break
+            time.sleep(INTERVAL_SECONDS)

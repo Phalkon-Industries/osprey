@@ -21,7 +21,14 @@ from .forms import (
     NewVersionForm,
     ProjectForm,
 )
-from .models import Citation, Contribution, Project, ProjectAttachment, ProjectDeposit
+from .models import (
+    Citation,
+    Contribution,
+    Project,
+    ProjectAttachment,
+    ProjectDeposit,
+    Watch,
+)
 from .zenodo import (
     ZenodoError,
     publish_new_version_now,
@@ -223,6 +230,9 @@ def project_detail(request, slug: str):
         "-added_at"
     )[:5]
     citations_count = project.citations.count()
+    is_watching = request.user.is_authenticated and Watch.objects.filter(
+        user=request.user, project=project
+    ).exists()
     return render(
         request,
         "projects/detail.html",
@@ -235,6 +245,7 @@ def project_detail(request, slug: str):
             "citation_text": _build_citation_text(project, deposit),
             "recent_citations": recent_citations,
             "citations_count": citations_count,
+            "is_watching": is_watching,
         },
     )
 
@@ -634,6 +645,14 @@ def project_zenodo_new_version(request, slug: str):
                         "version. Your changelog and archive are saved; try again.",
                     )
                 else:
+                    try:
+                        from notifications import events
+
+                        events.new_version_published(project, actor=request.user)
+                    except Exception:
+                        logger.exception(
+                            "new_version_published notification failed"
+                        )
                     messages.success(
                         request,
                         f"New version published on {zenodo_mode_label()}.",
@@ -778,3 +797,20 @@ def project_lineage(request, slug: str):
             "children": children,
         },
     )
+
+
+@login_required
+def watch_toggle(request, slug: str):
+    """Watch or unwatch a project's activity (new versions, wiki pages,
+    use reports)."""
+    if request.method != "POST":
+        return redirect("projects:detail", slug=slug)
+    project = get_object_or_404(Project, slug=slug)
+    if not project.viewable_by(request.user):
+        raise Http404
+    existing = Watch.objects.filter(user=request.user, project=project).first()
+    if existing:
+        existing.delete()
+    else:
+        Watch.objects.create(user=request.user, project=project)
+    return redirect("projects:detail", slug=project.slug)

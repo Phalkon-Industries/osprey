@@ -28,6 +28,12 @@
                 {% if verified_orcid %}&middot; ORCID {{ verified_orcid }}{% endif %}
             </p>
         </div>
+        {% if user.is_authenticated and not is_self %}
+        <form method="post" action="{% url 'people:follow_toggle' person.pk %}" style="display:inline;margin:0">
+            {% csrf_token %}
+            <button type="submit" class="button ghost" title="{% if is_following %}Stop hearing about new projects from this person{% else %}Get notified when this person publishes a new project{% endif %}">{% if is_following %}Unfollow{% else %}Follow{% endif %}</button>
+        </form>
+        {% endif %}
         {% if is_self %}
         <a class="button ghost" href="{% url 'people:edit' %}">Edit profile</a>
         {% endif %}

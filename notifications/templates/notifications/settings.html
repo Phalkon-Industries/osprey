@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Notification settings — OSPREY{% endblock %}
+{% block content %}
+<h1>Notification settings</h1>
+
+<section style="max-width:46rem;margin-bottom:2rem">
+    <h2>Email address</h2>
+    {% if verified_address %}
+    <p>Notifications go to <strong>{{ verified_address }}</strong>.</p>
+    {% elif addresses %}
+    <p>
+        <strong>{{ addresses.0.email }}</strong> is waiting for confirmation.
+        Check that inbox for the link. Nothing is sent until it's confirmed.
+    </p>
+    {% else %}
+    <p class="muted">
+        No email address on file. Add one to hear about activity on your
+        projects without having to check the site.
+    </p>
+    {% endif %}
+
+    {% if addresses %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="remove_email">
+        <button type="submit" class="button ghost"
+            onclick="return confirm('Remove this address? You will not receive any email notifications at all; activity will only appear in your inbox here.')">
+            Remove address
+        </button>
+    </form>
+    {% else %}
+    <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_email">
+        <input type="email" name="email" required placeholder="you@institution.edu" style="min-width:16rem">
+        <button type="submit" class="button">Add email</button>
+    </form>
+    <p class="muted small">
+        Used only to notify you about activity on OSPREY — never marketing,
+        never shared. Remove it anytime.
+        See the <a href="{% url 'privacy' %}">privacy note</a>.
+    </p>
+    {% endif %}
+</section>
+
+<section style="max-width:46rem">
+    <h2>What to send</h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_preferences">
+        <p>
+            <label>
+                <input type="checkbox" name="email_enabled" {% if preference.email_enabled %}checked{% endif %}>
+                <strong>Send me email notifications</strong>
+            </label>
+            <br><span class="muted small">
+                Unchecking this stops all email from OSPREY. Activity will
+                only appear in your <a href="{% url 'notifications:inbox' %}">inbox here</a>,
+                when you visit.
+            </span>
+        </p>
+        <table class="pref-table">
+            <tr>
+                <td><label for="pref-projects">Activity on your projects</label></td>
+                <td>
+                    <select name="projects" id="pref-projects">
+                        {% for value, label in cadence_choices %}
+                        <option value="{{ value }}" {% if preference.projects == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="pref-replies">Replies and reviews of your posts</label></td>
+                <td>
+                    <select name="replies" id="pref-replies">
+                        {% for value, label in cadence_choices %}
+                        <option value="{{ value }}" {% if preference.replies == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="pref-follows">People and work you follow</label></td>
+                <td>
+                    <select name="follows" id="pref-follows">
+                        {% for value, label in cadence_choices %}
+                        <option value="{{ value }}" {% if preference.follows == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="pref-account">Moderation and account notices</label></td>
+                <td>
+                    <select name="account" id="pref-account">
+                        <option value="immediate" {% if preference.account == "immediate" %}selected{% endif %}>Immediate</option>
+                        <option value="off" {% if preference.account == "off" %}selected{% endif %}>Off</option>
+                    </select>
+                </td>
+            </tr>
+            {% if user.is_staff %}
+            <tr>
+                <td><label for="pref-staff">Staff events (feedback, reports, new projects)</label></td>
+                <td>
+                    <select name="staff" id="pref-staff">
+                        {% for value, label in cadence_choices %}
+                        <option value="{{ value }}" {% if preference.staff == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            {% endif %}
+        </table>
+        <p>
+            <label>
+                <input type="checkbox" name="auto_follow_threads" {% if preference.auto_follow_threads %}checked{% endif %}>
+                Automatically follow discussion threads I start or reply in
+            </label>
+        </p>
+        <p><button type="submit" class="button">Save settings</button></p>
+    </form>
+</section>
+{% endblock %}

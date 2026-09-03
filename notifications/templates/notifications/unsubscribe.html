@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Unsubscribe — OSPREY{% endblock %}
+{% block content %}
+<h1>Email notifications</h1>
+{% if invalid %}
+<p>This unsubscribe link is invalid or has expired.</p>
+<p class="muted">
+    You can manage everything from your
+    <a href="{% url 'notifications:settings' %}">notification settings</a>
+    after signing in.
+</p>
+{% elif done %}
+{% if scope == "all" %}
+<p><strong>Done.</strong> OSPREY will not send you any email at all.</p>
+<p class="muted">
+    Activity still appears in your on-site inbox when you visit, and you
+    can turn email back on anytime in your
+    <a href="{% url 'notifications:settings' %}">notification settings</a>.
+</p>
+{% else %}
+<p><strong>Done.</strong> No more email about this kind of activity.</p>
+<p class="muted">
+    Other notification email is unchanged. Fine-tune everything in your
+    <a href="{% url 'notifications:settings' %}">notification settings</a>.
+</p>
+{% endif %}
+{% else %}
+{% if scope == "all" %}
+<p>Stop <strong>all</strong> notification email from OSPREY?</p>
+<p class="muted">
+    You will not receive any email notifications at all. Activity on your
+    projects and threads will only be visible in your on-site inbox, when
+    you visit.
+</p>
+{% else %}
+<p>Stop email about <strong>{{ scope }}</strong> activity?</p>
+{% endif %}
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="button">Yes, unsubscribe</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -59,6 +59,7 @@ def new(request, slug):
                     use_report=report,
                 )
             events.use_report_created(report)
+            events.watched_use_report_created(report)
             messages.success(request, "Thanks for sharing how you used this project.")
             return redirect("use_reports:index", slug=project.slug)
     else:

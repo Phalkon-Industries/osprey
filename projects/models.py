@@ -761,3 +761,29 @@ class Citation(models.Model):
 
     def __str__(self) -> str:
         return self.text[:80]
+
+
+class Watch(models.Model):
+    """Subscribes a user to a project's activity: new versions, new wiki
+    pages, and new use reports. A bookmark is a different (future) thing;
+    this is a notification subscription."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="watching",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="watchers"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "project"], name="unique_watch"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} watches {self.project_id}"

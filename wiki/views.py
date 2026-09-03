@@ -142,6 +142,7 @@ def edit(request, slug, page_slug=None):
                 )
 
             # Direct apply path.
+            created_new_page = page is None
             if page is None:
                 page = form.save(commit=False)
                 page.project = project
@@ -164,6 +165,8 @@ def edit(request, slug, page_slug=None):
                 reviewed_at=timezone.now(),
                 reviewed_by=request.user,
             )
+            if created_new_page:
+                events.watched_wiki_page_created(page, project, request.user)
             messages.success(request, "Wiki page saved.")
             return redirect("wiki:detail", slug=project.slug, page_slug=page.slug)
     else:

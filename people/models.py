@@ -96,3 +96,33 @@ class Profile(models.Model):
             Contribution.objects.filter(
                 orcid_id=self.orcid_placeholder, user__isnull=True
             ).update(user=self.user)
+
+
+class Follow(models.Model):
+    """One researcher following another's new published work."""
+
+    follower = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="following",
+    )
+    creator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="followers",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "creator"], name="unique_follow"
+            ),
+            models.CheckConstraint(
+                check=~models.Q(follower=models.F("creator")),
+                name="no_self_follow",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.follower_id} follows {self.creator_id}"

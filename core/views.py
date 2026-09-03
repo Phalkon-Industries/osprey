@@ -83,3 +83,7 @@ def staff_dashboard(request):
 # --- ORCID person-search ---------------------------------------------------
 # The inline ORCID search lives on the contributor formset (see
 # projects/views.py:orcid_search_json and projects/orcid_search.py).
+
+
+def privacy(request):
+    return render(request, "core/privacy.html")

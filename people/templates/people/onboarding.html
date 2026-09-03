@@ -23,4 +23,23 @@
     {% endfor %}
     <button type="submit">Save and continue</button>
 </form>
+
+<section style="max-width:42rem;margin-top:2rem">
+    <h2>Email notifications (optional)</h2>
+    <p class="muted" style="font-size:.9rem">
+        Add an email and OSPREY will notify you about activity on your
+        projects — questions, use reports, wiki suggestions. Used only for
+        that: never marketing, never shared, removable anytime. See the
+        <a href="{% url 'privacy' %}">privacy note</a>. Leave it blank to
+        skip; the on-site inbox works either way.
+    </p>
+    <form method="post" action="{% url 'notifications:settings' %}" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_email">
+        <input type="hidden" name="source" value="welcome">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="email" name="email" placeholder="you@institution.edu" style="min-width:16rem">
+        <button type="submit" class="button ghost">Add email</button>
+    </form>
+</section>
 {% endblock %}

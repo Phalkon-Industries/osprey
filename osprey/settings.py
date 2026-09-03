@@ -78,6 +78,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "notifications.context_processors.unread_notification_count",
+                "notifications.context_processors.email_nudge",
                 "core.context_processors.osprey_instance",
             ],
         },
@@ -161,6 +162,12 @@ SOCIALACCOUNT_ADAPTER = "people.adapters.OrcidSocialAccountAdapter"
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_STORE_TOKENS = False
+
+# Email address verification (allauth machinery; addresses are added from
+# the notification settings page and the welcome flow, never at signup).
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[OSPREY] "
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = "/inbox/settings/"
 
 ORCID_USE_SANDBOX = _env_bool("ORCID_USE_SANDBOX", default=False)
 SOCIALACCOUNT_PROVIDERS = {

@@ -16,7 +16,13 @@ from anymail.backends.mailjet import EmailBackend as MailjetBackend
 from anymail.exceptions import AnymailAPIError
 
 from .email import OspreyEmailBackend
-from .models import EmailSettings, Notification, send
+from .models import (
+    EmailSettings,
+    Notification,
+    NotificationPreference,
+    QueuedEmail,
+    send,
+)
 
 
 class NotificationSendTests(TestCase):
@@ -901,3 +907,736 @@ class EmailAdminAccessTests(TestCase):
         config.save()
         call_command("send_test_email")
         self.assertEqual(mail.outbox[0].to, ["fallback@example.org"])
+
+
+def _verify_email(user, address="user@example.org"):
+    from allauth.account.models import EmailAddress
+
+    return EmailAddress.objects.create(
+        user=user, email=address, verified=True, primary=True
+    )
+
+
+class EmailEnqueueTests(TestCase):
+    """events -> outbox: who gets queued mail, and when."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="owner")
+        self.asker = User.objects.create_user(username="asker")
+        from projects.models import Project
+
+        self.project = Project.objects.create(
+            slug="mailpump",
+            title="Mail Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+
+    def _fire_question(self):
+        from conversations.models import ProjectThread
+        from notifications import events
+
+        thread = ProjectThread.objects.create(
+            project=self.project, author=self.asker, title="Q", body="?"
+        )
+        events.thread_created(thread)
+
+    def _prefs(self, **kwargs):
+        preference = NotificationPreference.for_user(self.owner)
+        for key, value in kwargs.items():
+            setattr(preference, key, value)
+        preference.save()
+        return preference
+
+    def test_immediate_cadence_with_verified_address_queues_mail(self):
+        _verify_email(self.owner)
+        self._prefs(projects="immediate")
+        self._fire_question()
+        row = QueuedEmail.objects.get()
+        self.assertEqual(row.user, self.owner)
+        self.assertEqual(row.group, "projects")
+        self.assertIn("New question on Mail Pump", row.subject)
+        self.assertIn("/discussion/", row.body_text)
+        # The in-app notification exists too.
+        self.assertEqual(Notification.objects.count(), 1)
+
+    def test_daily_cadence_queues_nothing_immediately(self):
+        _verify_email(self.owner)
+        self._prefs(projects="daily")
+        self._fire_question()
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+        self.assertEqual(Notification.objects.count(), 1)
+
+    def test_master_switch_off_queues_nothing(self):
+        _verify_email(self.owner)
+        self._prefs(projects="immediate", email_enabled=False)
+        self._fire_question()
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+    def test_no_verified_address_queues_nothing(self):
+        self._prefs(projects="immediate")
+        self._fire_question()
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+    def test_unverified_address_queues_nothing(self):
+        from allauth.account.models import EmailAddress
+
+        EmailAddress.objects.create(
+            user=self.owner, email="x@example.org", verified=False, primary=True
+        )
+        self._prefs(projects="immediate")
+        self._fire_question()
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+    def test_group_off_queues_nothing(self):
+        _verify_email(self.owner)
+        self._prefs(projects="off")
+        self._fire_question()
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+
+class SenderCommandTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="mailee")
+        _verify_email(self.user, "mailee@example.org")
+
+    def _row(self, **kwargs):
+        defaults = {
+            "user": self.user,
+            "group": "projects",
+            "subject": "[OSPREY] Something happened",
+            "body_text": "Details here.",
+        }
+        defaults.update(kwargs)
+        return QueuedEmail.objects.create(**defaults)
+
+    def test_sends_with_footer_and_unsubscribe_header(self):
+        row = self._row()
+        call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_SENT)
+        self.assertIsNotNone(row.sent_at)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ["mailee@example.org"])
+        self.assertIn("Stop all OSPREY email:", message.body)
+        self.assertIn("/inbox/unsubscribe/", message.body)
+        self.assertIn("List-Unsubscribe", message.extra_headers)
+
+    def test_cancels_when_address_removed(self):
+        from allauth.account.models import EmailAddress
+
+        row = self._row()
+        EmailAddress.objects.all().delete()
+        call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_CANCELLED)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_cancels_when_master_switch_off(self):
+        row = self._row()
+        preference = NotificationPreference.for_user(self.user)
+        preference.email_enabled = False
+        preference.save()
+        call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_CANCELLED)
+
+    def test_digest_rows_are_delivered_not_cancelled(self):
+        # Regression: the sender re-checks kill switches only; a group of
+        # "digest" (not a preference group) must still deliver.
+        row = self._row(group="digest")
+        call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_SENT)
+
+    def test_failure_backs_off_then_gives_up(self):
+        from django.utils import timezone as tz
+
+        row = self._row()
+        with patch(
+            "notifications.management.commands.send_queued_email.EmailMessage"
+        ) as message_class:
+            message_class.return_value.send.side_effect = RuntimeError("mailjet down")
+            call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_QUEUED)
+        self.assertEqual(row.attempts, 1)
+        self.assertGreater(row.scheduled_for, tz.now())
+        self.assertIn("mailjet down", row.last_error)
+        # Exhaust the remaining attempts.
+        row.attempts = 4
+        row.scheduled_for = tz.now()
+        row.save()
+        with patch(
+            "notifications.management.commands.send_queued_email.EmailMessage"
+        ) as message_class:
+            message_class.return_value.send.side_effect = RuntimeError("still down")
+            call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_FAILED)
+
+    def test_future_scheduled_rows_wait(self):
+        from datetime import timedelta
+
+        from django.utils import timezone as tz
+
+        row = self._row(scheduled_for=tz.now() + timedelta(hours=1))
+        call_command("send_queued_email")
+        row.refresh_from_db()
+        self.assertEqual(row.status, QueuedEmail.STATUS_QUEUED)
+        self.assertEqual(len(mail.outbox), 0)
+
+
+class DigestCommandTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="digestee")
+        _verify_email(self.user, "digestee@example.org")
+        self.preference = NotificationPreference.for_user(self.user)
+
+    def _notify(self, kind="project_question", title="Something happened"):
+        send(self.user, kind=kind, title=title, url="/projects/x/")
+
+    def test_daily_digest_collects_and_advances_stamp(self):
+        self._notify(title="First thing")
+        self._notify(kind="thread_reply", title="Second thing")
+        call_command("send_email_digests")
+        row = QueuedEmail.objects.get(group="digest")
+        self.assertIn("2 updates", row.subject)
+        self.assertIn("First thing", row.body_text)
+        self.assertIn("Second thing", row.body_text)
+        self.preference.refresh_from_db()
+        self.assertIsNotNone(self.preference.last_daily_digest_at)
+        # Second run right away: nothing new, no second digest.
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.filter(group="digest").count(), 1)
+
+    def test_weekly_group_waits_a_week(self):
+        from datetime import timedelta
+
+        from django.utils import timezone as tz
+
+        self.preference.projects = "weekly"
+        self.preference.replies = "off"
+        self.preference.last_weekly_digest_at = tz.now() - timedelta(days=2)
+        self.preference.save()
+        self._notify(title="Weekly thing")
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+        # Push the stamp past a week and it fires.
+        self.preference.last_weekly_digest_at = tz.now() - timedelta(days=8)
+        self.preference.save(update_fields=["last_weekly_digest_at"])
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.filter(group="digest").count(), 1)
+
+    def test_no_address_no_digest(self):
+        from allauth.account.models import EmailAddress
+
+        EmailAddress.objects.all().delete()
+        self._notify()
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+    def test_opted_out_user_gets_no_digest(self):
+        self.preference.email_enabled = False
+        self.preference.save()
+        self._notify()
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+
+
+class UnsubscribeTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="unsub")
+        _verify_email(self.user, "unsub@example.org")
+
+    def test_group_token_turns_group_off(self):
+        from notifications import emails
+
+        token = emails.make_unsubscribe_token(self.user, "replies")
+        url = reverse("notifications:unsubscribe", args=[token])
+        # GET shows a confirm page (no state change), POST applies. The
+        # user is NOT logged in for any of this.
+        response = self.client.get(url)
+        self.assertContains(response, "replies")
+        response = self.client.post(url)
+        self.assertContains(response, "Done")
+        preference = NotificationPreference.for_user(self.user)
+        self.assertEqual(preference.replies, "off")
+        self.assertTrue(preference.email_enabled)
+
+    def test_all_token_disables_email_and_cancels_queue(self):
+        from notifications import emails
+
+        QueuedEmail.objects.create(
+            user=self.user, group="projects", subject="s", body_text="b"
+        )
+        token = emails.make_unsubscribe_token(self.user, "all")
+        response = self.client.post(
+            reverse("notifications:unsubscribe", args=[token])
+        )
+        self.assertContains(response, "not send you any email")
+        preference = NotificationPreference.for_user(self.user)
+        self.assertFalse(preference.email_enabled)
+        self.assertEqual(
+            QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
+        )
+
+    def test_tampered_token_is_rejected(self):
+        from notifications import emails
+
+        token = emails.make_unsubscribe_token(self.user, "all") + "x"
+        response = self.client.get(
+            reverse("notifications:unsubscribe", args=[token])
+        )
+        self.assertContains(response, "invalid")
+        response = self.client.post(
+            reverse("notifications:unsubscribe", args=[token])
+        )
+        preference = NotificationPreference.for_user(self.user)
+        self.assertTrue(preference.email_enabled)
+
+
+class NotificationSettingsViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="settee")
+        self.client.force_login(self.user)
+        self.url = reverse("notifications:settings")
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url).status_code, 302)
+
+    def test_add_email_sends_confirmation_and_records_consent(self):
+        response = self.client.post(
+            self.url,
+            {"action": "add_email", "email": "new@example.org"},
+            follow=True,
+        )
+        self.assertContains(response, "Confirmation sent")
+        from allauth.account.models import EmailAddress
+
+        address = EmailAddress.objects.get(user=self.user)
+        self.assertEqual(address.email, "new@example.org")
+        self.assertFalse(address.verified)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("new@example.org", mail.outbox[0].to)
+        preference = NotificationPreference.for_user(self.user)
+        self.assertIsNotNone(preference.consented_at)
+        self.assertEqual(preference.consent_source, "settings")
+
+    def test_confirmation_link_verifies_address(self):
+        # A distinct address: allauth rate-limits confirmation sends per
+        # address in the (process-wide) cache, so reusing one across
+        # tests silently sends nothing.
+        self.client.post(
+            self.url, {"action": "add_email", "email": "confirm-me@example.org"}
+        )
+        body = mail.outbox[0].body
+        import re
+
+        match = re.search(r"(/accounts/confirm-email/[^\s/]+/)", body)
+        self.assertIsNotNone(match, body)
+        response = self.client.get(match.group(1))
+        self.assertEqual(response.status_code, 302)
+        from allauth.account.models import EmailAddress
+
+        self.assertTrue(EmailAddress.objects.get(user=self.user).verified)
+
+    def test_remove_email_deletes_and_cancels_queue(self):
+        _verify_email(self.user, "old@example.org")
+        QueuedEmail.objects.create(
+            user=self.user, group="projects", subject="s", body_text="b"
+        )
+        response = self.client.post(
+            self.url, {"action": "remove_email"}, follow=True
+        )
+        self.assertContains(response, "not receive any email notifications at all")
+        from allauth.account.models import EmailAddress
+
+        self.assertEqual(EmailAddress.objects.count(), 0)
+        self.assertEqual(
+            QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
+        )
+
+    def test_disabling_email_warns_and_cancels_queue(self):
+        QueuedEmail.objects.create(
+            user=self.user, group="projects", subject="s", body_text="b"
+        )
+        response = self.client.post(
+            self.url,
+            {"action": "save_preferences", "projects": "daily"},
+            follow=True,
+        )
+        self.assertContains(response, "will not receive")
+        self.assertContains(response, "inbox here")
+        preference = NotificationPreference.for_user(self.user)
+        self.assertFalse(preference.email_enabled)
+        self.assertEqual(
+            QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
+        )
+
+    def test_preferences_save_and_reject_bad_values(self):
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_preferences",
+                "email_enabled": "on",
+                "projects": "immediate",
+                "replies": "weekly",
+                "follows": "bogus-value",
+                "account": "off",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        preference = NotificationPreference.for_user(self.user)
+        self.assertEqual(preference.projects, "immediate")
+        self.assertEqual(preference.replies, "weekly")
+        self.assertEqual(preference.follows, "daily")  # bogus ignored
+        self.assertEqual(preference.account, "off")
+        self.assertTrue(preference.email_enabled)
+
+
+class EmailBannerTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="bannered")
+
+    def test_banner_shows_without_address(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get("/"), "email-nudge-banner")
+
+    def test_banner_hidden_with_verified_address(self):
+        _verify_email(self.user)
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get("/"), "email-nudge-banner")
+
+    def test_banner_hidden_for_opted_out_user(self):
+        preference = NotificationPreference.for_user(self.user)
+        preference.email_enabled = False
+        preference.save()
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get("/"), "email-nudge-banner")
+
+    def test_banner_hidden_for_anonymous(self):
+        self.assertNotContains(self.client.get("/"), "email-nudge-banner")
+
+    def test_dismiss_hides_for_session_and_returns_next_login(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("notifications:dismiss_email_banner"), {"next": "/"}
+        )
+        self.assertNotContains(self.client.get("/"), "email-nudge-banner")
+        # A fresh session (new sign-in) brings it back.
+        self.client.logout()
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get("/"), "email-nudge-banner")
+
+    def test_dismiss_rejects_offsite_next(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("notifications:dismiss_email_banner"),
+            {"next": "https://evil.example.com/"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("notifications:inbox"))
+
+
+class PrivacyAndOnboardingSurfaceTests(TestCase):
+    def test_privacy_page_renders(self):
+        response = self.client.get("/about/privacy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "never shared")
+
+    def test_footer_links_privacy(self):
+        self.assertContains(self.client.get("/"), "/about/privacy/")
+
+    def test_onboarding_offers_email_field(self):
+        user = get_user_model().objects.create_user(username="newbie")
+        self.client.force_login(user)
+        response = self.client.get(reverse("people:onboarding"))
+        self.assertContains(response, "Email notifications (optional)")
+        self.assertContains(response, 'name="email"')
+        self.assertContains(response, "/about/privacy/")
+
+
+class EndToEndEmailFlowTests(TestCase):
+    """The full path: event -> outbox -> sender -> mailbox."""
+
+    def test_question_reaches_owner_mailbox(self):
+        User = get_user_model()
+        owner = User.objects.create_user(username="e2e-owner")
+        asker = User.objects.create_user(username="e2e-asker")
+        _verify_email(owner, "owner@example.org")
+        preference = NotificationPreference.for_user(owner)
+        preference.projects = "immediate"
+        preference.save()
+        from projects.models import Project
+
+        project = Project.objects.create(
+            slug="e2e-pump",
+            title="E2E Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=owner,
+        )
+        self.client.force_login(asker)
+        self.client.post(
+            reverse("conversations:new", args=[project.slug]),
+            {"title": "Does it survive salt water?", "body": "Asking."},
+        )
+        call_command("send_queued_email")
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ["owner@example.org"])
+        self.assertIn("New question on E2E Pump", message.subject)
+        self.assertIn("Does it survive salt water?", message.body)
+        self.assertIn("/discussion/", message.body)
+        self.assertIn("unsubscribe", message.body.lower())
+
+
+class FollowAndWatchTests(TestCase):
+    """Phase 4: creator follows, project watches, and their fan-outs."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.creator = User.objects.create_user(username="creator")
+        self.fan = User.objects.create_user(username="fan")
+        self.watcher = User.objects.create_user(username="watcher")
+        self.staffer = User.objects.create_user(username="staffer4", is_staff=True)
+        from projects.models import Project
+
+        self.project = Project.objects.create(
+            slug="watched-pump",
+            title="Watched Pump",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.creator,
+        )
+
+    def _follow(self, follower=None, creator=None):
+        from people.models import Follow
+
+        return Follow.objects.create(
+            follower=follower or self.fan, creator=creator or self.creator
+        )
+
+    def _watch(self, user=None, project=None):
+        from projects.models import Watch
+
+        return Watch.objects.create(
+            user=user or self.watcher, project=project or self.project
+        )
+
+    def test_follow_toggle_view_creates_and_removes_silently(self):
+        from people.models import Follow
+
+        self.client.force_login(self.fan)
+        url = reverse("people:follow_toggle", args=[self.creator.pk])
+        self.client.post(url)
+        self.assertTrue(
+            Follow.objects.filter(follower=self.fan, creator=self.creator).exists()
+        )
+        # Anti-gamification rule: the followed person is NOT notified,
+        # in-app or by email. Follows are purely functional.
+        self.assertEqual(Notification.objects.count(), 0)
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+        # Toggle off.
+        self.client.post(url)
+        self.assertFalse(Follow.objects.exists())
+
+    def test_cannot_follow_yourself(self):
+        self.client.force_login(self.creator)
+        response = self.client.post(
+            reverse("people:follow_toggle", args=[self.creator.pk])
+        )
+        self.assertEqual(response.status_code, 403)
+        from people.models import Follow
+
+        self.assertFalse(Follow.objects.exists())
+
+    def test_follow_requires_login(self):
+        response = self.client.post(
+            reverse("people:follow_toggle", args=[self.creator.pk])
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    def test_profile_shows_follow_button_but_never_a_count(self):
+        self._follow()
+        self.client.force_login(self.watcher)
+        response = self.client.get(reverse("people:detail", args=[self.creator.pk]))
+        self.assertContains(response, ">Follow<")
+        self.assertNotContains(response, "follower")
+        # Own profile: no button, and no count for the owner either.
+        self.client.force_login(self.creator)
+        response = self.client.get(reverse("people:detail", args=[self.creator.pk]))
+        self.assertNotContains(response, ">Follow<")
+        self.assertNotContains(response, "follower")
+
+    def test_project_page_never_shows_watch_count(self):
+        self._watch()
+        self._watch(user=self.fan)
+        # Signed in as "fan" (whose username can't collide with the word
+        # "watchers") the page shows the toggle but never any count.
+        self.client.force_login(self.fan)
+        response = self.client.get(
+            reverse("projects:detail", args=[self.project.slug])
+        )
+        body = response.content.decode().lower()
+        self.assertIn(">unwatch<", body)
+        self.assertNotIn("watchers", body)
+        self.assertNotIn("2 watch", body)
+        self.assertNotIn("watched by", body)
+
+    def test_publish_fans_out_to_followers_not_creator_not_staff(self):
+        from notifications import events
+
+        self._follow()  # fan follows creator
+        self._follow(follower=self.staffer)  # staff follower: staff row only
+        events.project_published(self.project)
+        follower_rows = Notification.objects.filter(
+            kind="followed_creator_published"
+        )
+        self.assertEqual(
+            list(follower_rows.values_list("user_id", flat=True)), [self.fan.pk]
+        )
+        staff_rows = Notification.objects.filter(kind="project_published")
+        self.assertEqual(
+            list(staff_rows.values_list("user_id", flat=True)), [self.staffer.pk]
+        )
+
+    def test_watch_toggle_view(self):
+        from projects.models import Watch
+
+        self.client.force_login(self.watcher)
+        url = reverse("projects:watch_toggle", args=[self.project.slug])
+        self.client.post(url)
+        self.assertTrue(
+            Watch.objects.filter(user=self.watcher, project=self.project).exists()
+        )
+        self.client.post(url)
+        self.assertFalse(Watch.objects.exists())
+
+    def test_watch_toggle_hidden_project_404s_for_stranger(self):
+        from projects.models import Project
+
+        private = Project.objects.create(
+            slug="secret-pump",
+            title="Secret Pump",
+            visibility=Project.VISIBILITY_PRIVATE,
+            created_by=self.creator,
+        )
+        self.client.force_login(self.watcher)
+        response = self.client.post(
+            reverse("projects:watch_toggle", args=[private.slug])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_project_page_shows_watch_button(self):
+        self.client.force_login(self.watcher)
+        response = self.client.get(
+            reverse("projects:detail", args=[self.project.slug])
+        )
+        self.assertContains(response, ">Watch<")
+        self._watch()
+        response = self.client.get(
+            reverse("projects:detail", args=[self.project.slug])
+        )
+        self.assertContains(response, ">Unwatch<")
+
+    def test_new_version_notifies_watchers_not_actor(self):
+        from notifications import events
+
+        self._watch()
+        self._watch(user=self.fan)
+        events.new_version_published(self.project, actor=self.fan)
+        recipients = set(
+            Notification.objects.filter(
+                kind="watched_version_published"
+            ).values_list("user_id", flat=True)
+        )
+        self.assertEqual(recipients, {self.watcher.pk})
+
+    def test_new_wiki_page_notifies_watchers(self):
+        from notifications import events
+        from wiki.models import WikiPage
+
+        self._watch()
+        page = WikiPage.objects.create(
+            project=self.project, title="Bench notes", body="text"
+        )
+        events.watched_wiki_page_created(page, self.project, self.creator)
+        n = Notification.objects.get(kind="watched_activity")
+        self.assertEqual(n.user, self.watcher)
+        self.assertIn("Bench notes", n.title)
+
+    def test_use_report_notifies_watchers_but_not_owner_twice(self):
+        from notifications import events
+        from use_reports.models import UseReport
+
+        self._watch()  # watcher watches
+        self._watch(user=self.creator)  # owner also watches their own project
+        report = UseReport.objects.create(
+            project=self.project, author=self.fan, narrative="used it"
+        )
+        events.use_report_created(report)
+        events.watched_use_report_created(report)
+        # Owner: exactly one row (the owner kind); watcher: the watched kind.
+        self.assertEqual(
+            Notification.objects.filter(user=self.creator).count(), 1
+        )
+        self.assertEqual(
+            Notification.objects.get(user=self.creator).kind, "use_report"
+        )
+        self.assertEqual(
+            Notification.objects.get(kind="watched_activity").user, self.watcher
+        )
+
+
+
+
+class PruneCommandTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="pruned")
+
+    def test_prunes_old_read_keeps_unread_and_recent(self):
+        from datetime import timedelta
+
+        from django.utils import timezone as tz
+
+        old_read = send(self.user, kind="generic", title="old read")
+        old_read.is_read = True
+        old_read.save()
+        Notification.objects.filter(pk=old_read.pk).update(
+            created_at=tz.now() - timedelta(days=400)
+        )
+        old_unread = send(self.user, kind="generic", title="old unread")
+        Notification.objects.filter(pk=old_unread.pk).update(
+            created_at=tz.now() - timedelta(days=400)
+        )
+        fresh_read = send(self.user, kind="generic", title="fresh read")
+        fresh_read.is_read = True
+        fresh_read.save()
+        old_sent = QueuedEmail.objects.create(
+            user=self.user,
+            subject="s",
+            body_text="b",
+            status=QueuedEmail.STATUS_SENT,
+        )
+        QueuedEmail.objects.filter(pk=old_sent.pk).update(
+            created_at=tz.now() - timedelta(days=100)
+        )
+        stuck_queued = QueuedEmail.objects.create(
+            user=self.user, subject="s2", body_text="b2"
+        )
+        QueuedEmail.objects.filter(pk=stuck_queued.pk).update(
+            created_at=tz.now() - timedelta(days=100)
+        )
+
+        call_command("prune_notifications")
+
+        remaining = set(Notification.objects.values_list("title", flat=True))
+        self.assertEqual(remaining, {"old unread", "fresh read"})
+        # Sent row pruned; still-queued row kept regardless of age.
+        self.assertEqual(
+            list(QueuedEmail.objects.values_list("subject", flat=True)), ["s2"]
+        )

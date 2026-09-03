@@ -42,10 +42,13 @@ EVENTS = {
     "content_report": GROUP_STAFF,
     "project_published": GROUP_STAFF,
     "project_hidden": GROUP_ACCOUNT,
+    "followed_creator_published": GROUP_FOLLOWS,
+    "watched_version_published": GROUP_FOLLOWS,
+    "watched_activity": GROUP_FOLLOWS,
 }
 
 
-def _emit(user, *, kind, title, body="", url="", dedup_key=None, **payload):
+def _emit(user, *, kind, title, body="", url="", dedup_key=None, email=True, **payload):
     """Create one notification row, honoring the registry and dedup guard.
 
     Returns the Notification or None (unknown recipient, self-notification
@@ -64,7 +67,14 @@ def _emit(user, *, kind, title, body="", url="", dedup_key=None, **payload):
         if exists:
             return None
         payload["dedup_key"] = dedup_key
-    return send(user, kind=kind, title=title, body=body, url=url, **payload)
+    notification = send(user, kind=kind, title=title, body=body, url=url, **payload)
+    if notification is not None and email:
+        from . import emails
+
+        emails.enqueue_for_notification(
+            user, group=EVENTS[kind], title=title, body=body, url=url
+        )
+    return notification
 
 
 def _project_team(project):
@@ -276,8 +286,8 @@ def project_hidden(project, *, hidden: bool):
 
 
 def project_published(project):
-    """Staff hear about every newly published project (opt-in via the
-    staff preference group once email preferences exist; in-app always)."""
+    """A project went public: staff hear about it, and so do followers
+    of its creator. Staff followers only get the staff row."""
     for user in _staff():
         if user.id == project.created_by_id:
             continue
@@ -288,5 +298,78 @@ def project_published(project):
             body=f"by {_actor_name(project.created_by)}",
             url=project.get_absolute_url(),
             dedup_key=f"project-published:{project.pk}",
+            project_slug=project.slug,
+        )
+    if not project.created_by_id:
+        return
+    followers = (
+        get_user_model()
+        .objects.filter(
+            following__creator_id=project.created_by_id,
+            is_active=True,
+            is_staff=False,
+        )
+        .exclude(pk=project.created_by_id)
+    )
+    for user in followers:
+        _emit(
+            user,
+            kind="followed_creator_published",
+            title=(
+                f"{_actor_name(project.created_by)} published a new "
+                f"project: {project.title}"
+            ),
+            url=project.get_absolute_url(),
+            dedup_key=f"creator-published:{project.pk}",
+            project_slug=project.slug,
+        )
+
+
+# --- follows and watches ------------------------------------------------
+
+
+def _watchers(project, exclude_ids):
+    return (
+        get_user_model()
+        .objects.filter(watching__project=project, is_active=True)
+        .exclude(pk__in=[pk for pk in exclude_ids if pk])
+    )
+
+
+def new_version_published(project, actor=None):
+    actor_id = actor.pk if actor else None
+    for user in _watchers(project, [actor_id]):
+        _emit(
+            user,
+            kind="watched_version_published",
+            title=f"{project.title} published a new version",
+            url=project.get_absolute_url(),
+            dedup_key=f"watched-version:{project.pk}",
+            project_slug=project.slug,
+        )
+
+
+def watched_wiki_page_created(page, project, author):
+    for user in _watchers(project, [author.pk if author else None]):
+        _emit(
+            user,
+            kind="watched_activity",
+            title=f"New wiki page on {project.title}: {page.title[:80]}",
+            url=reverse("wiki:detail", args=[project.slug, page.slug]),
+            dedup_key=f"watched-wiki:{page.pk}",
+            project_slug=project.slug,
+        )
+
+
+def watched_use_report_created(report):
+    project = report.project
+    exclude = [report.author_id, project.created_by_id]  # owner got their own
+    for user in _watchers(project, exclude):
+        _emit(
+            user,
+            kind="watched_activity",
+            title=f"New use report on {project.title}",
+            url=reverse("use_reports:index", args=[project.slug]),
+            dedup_key=f"watched-report:{report.pk}",
             project_slug=project.slug,
         )

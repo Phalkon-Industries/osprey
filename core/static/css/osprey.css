@@ -1708,3 +1708,15 @@ button.ghost:hover,
     align-items: center;
     padding: .45rem .75rem;
 }
+
+/* Add-your-email nudge banner */
+.email-nudge-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .5rem 1rem;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border);
+    font-size: .9rem;
+}
