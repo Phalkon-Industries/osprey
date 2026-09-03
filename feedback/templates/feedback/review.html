@@ -7,13 +7,20 @@
     <a class="button ghost" href="{% url 'admin:feedback_feedback_changelist' %}">Django admin</a>
 </div>
 
+<nav class="project-tabs" aria-label="Message states" role="tablist">
+    <a href="?tab=open{% if active_category %}&amp;category={{ active_category }}{% endif %}"
+        class="project-tab{% if active_tab == 'open' %} is-active{% endif %}"
+        {% if active_tab == 'open' %}aria-current="page"{% endif %}>Open ({{ open_count }})</a>
+    <a href="?tab=archived{% if active_category %}&amp;category={{ active_category }}{% endif %}"
+        class="project-tab{% if active_tab == 'archived' %} is-active{% endif %}"
+        {% if active_tab == 'archived' %}aria-current="page"{% endif %}>Archived ({{ archived_count }})</a>
+    <a href="?tab=all{% if active_category %}&amp;category={{ active_category }}{% endif %}"
+        class="project-tab{% if active_tab == 'all' %} is-active{% endif %}"
+        {% if active_tab == 'all' %}aria-current="page"{% endif %}>All</a>
+</nav>
+
 <form method="get" class="filters feedback-filters">
-    <label>Status<br>
-        <select name="status">
-            <option value="">Any status</option>
-            {% for value, label in status_choices %}<option value="{{ value }}" {% if active_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select>
-    </label>
+    <input type="hidden" name="tab" value="{{ active_tab }}">
     <label>Type<br>
         <select name="category">
             <option value="">Any type</option>
@@ -34,6 +41,14 @@
             <span>
                 {% if item.category == "privacy" %}<span class="badge">Privacy request</span>{% endif %}
                 <span class="badge">{{ item.get_status_display }}</span>
+                {% if item.status == "new" or item.status == "triaged" %}
+                <form method="post" style="display:inline;margin:0">
+                    {% csrf_token %}
+                    <input type="hidden" name="feedback_id" value="{{ item.id }}">
+                    <input type="hidden" name="action" value="archive">
+                    <button type="submit" class="ghost" title="Mark resolved and move to the Archived tab">Archive</button>
+                </form>
+                {% endif %}
             </span>
         </header>
         <p>{{ item.message|linebreaksbr }}</p>
@@ -70,7 +85,7 @@
         </form>
     </article>
     {% empty %}
-    <p class="muted">Nothing here yet.</p>
+    <p class="muted">{% if active_tab == 'open' %}No open messages. Nice.{% elif active_tab == 'archived' %}Nothing archived yet.{% else %}Nothing here yet.{% endif %}</p>
     {% endfor %}
 </div>
 {% endblock %}

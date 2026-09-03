@@ -109,6 +109,39 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(feedback.status, Feedback.STATUS_TRIAGED)
         self.assertEqual(feedback.admin_notes, "Checked.")
 
+    def test_review_defaults_to_open_tab_and_archived_tab_shows_the_rest(self):
+        open_item = Feedback.objects.create(user=self.user, message="Still open")
+        archived_item = Feedback.objects.create(
+            user=self.user, message="Handled", status=Feedback.STATUS_RESOLVED
+        )
+
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("feedback:review"))
+        items = list(response.context["feedback_items"])
+        self.assertEqual([i.pk for i in items], [open_item.pk])
+        self.assertEqual(response.context["open_count"], 1)
+        self.assertEqual(response.context["archived_count"], 1)
+
+        response = self.client.get(reverse("feedback:review"), {"tab": "archived"})
+        items = list(response.context["feedback_items"])
+        self.assertEqual([i.pk for i in items], [archived_item.pk])
+
+        response = self.client.get(reverse("feedback:review"), {"tab": "all"})
+        self.assertEqual(len(response.context["feedback_items"]), 2)
+
+    def test_archive_button_marks_resolved(self):
+        feedback = Feedback.objects.create(user=self.user, message="Done deal")
+
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("feedback:review"),
+            {"feedback_id": str(feedback.pk), "action": "archive"},
+        )
+
+        feedback.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(feedback.status, Feedback.STATUS_RESOLVED)
+
     def test_review_filters_by_category(self):
         Feedback.objects.create(user=self.user, message="An idea")
         Feedback.objects.create(

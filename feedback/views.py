@@ -183,10 +183,21 @@ def _staff_required(user) -> bool:
     return user.is_authenticated and user.is_staff
 
 
+# The review page groups statuses into two piles: open work and the
+# archive. Archiving is just setting a closed status.
+OPEN_STATUSES = [Feedback.STATUS_NEW, Feedback.STATUS_TRIAGED]
+ARCHIVED_STATUSES = [Feedback.STATUS_RESOLVED, Feedback.STATUS_WONTFIX]
+
+
 @user_passes_test(_staff_required, login_url="/login/")
 def review(request):
     if request.method == "POST":
         fb = get_object_or_404(Feedback, pk=request.POST.get("feedback_id"))
+        if request.POST.get("action") == "archive":
+            fb.status = Feedback.STATUS_RESOLVED
+            fb.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Archived.")
+            return redirect(request.get_full_path())
         reply_body = (request.POST.get("reply_body") or "").strip()
         if reply_body:
             reply = FeedbackReply.objects.create(
@@ -204,15 +215,21 @@ def review(request):
         fb.admin_notes = request.POST.get("admin_notes", "")
         fb.save(update_fields=["status", "admin_notes", "updated_at"])
         messages.success(request, "Submission updated.")
-        return redirect("feedback:review")
+        return redirect(request.get_full_path())
 
-    status = request.GET.get("status", "")
+    tab = request.GET.get("tab", "open")
+    if tab not in ("open", "archived", "all"):
+        tab = "open"
     category = request.GET.get("category", "")
     feedback = Feedback.objects.select_related("user").prefetch_related("replies")
-    if status:
-        feedback = feedback.filter(status=status)
     if category in dict(Feedback.CATEGORY_CHOICES):
         feedback = feedback.filter(category=category)
+    open_count = feedback.filter(status__in=OPEN_STATUSES).count()
+    archived_count = feedback.filter(status__in=ARCHIVED_STATUSES).count()
+    if tab == "open":
+        feedback = feedback.filter(status__in=OPEN_STATUSES)
+    elif tab == "archived":
+        feedback = feedback.filter(status__in=ARCHIVED_STATUSES)
     return render(
         request,
         "feedback/review.html",
@@ -220,8 +237,10 @@ def review(request):
             "feedback_items": feedback,
             "status_choices": Feedback.STATUS_CHOICES,
             "category_choices": Feedback.CATEGORY_CHOICES,
-            "active_status": status,
+            "active_tab": tab,
             "active_category": category,
+            "open_count": open_count,
+            "archived_count": archived_count,
         },
     )
 
