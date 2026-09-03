@@ -30,6 +30,23 @@ LINEAGE_RELATION_CHOICES = [
 ]
 
 
+# The project-maturity ladder. Single source of truth: the submission
+# form builds its choices from this, and the project page renders the
+# matching phrase next to the number. Levels are cumulative.
+MATURITY_LEVELS = {
+    1: "Doesn't work, kept as a record of the failure",
+    2: "Only some parts work so far",
+    3: "Has worked at least once, but not yet reliable",
+    4: "Works reliably in the lab under test conditions",
+    5: "Has worked in service conditions at least once",
+    6: "Works reliably in service conditions",
+    7: "In routine service as everyday equipment",
+    8: "Reliable even in the hardest conditions it was built for",
+    9: "Failures are rare and hold no surprises",
+    10: "Trusted where failure is not an option",
+}
+
+
 class Tag(models.Model):
     name = models.CharField(max_length=80, unique=True)
 
@@ -165,18 +182,16 @@ class Project(models.Model):
         blank=True,
         validators=[MinValueValidator(1), MaxValueValidator(10)],
         help_text=(
-            "Submitter's honest self-rating on a 1-10 scale. "
-            "1-3: record of what did not work. "
-            "4-6: usable with caveats; expect work to integrate. "
-            "7-9: production-ready in its intended setting. "
-            "10: trusted on a mission-critical deployment."
+            "Self-assessed maturity on the 1-10 ladder defined in "
+            "MATURITY_LEVELS. Levels are cumulative: a level counts only "
+            "if all lower levels also hold."
         ),
     )
     self_rating_note = models.TextField(
         blank=True,
         help_text=(
-            "Optional. Brief explanation of the rating, especially when it is low. "
-            "For example: 'works but power supply design has a known bug that needs fixing.'"
+            "Optional. A sentence or two on why the project sits at its "
+            "maturity level."
         ),
     )
     publications = models.TextField(
@@ -213,6 +228,11 @@ class Project(models.Model):
 
     def get_permalink(self) -> str:
         return reverse("project_permalink", args=[str(self.public_id)])
+
+    @property
+    def self_rating_label(self) -> str:
+        """The maturity ladder phrase for this project's level, or ""."""
+        return MATURITY_LEVELS.get(self.self_rating, "")
 
     @property
     def institutions(self) -> list[str]:

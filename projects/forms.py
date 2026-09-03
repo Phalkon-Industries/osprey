@@ -13,7 +13,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
-from .models import Contribution, Project, Tag
+from .models import MATURITY_LEVELS, Contribution, Project, Tag
 from .cover_images import MAX_DOWNLOAD_BYTES, process_cover_image
 
 FIELD_SUGGESTIONS = [
@@ -208,24 +208,16 @@ class ProjectForm(forms.ModelForm):
                 }
             ),
             "self_rating": forms.Select(
-                choices=[
-                    ("", "— pick a rating —"),
-                    (1, "1 — Sketch only; mostly a record of what did not work"),
-                    (2, "2 — Early prototype; major rework expected"),
-                    (3, "3 — Bench-tested; rough edges and known bugs"),
-                    (4, "4 — Usable with significant caveats"),
-                    (5, "5 — Works for our use case; integration work expected"),
-                    (6, "6 — Works for our use case; well-documented caveats"),
-                    (7, "7 — Production-ready in its intended setting"),
-                    (8, "8 — Production-tested; minor caveats"),
-                    (9, "9 — Robust; used routinely on real deployments"),
-                    (10, "10 — Trusted on a mission-critical deployment"),
+                choices=[("", "\u2014 select a level \u2014")]
+                + [
+                    (level, f"{level} \u2014 {label}")
+                    for level, label in MATURITY_LEVELS.items()
                 ]
             ),
             "self_rating_note": forms.Textarea(
                 attrs={
                     "rows": 3,
-                    "placeholder": "Why that rating? e.g. 'Works on the bench, but the 3.3 V rail droops under load and needs a redesign.'",
+                    "placeholder": "e.g. 'Reliable on the bench, but the 3.3 V rail droops under load. One field season so far.'",
                 }
             ),
             "publications": forms.Textarea(
@@ -251,8 +243,8 @@ class ProjectForm(forms.ModelForm):
             "cover_image_zoom": "Zoom",
             "institution": "Institutions",
             "funding": "Funding sources",
-            "self_rating": "Submitter's self-rating (1\u201310)",
-            "self_rating_note": "Notes on the rating (optional)",
+            "self_rating": "Project maturity (1\u201310)",
+            "self_rating_note": "Notes on the maturity level (optional)",
             "publications": "Publications that used this project",
         }
         help_texts = {
@@ -279,15 +271,13 @@ class ProjectForm(forms.ModelForm):
                 "Academic work usually has funders that deserve credit."
             ),
             "self_rating": (
-                "Be honest. "
-                "1\u20133: posted as a record of what did not work. "
-                "4\u20136: usable, but expect integration work and known issues. "
-                "7\u20139: production-ready in the setting it was built for. "
-                "10: trusted on a mission-critical deployment."
+                "Levels build on each other, so claim a level only if "
+                "everything below it also holds. \u201cService conditions\u201d "
+                "means the project doing its real job rather than a test."
             ),
             "self_rating_note": (
-                "A sentence or two on why the rating is what it is. Especially useful for low ratings: "
-                "future users want to know what works, what doesn't, and what to watch out for."
+                "A sentence or two on why it sits at that level. What works, "
+                "what doesn't, what to watch for."
             ),
             "publications": (
                 "Papers, talks, theses, or reports that used this project. "

@@ -1509,3 +1509,34 @@ class AttachmentHandlingTests(ProjectTestCase):
             self.private_project.attachments.values_list("filename", flat=True)
         )
         self.assertEqual(remaining, {"published.zip"})
+
+
+class MaturityLadderTests(ProjectTestCase):
+    def test_ladder_has_ten_cumulative_levels(self):
+        from .models import MATURITY_LEVELS
+
+        self.assertEqual(sorted(MATURITY_LEVELS), list(range(1, 11)))
+
+    def test_form_renders_ladder_choices_and_help(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        self.assertContains(response, "Project maturity (1–10)")
+        self.assertContains(response, "Works reliably in the lab under test conditions")
+        self.assertContains(response, "Trusted where failure is not an option")
+        self.assertContains(response, "Levels build on each other")
+        self.assertNotContains(response, "self-rating")
+
+    def test_detail_page_leads_with_the_words(self):
+        self.public_project.self_rating = 6
+        self.public_project.self_rating_note = "Two seasons on the mooring."
+        self.public_project.save()
+        response = self.client.get(
+            reverse("projects:detail", args=[self.public_project.slug])
+        )
+        self.assertContains(response, "Maturity")
+        self.assertContains(response, "Works reliably in service conditions")
+        self.assertContains(response, "(6/10, self-assessed)")
+        self.assertContains(response, "Two seasons on the mooring.")
+
+    def test_label_property_handles_unset_rating(self):
+        self.assertEqual(self.public_project.self_rating_label, "")

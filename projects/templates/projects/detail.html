@@ -174,8 +174,8 @@
 
     {% if project.self_rating %}
     <section>
-        <h2>Submitter's self-rating</h2>
-        <p><strong>{{ project.self_rating }}/10</strong> <span class="muted small">(self-reported by the submitter)</span></p>
+        <h2>Maturity</h2>
+        <p><strong>{{ project.self_rating_label }}</strong> <span class="muted small">({{ project.self_rating }}/10, self-assessed)</span></p>
         {% if project.self_rating_note %}<p style="white-space:pre-line">{{ project.self_rating_note }}</p>{% endif %}
     </section>
     {% endif %}
