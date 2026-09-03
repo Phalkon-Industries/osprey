@@ -287,6 +287,9 @@ class ProjectForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # The short description drives cards and search results, so the
+        # form requires it even though old rows may predate the rule.
+        self.fields["summary"].required = True
         # Pre-populate the license dropdown from the saved value.
         existing = (self.instance.license or "").strip() if self.instance else ""
         known = {key for key, _label in COMMON_LICENSES}

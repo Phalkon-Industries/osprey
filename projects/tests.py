@@ -1540,3 +1540,24 @@ class MaturityLadderTests(ProjectTestCase):
 
     def test_label_property_handles_unset_rating(self):
         self.assertEqual(self.public_project.self_rating_label, "")
+
+
+class SummaryRequiredTests(ProjectTestCase):
+    def test_form_rejects_missing_summary(self):
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="draft")
+        data["summary"] = ""
+        response = self.client.post(reverse("projects:new"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required")
+        self.assertFalse(Project.objects.filter(title="Submitted Pump").exists())
+
+    def test_form_marks_summary_required(self):
+        import re
+
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        body = response.content.decode()
+        match = re.search(r"<[^>]*name=\"summary\"[^>]*>", body)
+        self.assertIsNotNone(match)
+        self.assertIn("required", match.group(0))
