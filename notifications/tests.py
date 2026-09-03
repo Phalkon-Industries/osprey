@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from anymail.backends.mailjet import EmailBackend as MailjetBackend
 from anymail.exceptions import AnymailAPIError
@@ -1165,7 +1166,9 @@ class UnsubscribeTests(TestCase):
         self.assertEqual(preference.replies, "off")
         self.assertTrue(preference.email_enabled)
 
-    def test_all_token_disables_email_and_cancels_queue(self):
+    def test_all_token_disables_email_deletes_address_and_cancels_queue(self):
+        from allauth.account.models import EmailAddress
+
         from notifications import emails
 
         QueuedEmail.objects.create(
@@ -1176,8 +1179,10 @@ class UnsubscribeTests(TestCase):
             reverse("notifications:unsubscribe", args=[token])
         )
         self.assertContains(response, "not send you any email")
+        self.assertContains(response, "been removed")
         preference = NotificationPreference.for_user(self.user)
         self.assertFalse(preference.email_enabled)
+        self.assertEqual(EmailAddress.objects.filter(user=self.user).count(), 0)
         self.assertEqual(
             QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
         )
@@ -1220,7 +1225,12 @@ class NotificationSettingsViewTests(TestCase):
         self.assertEqual(address.email, "new@example.org")
         self.assertFalse(address.verified)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("new@example.org", mail.outbox[0].to)
+        message = mail.outbox[0]
+        self.assertIn("new@example.org", message.to)
+        # The branded template, not allauth's example.com default.
+        self.assertIn("[OSPREY]", message.subject)
+        self.assertIn("email notifications on OSPREY", message.body)
+        self.assertNotIn("example.com", message.body)
         preference = NotificationPreference.for_user(self.user)
         self.assertIsNotNone(preference.consented_at)
         self.assertEqual(preference.consent_source, "settings")
@@ -1259,29 +1269,70 @@ class NotificationSettingsViewTests(TestCase):
             QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
         )
 
-    def test_disabling_email_warns_and_cancels_queue(self):
+    def test_disabling_email_deletes_address_and_cancels_queue(self):
+        from allauth.account.models import EmailAddress
+
+        _verify_email(self.user, "goner@example.org")
+        preference = NotificationPreference.for_user(self.user)
+        preference.consented_at = timezone.now()
+        preference.save(update_fields=["consented_at"])
         QueuedEmail.objects.create(
             user=self.user, group="projects", subject="s", body_text="b"
         )
+        # Unchecked box = the toggle form posts without email_enabled.
         response = self.client.post(
-            self.url,
-            {"action": "save_preferences", "projects": "daily"},
-            follow=True,
+            self.url, {"action": "toggle_email"}, follow=True
         )
-        self.assertContains(response, "will not receive")
-        self.assertContains(response, "inbox here")
-        preference = NotificationPreference.for_user(self.user)
+        self.assertContains(response, "has")
+        self.assertContains(response, "been removed from OSPREY")
+        preference.refresh_from_db()
         self.assertFalse(preference.email_enabled)
+        self.assertIsNone(preference.consented_at)
+        self.assertEqual(EmailAddress.objects.count(), 0)
         self.assertEqual(
             QueuedEmail.objects.get().status, QueuedEmail.STATUS_CANCELLED
         )
 
-    def test_preferences_save_and_reject_bad_values(self):
+    def test_reenabling_email_starts_clean(self):
+        preference = NotificationPreference.for_user(self.user)
+        preference.email_enabled = False
+        preference.save()
+        response = self.client.post(
+            self.url,
+            {"action": "toggle_email", "email_enabled": "on"},
+            follow=True,
+        )
+        self.assertContains(response, "Add and confirm an email")
+        preference.refresh_from_db()
+        self.assertTrue(preference.email_enabled)
+
+    def test_disabled_email_greys_out_and_blocks_sections(self):
+        preference = NotificationPreference.for_user(self.user)
+        preference.email_enabled = False
+        preference.save()
+        response = self.client.get(self.url)
+        self.assertContains(response, "settings-muted")
+        self.assertContains(response, "holds no email address")
+        # Server-side enforcement, not just greyed pixels: adding an
+        # address and saving cadences are both refused while off.
+        response = self.client.post(
+            self.url,
+            {"action": "add_email", "email": "sneaky@example.org"},
+            follow=True,
+        )
+        self.assertContains(response, "Turn email notifications on")
+        from allauth.account.models import EmailAddress
+
+        self.assertEqual(EmailAddress.objects.count(), 0)
+        self.client.post(self.url, {"action": "save_cadences", "projects": "immediate"})
+        preference.refresh_from_db()
+        self.assertEqual(preference.projects, "daily")
+
+    def test_cadences_save_and_reject_bad_values(self):
         response = self.client.post(
             self.url,
             {
-                "action": "save_preferences",
-                "email_enabled": "on",
+                "action": "save_cadences",
                 "projects": "immediate",
                 "replies": "weekly",
                 "follows": "bogus-value",
@@ -1295,7 +1346,19 @@ class NotificationSettingsViewTests(TestCase):
         self.assertEqual(preference.replies, "weekly")
         self.assertEqual(preference.follows, "daily")  # bogus ignored
         self.assertEqual(preference.account, "off")
-        self.assertTrue(preference.email_enabled)
+
+    def test_thread_prefs_save_independently(self):
+        self.client.post(
+            self.url, {"action": "save_thread_prefs"}, follow=True
+        )
+        preference = NotificationPreference.for_user(self.user)
+        self.assertFalse(preference.auto_follow_threads)
+        self.client.post(
+            self.url,
+            {"action": "save_thread_prefs", "auto_follow_threads": "on"},
+        )
+        preference.refresh_from_db()
+        self.assertTrue(preference.auto_follow_threads)
 
 
 class EmailBannerTests(TestCase):
@@ -1346,7 +1409,8 @@ class PrivacyAndOnboardingSurfaceTests(TestCase):
     def test_privacy_page_renders(self):
         response = self.client.get("/about/privacy/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "never shared")
+        self.assertContains(response, "Mailjet")
+        self.assertContains(response, "No marketing and no newsletters")
 
     def test_footer_links_privacy(self):
         self.assertContains(self.client.get("/"), "/about/privacy/")
@@ -1640,3 +1704,48 @@ class PruneCommandTests(TestCase):
         self.assertEqual(
             list(QueuedEmail.objects.values_list("subject", flat=True)), ["s2"]
         )
+
+
+@override_settings(RATELIMIT_ENABLE=True, RATELIMIT_EMAIL_ADD="3/h")
+class EmailAddRateLimitTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()  # rate-limit counters live in the cache
+        self.user = get_user_model().objects.create_user(username="bomber")
+        self.client.force_login(self.user)
+        self.url = reverse("notifications:settings")
+
+    def _add(self, address):
+        from allauth.account.models import EmailAddress
+
+        EmailAddress.objects.filter(user=self.user).delete()
+        return self.client.post(
+            self.url, {"action": "add_email", "email": address}, follow=True
+        )
+
+    def test_rotating_addresses_hits_the_limit(self):
+        for i in range(3):
+            self._add(f"victim{i}@example.org")
+        sent_before = len(mail.outbox)
+        response = self._add("victim99@example.org")
+        self.assertContains(response, "Too many email changes")
+        # The blocked attempt sent nothing and stored nothing.
+        self.assertEqual(len(mail.outbox), sent_before)
+        from allauth.account.models import EmailAddress
+
+        self.assertFalse(
+            EmailAddress.objects.filter(email="victim99@example.org").exists()
+        )
+
+    def test_limit_is_per_user(self):
+        for i in range(3):
+            self._add(f"victim{i}@example.org")
+        other = get_user_model().objects.create_user(username="innocent")
+        self.client.force_login(other)
+        response = self.client.post(
+            self.url,
+            {"action": "add_email", "email": "mine@example.org"},
+            follow=True,
+        )
+        self.assertContains(response, "Confirmation sent")

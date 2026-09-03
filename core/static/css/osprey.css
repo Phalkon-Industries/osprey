@@ -1720,3 +1720,8 @@ button.ghost:hover,
     border-bottom: 1px solid var(--border);
     font-size: .9rem;
 }
+
+/* Settings sections that are inactive while email notifications are off */
+.settings-muted {
+    opacity: .5;
+}

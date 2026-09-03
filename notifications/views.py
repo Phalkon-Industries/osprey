@@ -88,7 +88,67 @@ def notification_settings(request):
 
     if request.method == "POST":
         action = request.POST.get("action", "")
+        if action == "toggle_email":
+            enable = bool(request.POST.get("email_enabled"))
+            if enable and not preference.email_enabled:
+                preference.email_enabled = True
+                preference.save(update_fields=["email_enabled", "updated_at"])
+                messages.success(
+                    request,
+                    "Email notifications are on. Add and confirm an email "
+                    "address below to start receiving them.",
+                )
+            elif not enable and preference.email_enabled:
+                # Disabling is a real opt-out: the address is deleted from
+                # OSPREY, not just silenced, and queued mail is cancelled.
+                preference.email_enabled = False
+                preference.consented_at = None
+                preference.consent_source = ""
+                preference.save(
+                    update_fields=[
+                        "email_enabled",
+                        "consented_at",
+                        "consent_source",
+                        "updated_at",
+                    ]
+                )
+                EmailAddress.objects.filter(user=request.user).delete()
+                QueuedEmail.objects.filter(
+                    user=request.user, status=QueuedEmail.STATUS_QUEUED
+                ).update(status=QueuedEmail.STATUS_CANCELLED)
+                messages.warning(
+                    request,
+                    "Email notifications are off and your email address has "
+                    "been removed from OSPREY. Activity will only appear in "
+                    "your inbox here. To turn email back on, you'll need to "
+                    "add and confirm an address again.",
+                )
+            return redirect("notifications:settings")
         if action == "add_email":
+            if not preference.email_enabled:
+                messages.error(
+                    request, "Turn email notifications on before adding an address."
+                )
+                return redirect("notifications:settings")
+            # Each add sends a confirmation email, so this is the one
+            # settings action a hostile account could use to bomb an
+            # address or burn the send quota. Per-user rate limit.
+            from django.conf import settings as django_settings
+
+            from django_ratelimit.core import is_ratelimited
+
+            if django_settings.RATELIMIT_ENABLE and is_ratelimited(
+                request,
+                group="notifications.add_email",
+                key="user",
+                rate=django_settings.RATELIMIT_EMAIL_ADD,
+                increment=True,
+            ):
+                messages.error(
+                    request,
+                    "Too many email changes in a short time. Try again later.",
+                )
+                return redirect("notifications:settings")
             email = (request.POST.get("email") or "").strip()
             if email:
                 try:
@@ -123,6 +183,11 @@ def notification_settings(request):
             QueuedEmail.objects.filter(
                 user=request.user, status=QueuedEmail.STATUS_QUEUED
             ).update(status=QueuedEmail.STATUS_CANCELLED)
+            preference.consented_at = None
+            preference.consent_source = ""
+            preference.save(
+                update_fields=["consented_at", "consent_source", "updated_at"]
+            )
             messages.info(
                 request,
                 "Email address removed and queued mail cancelled. You will "
@@ -130,12 +195,9 @@ def notification_settings(request):
                 "only appear in your inbox here.",
             )
             return redirect("notifications:settings")
-        if action == "save_preferences":
-            was_enabled = preference.email_enabled
-            preference.email_enabled = bool(request.POST.get("email_enabled"))
-            preference.auto_follow_threads = bool(
-                request.POST.get("auto_follow_threads")
-            )
+        if action == "save_cadences":
+            if not preference.email_enabled:
+                return redirect("notifications:settings")
             valid = dict(CADENCE_CHOICES)
             for group in ("projects", "replies", "follows", "staff"):
                 value = request.POST.get(group, "")
@@ -145,18 +207,16 @@ def notification_settings(request):
             if account_value in ("off", "immediate"):
                 preference.account = account_value
             preference.save()
-            if was_enabled and not preference.email_enabled:
-                QueuedEmail.objects.filter(
-                    user=request.user, status=QueuedEmail.STATUS_QUEUED
-                ).update(status=QueuedEmail.STATUS_CANCELLED)
-                messages.warning(
-                    request,
-                    "Email notifications turned off. You will not receive "
-                    "any email from OSPREY at all; activity will only appear "
-                    "in your inbox here, when you visit.",
-                )
-            else:
-                messages.success(request, "Notification settings saved.")
+            messages.success(request, "Email settings saved.")
+            return redirect("notifications:settings")
+        if action == "save_thread_prefs":
+            preference.auto_follow_threads = bool(
+                request.POST.get("auto_follow_threads")
+            )
+            preference.save(
+                update_fields=["auto_follow_threads", "updated_at"]
+            )
+            messages.success(request, "Thread settings saved.")
             return redirect("notifications:settings")
 
     return render(
@@ -192,8 +252,20 @@ def unsubscribe(request, token: str):
     if request.method == "POST":
         preference = NotificationPreference.for_user(user)
         if scope == "all":
+            from allauth.account.models import EmailAddress
+
             preference.email_enabled = False
-            preference.save(update_fields=["email_enabled", "updated_at"])
+            preference.consented_at = None
+            preference.consent_source = ""
+            preference.save(
+                update_fields=[
+                    "email_enabled",
+                    "consented_at",
+                    "consent_source",
+                    "updated_at",
+                ]
+            )
+            EmailAddress.objects.filter(user=user).delete()
             QueuedEmail.objects.filter(
                 user=user, status=QueuedEmail.STATUS_QUEUED
             ).update(status=QueuedEmail.STATUS_CANCELLED)

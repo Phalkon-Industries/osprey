@@ -1,0 +1,13 @@
+{% autoescape off %}Hi @{{ user.get_username }},
+
+This address was added for email notifications on OSPREY, so you can
+hear about activity on your projects and threads without checking the
+site. To start receiving them, confirm the address is yours:
+
+{{ activate_url }}
+
+Until you confirm, OSPREY sends nothing to this address. If you didn't
+add it, ignore this email and nothing will ever be sent here.
+
+OSPREY
+{% endautoescape %}

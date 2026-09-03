@@ -4,122 +4,181 @@
 <h1>Settings</h1>
 {% include "core/_settings_tabs.html" with settings_tab="notifications" %}
 
-<section style="max-width:46rem;margin-bottom:2rem">
-    <h2>Email address</h2>
-    {% if verified_address %}
-    <p>Notifications go to <strong>{{ verified_address }}</strong>.</p>
-    {% elif addresses %}
-    <p>
-        <strong>{{ addresses.0.email }}</strong> is waiting for confirmation.
-        Check that inbox for the link. Nothing is sent until it's confirmed.
-    </p>
-    {% else %}
-    <p class="muted">
-        No email address on file. Add one to hear about activity on your
-        projects without having to check the site.
-    </p>
-    {% endif %}
-
-    {% if addresses %}
-    <form method="post">
+<section style="max-width:46rem;margin-bottom:1.5rem">
+    <form method="post" data-email-toggle-form>
         {% csrf_token %}
-        <input type="hidden" name="action" value="remove_email">
-        <button type="submit" class="button ghost"
-            onclick="return confirm('Remove this address? You will not receive any email notifications at all; activity will only appear in your inbox here.')">
-            Remove address
-        </button>
+        <input type="hidden" name="action" value="toggle_email">
+        <p style="margin-bottom:.25rem">
+            <label>
+                <input type="checkbox" name="email_enabled" data-email-toggle
+                    {% if preference.email_enabled %}checked{% endif %}>
+                <strong>Enable email notifications</strong>
+            </label>
+            <button type="submit" class="button ghost small" data-email-toggle-save>Save</button>
+        </p>
+        <p class="muted small" style="margin-top:0">
+            {% if preference.email_enabled %}
+            Turning this off removes your email address from OSPREY and
+            stops all email. Activity will only appear in your
+            <a href="{% url 'notifications:inbox' %}">inbox here</a>.
+            {% else %}
+            Email notifications are off and OSPREY holds no email address
+            for you. Turn this on, then add an address, to get notified
+            about activity on your projects.
+            {% endif %}
+        </p>
     </form>
-    {% else %}
-    <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="add_email">
-        <input type="email" name="email" required placeholder="you@institution.edu" style="min-width:16rem">
-        <button type="submit" class="button">Add email</button>
-    </form>
-    <p class="muted small">
-        Used only to notify you about activity on OSPREY — never marketing,
-        never shared. Remove it anytime.
-        See the <a href="{% url 'privacy' %}">privacy note</a>.
-    </p>
-    {% endif %}
 </section>
 
+<div {% if not preference.email_enabled %}class="settings-muted" style="opacity:.5" aria-disabled="true"{% endif %}>
+    <section style="max-width:46rem;margin-bottom:2rem">
+        <h2>Email address</h2>
+        {% if verified_address %}
+        <p>Notifications go to <strong>{{ verified_address }}</strong>.</p>
+        {% elif addresses %}
+        <p>
+            <strong>{{ addresses.0.email }}</strong> is waiting for confirmation.
+            Check that inbox for the link. Nothing is sent until it's confirmed.
+        </p>
+        {% else %}
+        <p class="muted">
+            No email address on file. Add one to hear about activity on your
+            projects without having to check the site.
+        </p>
+        {% endif %}
+
+        {% if addresses %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="remove_email">
+            <button type="submit" class="button ghost" {% if not preference.email_enabled %}disabled{% endif %}
+                onclick="return confirm('Remove this address? You will not receive any email notifications at all; activity will only appear in your inbox here.')">
+                Remove address
+            </button>
+        </form>
+        {% else %}
+        <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_email">
+            <input type="email" name="email" required placeholder="you@institution.edu" style="min-width:16rem"
+                {% if not preference.email_enabled %}disabled{% endif %}>
+            <button type="submit" class="button" {% if not preference.email_enabled %}disabled{% endif %}>Add email</button>
+        </form>
+        <p class="muted small">
+            Used only for activity on OSPREY and important service
+            notices. Remove it anytime.
+            See the <a href="{% url 'privacy' %}">Privacy Policy</a>.
+        </p>
+        {% endif %}
+    </section>
+
+    <section style="max-width:46rem;margin-bottom:2rem">
+        <h2>What to send</h2>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_cadences">
+            <table class="pref-table">
+                <tr>
+                    <td><label for="pref-projects">Activity on your projects</label></td>
+                    <td>
+                        <select name="projects" id="pref-projects" {% if not preference.email_enabled %}disabled{% endif %}>
+                            {% for value, label in cadence_choices %}
+                            <option value="{{ value }}" {% if preference.projects == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td><label for="pref-replies">Replies and reviews of your posts</label></td>
+                    <td>
+                        <select name="replies" id="pref-replies" {% if not preference.email_enabled %}disabled{% endif %}>
+                            {% for value, label in cadence_choices %}
+                            <option value="{{ value }}" {% if preference.replies == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td><label for="pref-follows">People and work you follow</label></td>
+                    <td>
+                        <select name="follows" id="pref-follows" {% if not preference.email_enabled %}disabled{% endif %}>
+                            {% for value, label in cadence_choices %}
+                            <option value="{{ value }}" {% if preference.follows == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td><label for="pref-account">Moderation and account notices</label></td>
+                    <td>
+                        <select name="account" id="pref-account" {% if not preference.email_enabled %}disabled{% endif %}>
+                            <option value="immediate" {% if preference.account == "immediate" %}selected{% endif %}>Immediate</option>
+                            <option value="off" {% if preference.account == "off" %}selected{% endif %}>Off</option>
+                        </select>
+                    </td>
+                </tr>
+                {% if user.is_staff %}
+                <tr>
+                    <td><label for="pref-staff">Staff events (feedback, reports, new projects)</label></td>
+                    <td>
+                        <select name="staff" id="pref-staff" {% if not preference.email_enabled %}disabled{% endif %}>
+                            {% for value, label in cadence_choices %}
+                            <option value="{{ value }}" {% if preference.staff == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endif %}
+            </table>
+            <p><button type="submit" class="button" {% if not preference.email_enabled %}disabled{% endif %}>Save email settings</button></p>
+        </form>
+    </section>
+</div>
+
 <section style="max-width:46rem">
-    <h2>What to send</h2>
+    <h2>Threads</h2>
     <form method="post">
         {% csrf_token %}
-        <input type="hidden" name="action" value="save_preferences">
-        <p>
-            <label>
-                <input type="checkbox" name="email_enabled" {% if preference.email_enabled %}checked{% endif %}>
-                <strong>Send me email notifications</strong>
-            </label>
-            <br><span class="muted small">
-                Unchecking this stops all email from OSPREY. Activity will
-                only appear in your <a href="{% url 'notifications:inbox' %}">inbox here</a>,
-                when you visit.
-            </span>
-        </p>
-        <table class="pref-table">
-            <tr>
-                <td><label for="pref-projects">Activity on your projects</label></td>
-                <td>
-                    <select name="projects" id="pref-projects">
-                        {% for value, label in cadence_choices %}
-                        <option value="{{ value }}" {% if preference.projects == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><label for="pref-replies">Replies and reviews of your posts</label></td>
-                <td>
-                    <select name="replies" id="pref-replies">
-                        {% for value, label in cadence_choices %}
-                        <option value="{{ value }}" {% if preference.replies == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><label for="pref-follows">People and work you follow</label></td>
-                <td>
-                    <select name="follows" id="pref-follows">
-                        {% for value, label in cadence_choices %}
-                        <option value="{{ value }}" {% if preference.follows == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <td><label for="pref-account">Moderation and account notices</label></td>
-                <td>
-                    <select name="account" id="pref-account">
-                        <option value="immediate" {% if preference.account == "immediate" %}selected{% endif %}>Immediate</option>
-                        <option value="off" {% if preference.account == "off" %}selected{% endif %}>Off</option>
-                    </select>
-                </td>
-            </tr>
-            {% if user.is_staff %}
-            <tr>
-                <td><label for="pref-staff">Staff events (feedback, reports, new projects)</label></td>
-                <td>
-                    <select name="staff" id="pref-staff">
-                        {% for value, label in cadence_choices %}
-                        <option value="{{ value }}" {% if preference.staff == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-            </tr>
-            {% endif %}
-        </table>
+        <input type="hidden" name="action" value="save_thread_prefs">
         <p>
             <label>
                 <input type="checkbox" name="auto_follow_threads" {% if preference.auto_follow_threads %}checked{% endif %}>
                 Automatically follow discussion threads I start or reply in
             </label>
         </p>
-        <p><button type="submit" class="button">Save settings</button></p>
+        <p class="muted small">
+            Following a thread controls in-app notifications too, so this
+            setting works whether or not email is on.
+        </p>
+        <p><button type="submit" class="button">Save thread settings</button></p>
     </form>
 </section>
+
+<script>
+    (function () {
+        // Auto-submit the master toggle; confirm before disabling since
+        // that also deletes the stored address.
+        var form = document.querySelector('[data-email-toggle-form]');
+        if (!form) return;
+        var box = form.querySelector('[data-email-toggle]');
+        var save = form.querySelector('[data-email-toggle-save]');
+        // JS present: change submits directly. Inline display beats the
+        // .button class CSS, which would override the hidden attribute.
+        if (save) save.style.display = 'none';
+        box.addEventListener('change', function () {
+            if (!box.checked) {
+                var ok = confirm(
+                    'Turn off email notifications? This also removes your ' +
+                    'email address from OSPREY. To turn email back on later, ' +
+                    "you'll need to add and confirm an address again."
+                );
+                if (!ok) {
+                    box.checked = true;
+                    return;
+                }
+            }
+            form.submit();
+        });
+    })();
+</script>
 {% endblock %}

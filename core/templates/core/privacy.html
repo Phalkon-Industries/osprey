@@ -1,53 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Privacy — OSPREY{% endblock %}
+{% block title %}Privacy Policy — OSPREY{% endblock %}
 {% block content %}
-<h1>Privacy</h1>
-<div style="max-width:46rem">
+<section style="max-width:46rem">
+    <h1>Privacy Policy</h1>
     <p>
-        OSPREY stores as little about you as it can get away with. This page
-        says exactly what it keeps and why.
+        OSPREY stores as little about you as it can. This page covers
+        what is kept and why.
     </p>
-    <h2>What OSPREY stores</h2>
-    <ul>
-        <li>
-            <strong>Your ORCID iD and public profile basics</strong> (name,
-            and whatever you add to your OSPREY profile: display name, bio,
-            institution, avatar). Sign-in runs through ORCID; OSPREY never
-            sees or stores a password, and it does not keep ORCID access
-            tokens after sign-in completes.
-        </li>
-        <li>
-            <strong>An email address, only if you add one.</strong> It is
-            used for exactly one thing: notifying you about activity on
-            OSPREY — questions on your projects, replies to your threads,
-            use reports, wiki suggestions. No marketing, no newsletters,
-            and it is never shared with or sold to anyone.
-        </li>
-        <li>
-            <strong>What you publish here</strong>: projects, wiki edits,
-            discussion posts, use reports. That content is the point of the
-            platform and is public by design (drafts stay private).
-        </li>
-    </ul>
-    <h2>Your controls</h2>
-    <ul>
-        <li>
-            Every notification email carries one-click unsubscribe links,
-            and <a href="{% url 'notifications:settings' %}">notification
-            settings</a> has a master switch.
-        </li>
-        <li>
-            Removing your email address deletes it outright and cancels any
-            queued mail. Nothing keeps a copy.
-        </li>
-        <li>
-            Email is kept until you remove it or your account is deleted,
-            and no longer.
-        </li>
-    </ul>
+
+    <h2>Signing in</h2>
+    <p>
+        Sign-in runs through ORCID. You never set a password here, and
+        OSPREY doesn't keep ORCID credentials or access tokens after
+        sign-in finishes. What OSPREY does keep is your ORCID iD, your
+        name as ORCID provides it, and whatever you add to your profile
+        yourself, such as display name, bio, institution, and avatar.
+    </p>
+
+    <h2>Email</h2>
+    <p>
+        OSPREY only holds an email address if you add one. It gets used
+        for activity notifications, such as questions on your projects,
+        replies to your threads, use reports, and wiki suggestions, and
+        for the occasional service notice that affects your account,
+        like a change to this policy. No marketing and no newsletters go to this email address.
+        Mailjet, the service that delivers OSPREY's email, is the only
+        other place the address goes, and only so the mail can be sent.
+    </p>
+    <p>
+        You can remove the address in notification settings at any time,
+        and disabling email notifications removes it too. Either way the
+        address is deleted immediately and any queued mail is cancelled.
+    </p>
+
+    <h2>What you publish</h2>
+    <p>
+        Projects, wiki edits, discussion posts, and use reports are the
+        point of the platform and are public by design. Publishing a
+        project also deposits a snapshot with Zenodo, the CERN-operated
+        research archive, which is what mints the DOI. That snapshot
+        includes the project files and the contributor list, names and
+        ORCID iDs included. OSPREY is built to be an archive, so
+        published records are meant to stay part of the public research
+        record. Drafts stay private until you publish them.
+    </p>
+
+    <h2>Feedback</h2>
+    <p>
+        If you send feedback through the feedback button, OSPREY keeps
+        your message, the screenshot if you chose to attach one, and
+        coarse browser information (browser family, operating system,
+        window size) so problems can be reproduced. Only staff can see
+        feedback.
+    </p>
+
+    <h2>Cookies</h2>
+    <p>
+        Three cookies are used. One keeps you signed in, one protects forms
+        against forgery (CSRF), and one remembers your theme choice.
+        There are no analytics or tracking cookies.
+    </p>
+
+    <h2>Your rights</h2>
+    <p>
+        OSPREY is run by pHalkon Industries LLC, which is the data
+        controller for everything above. You can see and correct your
+        profile yourself, and notification settings removes your email
+        address whenever you want. Deactivating your account stops it
+        from being used; signing in with ORCID again reactivates it.
+    </p>
+    <p>
+        For full account deletion, send a request through the feedback button
+        and staff will handle it. Be aware of what deletion can and
+        can't cover on an archive: your email address, notification
+        history, preferences, and profile details are removed, but
+        published projects, their Zenodo records, and the attribution on
+        them stay part of the public research record, the same way a
+        published paper keeps its author list. People in the EU and
+        similar jurisdictions also hold the formal GDPR rights, from
+        access and correction through portability and lodging a
+        complaint with their data protection authority.
+    </p>
     <p class="muted">
-        Questions or requests about your data: use the feedback widget or
-        contact the maintainer.
+        For questions or requests about your data, please use the feedback button.
     </p>
-</div>
+</section>
 {% endblock %}

@@ -11,7 +11,8 @@
 </p>
 {% elif done %}
 {% if scope == "all" %}
-<p><strong>Done.</strong> OSPREY will not send you any email at all.</p>
+<p><strong>Done.</strong> OSPREY will not send you any email at all, and
+    your email address has been removed from the system.</p>
 <p class="muted">
     Activity still appears in your on-site inbox when you visit, and you
     can turn email back on anytime in your
@@ -28,9 +29,9 @@
 {% if scope == "all" %}
 <p>Stop <strong>all</strong> notification email from OSPREY?</p>
 <p class="muted">
-    You will not receive any email notifications at all. Activity on your
-    projects and threads will only be visible in your on-site inbox, when
-    you visit.
+    This also removes your email address from OSPREY. You will not receive
+    any email notifications at all. Activity on your projects and threads
+    will only be visible in your on-site inbox, when you visit.
 </p>
 {% else %}
 <p>Stop email about <strong>{{ scope }}</strong> activity?</p>

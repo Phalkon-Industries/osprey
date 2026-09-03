@@ -28,10 +28,11 @@
     <h2>Email notifications (optional)</h2>
     <p class="muted" style="font-size:.9rem">
         Add an email and OSPREY will notify you about activity on your
-        projects — questions, use reports, wiki suggestions. Used only for
-        that: never marketing, never shared, removable anytime. See the
-        <a href="{% url 'privacy' %}">privacy note</a>. Leave it blank to
-        skip; the on-site inbox works either way.
+        projects, such as questions, use reports, and wiki suggestions.
+        Used only for activity on OSPREY and important service
+        notices. Remove it anytime.
+        See the <a href="{% url 'privacy' %}">Privacy Policy</a>.
+        Leave it blank to skip; the on-site inbox works either way.
     </p>
     <form method="post" action="{% url 'notifications:settings' %}" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
         {% csrf_token %}
