@@ -8,6 +8,7 @@
     var mount = document.getElementById("feedback-widget");
     if (!mount) return;
     var endpoint = mount.dataset.endpoint;
+    var mineUrl = mount.dataset.mine || "";
     var csrfToken = mount.dataset.csrf || "";
     if (!endpoint) return;
 
@@ -46,6 +47,7 @@
         '    <button type="button" class="fb-send">Send</button>',
         '  </div>',
         '  <p class="fb-status" role="status"></p>',
+        (mineUrl ? '  <p class="fb-hint"><a href="' + mineUrl + '">Your past messages and staff replies</a></p>' : ''),
         '</div>',
     ].join("\n");
     mount.appendChild(panel);

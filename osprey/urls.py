@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from api.urls import api
 from core import views as core_views
@@ -51,7 +52,17 @@ urlpatterns = [
         "institutions/",
         include(("people.urls_institutions", "institutions"), namespace="institutions"),
     ),
-    path("feedback/", include("feedback.urls")),
+    path("staff-messages/", include("feedback.urls")),
+    # The app lived at /feedback/ before the Staff Messages rename; old
+    # notification rows still link there.
+    path(
+        "feedback/mine/",
+        RedirectView.as_view(pattern_name="feedback:mine"),
+    ),
+    path(
+        "feedback/review/",
+        RedirectView.as_view(pattern_name="feedback:review"),
+    ),
     path(
         "moderation/",
         include(("moderation.urls", "moderation"), namespace="moderation"),

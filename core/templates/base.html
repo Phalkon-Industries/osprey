@@ -178,7 +178,7 @@
     </script>
     {% endif %}
     {% if user.is_authenticated and request.path|slice:":7" != "/admin/" %}
-    <div id="feedback-widget" data-endpoint="{% url 'feedback:submit' %}" data-csrf="{{ csrf_token }}"></div>
+    <div id="feedback-widget" data-endpoint="{% url 'feedback:submit' %}" data-mine="{% url 'feedback:mine' %}" data-csrf="{{ csrf_token }}"></div>
     <script src="{% static 'feedback/html2canvas-pro.min.js' %}" defer></script>
     <script src="{% static 'feedback/widget.js' %}" defer></script>
     {% endif %}

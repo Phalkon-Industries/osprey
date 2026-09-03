@@ -258,7 +258,7 @@ def feedback_replied(reply):
         kind="feedback_reply",
         title=f"Staff replied to your {what}",
         body=reply.body[:200],
-        url="/feedback/mine/",
+        url=reverse("feedback:mine"),
         feedback_id=feedback.pk,
     )
 
