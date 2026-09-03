@@ -10,3 +10,20 @@ services:
       - "8000:8000"
     env_file:
       - .env
+
+  # Dev runs the notifier loop like production, so immediate emails and
+  # digests deliver automatically. With real Mailjet keys in .env this
+  # sends real mail; blank the keys to route email to console instead.
+  notifier:
+    build:
+      context: .
+      args:
+        INSTALL_PLAYWRIGHT: "1"
+    command: python manage.py notifier_loop
+    volumes:
+      - .:/app:z
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy

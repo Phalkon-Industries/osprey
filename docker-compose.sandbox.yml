@@ -24,6 +24,9 @@ services:
       - /etc/osprey/.env.sandbox
     restart: unless-stopped
 
+  # Whether the notifier's mail actually sends is decided by the env
+  # file: with no ANYMAIL_* keys in /etc/osprey/.env.sandbox, everything
+  # routes to the container log; add keys to send real email to testers.
   notifier:
     build:
       args:
