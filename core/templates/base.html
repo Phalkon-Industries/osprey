@@ -81,8 +81,8 @@
     <div class="email-nudge-banner" role="status">
         <span>
             Add an email address to hear about questions, use reports, and
-            wiki suggestions on your projects — even when you're not here.
-            <a href="{% url 'notifications:settings' %}">Add it in notification settings</a>.
+            wiki suggestions on your projects, even when you're not here.
+            <a href="{% url 'notifications:settings' %}">Add your email or opt out in settings</a>.
         </span>
         <form method="post" action="{% url 'notifications:dismiss_email_banner' %}" style="display:inline;margin:0">
             {% csrf_token %}
