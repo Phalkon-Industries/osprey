@@ -1112,6 +1112,26 @@ class DigestCommandTests(TestCase):
         call_command("send_email_digests")
         self.assertEqual(QueuedEmail.objects.filter(group="digest").count(), 1)
 
+    def test_digest_skips_notifications_already_read_on_site(self):
+        self._notify(title="Read on site")
+        Notification.objects.update(is_read=True)
+        self._notify(title="Still unread")
+        call_command("send_email_digests")
+        row = QueuedEmail.objects.get(group="digest")
+        self.assertIn("Still unread", row.body_text)
+        self.assertNotIn("Read on site", row.body_text)
+        self.assertIn("1 update", row.subject)
+
+    def test_fully_caught_up_user_gets_no_digest(self):
+        self._notify(title="Seen it")
+        Notification.objects.update(is_read=True)
+        call_command("send_email_digests")
+        self.assertEqual(QueuedEmail.objects.count(), 0)
+        # The stamp still advances, so tomorrow's digest doesn't reach
+        # back and resurrect it.
+        self.preference.refresh_from_db()
+        self.assertIsNotNone(self.preference.last_daily_digest_at)
+
     def test_weekly_group_waits_a_week(self):
         from datetime import timedelta
 

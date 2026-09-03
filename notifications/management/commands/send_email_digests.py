@@ -1,9 +1,11 @@
 """Build daily/weekly digest emails from unemailed notifications.
 
 Digests are rendered from Notification rows at send time, so nothing is
-double-stored. Weekly groups sweep once at least seven days have passed
-since that user's last weekly digest, which self-regulates regardless of
-which day the command runs.
+double-stored, and they only include UNREAD notifications: anything the
+user already read on the site stays out of the email, and a user who is
+fully caught up gets no digest at all. Weekly groups sweep once at least
+seven days have passed since that user's last weekly digest, which
+self-regulates regardless of which day the command runs.
 """
 from __future__ import annotations
 
@@ -69,6 +71,7 @@ class Command(BaseCommand):
                 Notification.objects.filter(
                     user=preference.user,
                     kind__in=kinds,
+                    is_read=False,
                     created_at__gt=since,
                     created_at__lte=now,
                 ).order_by("created_at")
