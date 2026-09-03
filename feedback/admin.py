@@ -8,6 +8,7 @@ from .models import Feedback
 class FeedbackAdmin(admin.ModelAdmin):
     list_display = (
         "created_at",
+        "category",
         "status",
         "user",
         "message_preview",
@@ -16,7 +17,7 @@ class FeedbackAdmin(admin.ModelAdmin):
         "os",
         "has_screenshot",
     )
-    list_filter = ("status", "browser", "os")
+    list_filter = ("category", "status", "browser", "os")
     search_fields = ("message", "page_url", "user__username", "admin_notes")
     list_select_related = ("user",)
     readonly_fields = (
@@ -33,7 +34,7 @@ class FeedbackAdmin(admin.ModelAdmin):
         "updated_at",
     )
     fieldsets = (
-        (None, {"fields": ("status", "admin_notes")}),
+        (None, {"fields": ("category", "status", "admin_notes")}),
         ("Submission", {"fields": ("user", "message", "page_url", "page_title")}),
         (
             "Environment",

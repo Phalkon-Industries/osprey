@@ -302,7 +302,7 @@ class ProjectFormTests(ProjectTestCase):
             body.index("Copyleft: derivatives must stay open"),
             body.index("Permissive: anything goes"),
         )
-        self.assertContains(response, "feedback button")
+        self.assertContains(response, "Suggestion Box")
         self.assertNotContains(response, "TAPR")
         self.assertNotContains(response, "Unlicense")
 

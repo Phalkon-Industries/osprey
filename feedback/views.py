@@ -1,7 +1,8 @@
-"""Views for the feedback widget.
+"""Views for the suggestion box and the privacy request form.
 
-Submissions come from the floating widget. Staff can review them in a small
-in-app inbox, with the Django admin kept as the lower-level back office.
+Suggestions come from the floating widget; privacy requests come from the
+form linked in the Privacy Policy. Staff review both in a small in-app
+inbox, with the Django admin kept as the lower-level back office.
 """
 
 from __future__ import annotations
@@ -129,6 +130,55 @@ def submit(request):
     return JsonResponse({"ok": True, "id": fb.pk})
 
 
+PRIVACY_REQUEST_TYPES = [
+    ("delete_account", "Delete my account and personal data"),
+    ("remove_content", "Remove a specific piece of content"),
+    ("data_question", "A question about my data"),
+]
+
+
+@login_required
+def privacy_request(request):
+    """Purpose-built channel for data requests, linked from the Privacy Policy.
+
+    Stores a Feedback row with category=privacy so it rides the same staff
+    inbox and reply machinery as suggestions, just clearly flagged. Unlike
+    the suggestion box, nothing about the browser or page is recorded.
+    """
+    if request.method == "POST":
+        message = (request.POST.get("message") or "").strip()
+        request_type = request.POST.get("request_type") or ""
+        type_labels = dict(PRIVACY_REQUEST_TYPES)
+        if request_type not in type_labels:
+            request_type = ""
+        if not message and not request_type:
+            messages.error(request, "Please pick a request type or write a message.")
+        else:
+            label = type_labels.get(request_type, "Not specified")
+            fb = Feedback.objects.create(
+                user=request.user,
+                category=Feedback.CATEGORY_PRIVACY,
+                message=f"Request type: {label}\n\n{message[:_MAX_MESSAGE_LEN]}",
+            )
+            try:
+                from notifications import events
+
+                events.feedback_submitted(fb)
+            except Exception:
+                logger.exception("privacy request notification failed")
+            messages.success(
+                request,
+                "Request received. Staff will reply here on OSPREY; watch "
+                "your inbox.",
+            )
+            return redirect("feedback:mine")
+    return render(
+        request,
+        "feedback/privacy_request.html",
+        {"request_types": PRIVACY_REQUEST_TYPES},
+    )
+
+
 def _staff_required(user) -> bool:
     return user.is_authenticated and user.is_staff
 
@@ -153,20 +203,25 @@ def review(request):
             fb.status = status
         fb.admin_notes = request.POST.get("admin_notes", "")
         fb.save(update_fields=["status", "admin_notes", "updated_at"])
-        messages.success(request, "Feedback updated.")
+        messages.success(request, "Submission updated.")
         return redirect("feedback:review")
 
     status = request.GET.get("status", "")
+    category = request.GET.get("category", "")
     feedback = Feedback.objects.select_related("user").prefetch_related("replies")
     if status:
         feedback = feedback.filter(status=status)
+    if category in dict(Feedback.CATEGORY_CHOICES):
+        feedback = feedback.filter(category=category)
     return render(
         request,
         "feedback/review.html",
         {
             "feedback_items": feedback,
             "status_choices": Feedback.STATUS_CHOICES,
+            "category_choices": Feedback.CATEGORY_CHOICES,
             "active_status": status,
+            "active_category": category,
         },
     )
 

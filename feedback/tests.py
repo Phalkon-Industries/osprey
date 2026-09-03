@@ -80,6 +80,17 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(feedback.viewport_w, 1280)
         self.assertTrue(feedback.screenshot.name.endswith(".png"))
 
+    def test_widget_submission_defaults_to_suggestion_category(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("feedback:submit"), {"message": "Add dark mode everywhere"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        feedback = Feedback.objects.get()
+        self.assertEqual(feedback.category, Feedback.CATEGORY_SUGGESTION)
+
     def test_review_is_staff_only_and_updates_status(self):
         feedback = Feedback.objects.create(user=self.user, message="Needs a look")
 
@@ -97,3 +108,77 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(feedback.status, Feedback.STATUS_TRIAGED)
         self.assertEqual(feedback.admin_notes, "Checked.")
+
+    def test_review_filters_by_category(self):
+        Feedback.objects.create(user=self.user, message="An idea")
+        Feedback.objects.create(
+            user=self.user,
+            message="Please delete my data",
+            category=Feedback.CATEGORY_PRIVACY,
+        )
+
+        self.client.force_login(self.staff)
+        response = self.client.get(
+            reverse("feedback:review"), {"category": "privacy"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = list(response.context["feedback_items"])
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].category, Feedback.CATEGORY_PRIVACY)
+
+
+class PrivacyRequestTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="alice")
+        self.staff = User.objects.create_user(username="staff", is_staff=True)
+
+    def test_form_requires_login(self):
+        response = self.client.get(reverse("privacy_request"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_form_renders_request_types(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("privacy_request"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Delete my account and personal data")
+
+    def test_submission_stores_privacy_category_and_notifies_staff(self):
+        from notifications.models import Notification
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("privacy_request"),
+            {"request_type": "delete_account", "message": "Everything, please."},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        feedback = Feedback.objects.get()
+        self.assertEqual(feedback.category, Feedback.CATEGORY_PRIVACY)
+        self.assertIn("Delete my account and personal data", feedback.message)
+        self.assertIn("Everything, please.", feedback.message)
+        self.assertEqual(feedback.page_url, "")
+        self.assertEqual(feedback.user_agent, "")
+        note = Notification.objects.get(user=self.staff)
+        self.assertIn("privacy request", note.title)
+
+    def test_empty_submission_is_rejected(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("privacy_request"), {"message": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Feedback.objects.exists())
+
+    def test_type_only_submission_is_accepted(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("privacy_request"), {"request_type": "delete_account"}
+        )
+        self.assertEqual(response.status_code, 302)
+        feedback = Feedback.objects.get()
+        self.assertEqual(feedback.category, Feedback.CATEGORY_PRIVACY)
+
+    def test_privacy_policy_links_to_form(self):
+        response = self.client.get(reverse("privacy"))
+        self.assertContains(response, reverse("privacy_request"))

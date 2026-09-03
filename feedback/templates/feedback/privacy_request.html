@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Privacy request &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:42rem">
+    <h1>Privacy request</h1>
+    <p class="muted">
+        Requests about your data go straight to OSPREY staff. Since you're
+        signed in with ORCID, there's no need to prove who you are. Staff
+        replies land in your <a href="{% url 'feedback:mine' %}">submissions
+        page</a> and your inbox. The <a href="{% url 'privacy' %}">Privacy
+        Policy</a> explains what deletion can and can't cover.
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        <fieldset style="border:0;padding:0;margin:0 0 1rem">
+            <legend><strong>What do you need?</strong></legend>
+            {% for value, label in request_types %}
+            <label style="display:block;margin:.35rem 0">
+                <input type="radio" name="request_type" value="{{ value }}"> {{ label }}
+            </label>
+            {% endfor %}
+        </fieldset>
+        <label for="privacy-message"><strong>Details</strong> <span class="muted small">(optional for account deletion, otherwise tell us what you need)</span></label><br>
+        <textarea id="privacy-message" name="message" rows="6" maxlength="4000" style="width:100%"></textarea>
+        <p><button type="submit">Send request</button></p>
+    </form>
+</section>
+{% endblock %}

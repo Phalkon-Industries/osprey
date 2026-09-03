@@ -18,13 +18,20 @@ def _screenshot_upload_to(instance: "Feedback", filename: str) -> str:
 
 
 class Feedback(models.Model):
-    """A single feedback submission from the floating widget.
+    """A single submission from the suggestion box or the privacy request form.
 
-    The widget is shown only to logged-in users, so `user` is required.
+    Both entry points are shown only to logged-in users, so `user` is required.
     Captures the page URL, viewport size, and a coarse browser/OS string
     derived from the User-Agent header so the founder can reproduce
     issues without asking.
     """
+
+    CATEGORY_SUGGESTION = "suggestion"
+    CATEGORY_PRIVACY = "privacy"
+    CATEGORY_CHOICES = [
+        (CATEGORY_SUGGESTION, "Suggestion"),
+        (CATEGORY_PRIVACY, "Privacy request"),
+    ]
 
     STATUS_NEW = "new"
     STATUS_TRIAGED = "triaged"
@@ -43,6 +50,13 @@ class Feedback(models.Model):
         null=True,
         blank=True,
         related_name="feedback_submissions",
+    )
+    category = models.CharField(
+        max_length=12,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_SUGGESTION,
+        help_text="Suggestions come from the suggestion box; privacy "
+        "requests come from the form linked in the Privacy Policy.",
     )
     message = models.TextField(
         help_text="What the user wrote. Limited to 4000 characters by the form.",

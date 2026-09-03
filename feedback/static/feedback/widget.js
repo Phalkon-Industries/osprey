@@ -1,4 +1,4 @@
-/* OSPREY feedback widget — floating button, panel, optional annotated
+/* OSPREY Suggestion Box — floating button, panel, optional annotated
  * screenshot. Logged-in only; the template only includes this file when
  * request.user.is_authenticated.
  */
@@ -16,22 +16,22 @@
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "fb-fab";
-    btn.setAttribute("aria-label", "Submit feedback");
-    btn.textContent = "Submit feedback";
+    btn.setAttribute("aria-label", "Suggestion Box");
+    btn.textContent = "Suggestion Box";
     mount.appendChild(btn);
 
     var panel = document.createElement("div");
     panel.className = "fb-panel";
     panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-label", "Send feedback");
+    panel.setAttribute("aria-label", "Suggestion Box");
     panel.hidden = true;
     panel.innerHTML = [
         '<div class="fb-panel-head">',
-        '  <strong>Send feedback</strong>',
+        '  <strong>Suggestion Box</strong>',
         '  <button type="button" class="fb-close" aria-label="Close">×</button>',
         '</div>',
         '<div class="fb-panel-body">',
-        '  <p class="fb-hint">Idea, bug, something you like about it, or anything else.</p>',
+        '  <p class="fb-hint">Ideas, bug reports, anything you want to see on the site. It goes straight to OSPREY staff.</p>',
         '  <textarea class="fb-msg" rows="5" maxlength="4000" placeholder="What\'s on your mind?"></textarea>',
         '  <label class="fb-row"><input type="checkbox" class="fb-include-shot" checked> Include a screenshot of this page</label>',
         '  <div class="fb-shot-stage" hidden>',

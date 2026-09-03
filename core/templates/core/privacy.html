@@ -45,13 +45,14 @@
         record. Drafts stay private until you publish them.
     </p>
 
-    <h2>Feedback</h2>
+    <h2>Suggestion Box and privacy requests</h2>
     <p>
-        If you send feedback through the feedback button, OSPREY keeps
+        If you send something through the Suggestion Box, OSPREY keeps
         your message, the screenshot if you chose to attach one, and
         coarse browser information (browser family, operating system,
-        window size) so problems can be reproduced. Only staff can see
-        feedback.
+        window size) so problems can be reproduced. Requests sent through
+        the <a href="{% url 'privacy_request' %}">privacy request form</a>
+        keep just your message. Only staff can see either.
     </p>
 
     <h2>Cookies</h2>
@@ -70,7 +71,8 @@
         from being used; signing in with ORCID again reactivates it.
     </p>
     <p>
-        For full account deletion, send a request through the feedback button
+        For full account deletion, send a request through the
+        <a href="{% url 'privacy_request' %}">privacy request form</a>
         and staff will handle it. Be aware of what deletion can and
         can't cover on an archive: your email address, notification
         history, preferences, and profile details are removed, but
@@ -82,7 +84,8 @@
         complaint with their data protection authority.
     </p>
     <p class="muted">
-        For questions or requests about your data, please use the feedback button.
+        For questions or requests about your data, please use the
+        <a href="{% url 'privacy_request' %}">privacy request form</a>.
     </p>
 </section>
 {% endblock %}

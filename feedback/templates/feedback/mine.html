@@ -1,18 +1,22 @@
 {% extends "base.html" %}
-{% block title %}My feedback &middot; OSPREY{% endblock %}
+{% block title %}My suggestions &amp; requests &middot; OSPREY{% endblock %}
 {% block content %}
 <section>
-    <h1>My feedback</h1>
+    <h1>My suggestions &amp; requests</h1>
     <p class="muted">
-        Every piece of feedback you have submitted through the widget,
-        with any replies from the maintainers.
+        Everything you've sent through the Suggestion Box or the
+        <a href="{% url 'privacy_request' %}">privacy request form</a>,
+        with any replies from staff.
     </p>
 
     {% for item in feedback_items %}
     <article class="feedback-item">
         <header>
             <span class="muted small">{{ item.created_at|date:"Y-m-d H:i" }}</span>
-            <span class="badge">{{ item.get_status_display }}</span>
+            <span>
+                {% if item.category == "privacy" %}<span class="badge">Privacy request</span>{% endif %}
+                <span class="badge">{{ item.get_status_display }}</span>
+            </span>
         </header>
         <p>{{ item.message|linebreaksbr }}</p>
         {% if item.page_url %}<p class="muted small">On <a href="{{ item.page_url }}">{{ item.page_url }}</a></p>{% endif %}
@@ -26,7 +30,7 @@
         {% endif %}
     </article>
     {% empty %}
-    <p class="muted">You have not submitted any feedback yet.</p>
+    <p class="muted">You haven't sent anything yet.</p>
     {% endfor %}
 </section>
 {% endblock %}

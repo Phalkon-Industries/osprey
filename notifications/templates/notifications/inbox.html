@@ -4,7 +4,7 @@
 {% block content %}
 <section>
     <h1>Inbox</h1>
-    <p class="muted">Replies on your projects, feedback you submitted, and other site activity show up here.</p>
+    <p class="muted">Replies on your projects, suggestions you sent in, and other site activity show up here.</p>
 
     {% if unread_count %}
     <form method="post" action="{% url 'notifications:mark_all_read' %}" style="margin-bottom:1rem">

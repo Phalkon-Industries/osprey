@@ -119,7 +119,7 @@
                 </tr>
                 {% if user.is_staff %}
                 <tr>
-                    <td><label for="pref-staff">Staff events (feedback, reports, new projects)</label></td>
+                    <td><label for="pref-staff">Staff events (suggestions, reports, new projects)</label></td>
                     <td>
                         <select name="staff" id="pref-staff" {% if not preference.email_enabled %}disabled{% endif %}>
                             {% for value, label in cadence_choices %}

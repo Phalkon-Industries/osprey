@@ -72,7 +72,7 @@
         {{ form.license_choice }}
         <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
             <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.
-            Need a license that isn't listed? Ask through the feedback button.</span>
+            Need a license that isn't listed? Ask through the Suggestion Box.</span>
         {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
             }}</span>{% endif %}
     </p>

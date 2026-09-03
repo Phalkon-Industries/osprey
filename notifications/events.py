@@ -226,13 +226,18 @@ def wiki_suggestion_reviewed(revision, project, *, approved: bool, page_slug: st
 
 
 def feedback_submitted(feedback):
+    what = (
+        "privacy request"
+        if feedback.category == feedback.CATEGORY_PRIVACY
+        else "suggestion"
+    )
     for user in _staff():
         if user.id == feedback.user_id:
             continue
         _emit(
             user,
             kind="feedback_submitted",
-            title=f"New feedback from {_actor_name(feedback.user)}",
+            title=f"New {what} from {_actor_name(feedback.user)}",
             body=feedback.message[:200],
             url=reverse("feedback:review"),
             feedback_id=feedback.pk,
@@ -243,10 +248,15 @@ def feedback_replied(reply):
     feedback = reply.feedback
     if not feedback.user_id or feedback.user_id == reply.author_id:
         return
+    what = (
+        "privacy request"
+        if feedback.category == feedback.CATEGORY_PRIVACY
+        else "suggestion"
+    )
     _emit(
         feedback.user,
         kind="feedback_reply",
-        title="A maintainer replied to your feedback",
+        title=f"Staff replied to your {what}",
         body=reply.body[:200],
         url="/feedback/mine/",
         feedback_id=feedback.pk,

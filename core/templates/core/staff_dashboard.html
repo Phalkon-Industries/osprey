@@ -15,22 +15,22 @@
     <ul class="stats" style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:1rem">
         <li><strong>{{ totals.projects }}</strong> projects total ({{ totals.public_projects }} public)</li>
         <li><strong>{{ totals.profiles }}</strong> profiles</li>
-        <li><strong>{{ totals.feedback }}</strong> feedback submissions</li>
+        <li><strong>{{ totals.feedback }}</strong> staff messages</li>
     </ul>
 </section>
 
 <section style="margin-bottom:1.5rem">
-    <h2>Feedback by status</h2>
+    <h2>Staff messages by status</h2>
     <ul style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:1rem">
         {% for entry in status_summary %}
         <li><span class="badge">{{ entry.label }}</span> <strong>{{ entry.count }}</strong></li>
         {% endfor %}
     </ul>
-    <p><a class="button ghost" href="{% url 'feedback:review' %}">Open feedback inbox</a></p>
+    <p><a class="button ghost" href="{% url 'feedback:review' %}">Open Staff Messages</a></p>
 </section>
 
 <section style="margin-bottom:1.5rem">
-    <h2>Recent feedback</h2>
+    <h2>Recent messages</h2>
     {% if recent_feedback %}
     <ul class="recent-feedback" style="list-style:none;padding:0">
         {% for item in recent_feedback %}
@@ -45,7 +45,7 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted">No feedback submitted yet.</p>
+    <p class="muted">Nothing submitted yet.</p>
     {% endif %}
 </section>
 
@@ -58,7 +58,7 @@
         <li><a href="{% url 'admin:projects_project_changelist' %}">Projects</a></li>
         <li><a href="{% url 'admin:projects_contribution_changelist' %}">Contributions</a></li>
         <li><a href="{% url 'admin:people_profile_changelist' %}">Profiles</a></li>
-        <li><a href="{% url 'admin:feedback_feedback_changelist' %}">Feedback (admin view)</a></li>
+        <li><a href="{% url 'admin:feedback_feedback_changelist' %}">Staff messages (admin view)</a></li>
     </ul>
 </section>
 

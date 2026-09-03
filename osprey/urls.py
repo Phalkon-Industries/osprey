@@ -6,6 +6,7 @@ from django.urls import include, path
 
 from api.urls import api
 from core import views as core_views
+from feedback import views as feedback_views
 from projects import views as project_views
 
 admin.site.site_header = "OSPREY admin"
@@ -19,6 +20,11 @@ urlpatterns = [
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/derivatives/", core_views.derivative_guide, name="derivative_guide"),
     path("about/privacy/", core_views.privacy, name="privacy"),
+    path(
+        "about/privacy/request/",
+        feedback_views.privacy_request,
+        name="privacy_request",
+    ),
     path("settings/", core_views.settings_home, name="settings"),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
