@@ -136,6 +136,27 @@
 </div>
 
 <section style="max-width:46rem">
+    <h2>New projects</h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_new_projects">
+        <p>
+            <label for="pref-new-projects">Hear about every new project published on OSPREY</label>
+            <select name="new_projects" id="pref-new-projects">
+                {% for value, label in cadence_choices %}
+                <option value="{{ value }}" {% if preference.new_projects == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </p>
+        <p class="muted small">
+            Off hides these from your in-app inbox too. The daily and
+            weekly summaries only go out by email if email is on above.
+        </p>
+        <p><button type="submit" class="button">Save new project settings</button></p>
+    </form>
+</section>
+
+<section style="max-width:46rem">
     <h2>Threads</h2>
     <form method="post">
         {% csrf_token %}

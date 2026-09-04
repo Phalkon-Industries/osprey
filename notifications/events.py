@@ -16,15 +16,17 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.urls import reverse
 
-from .models import Notification, send
+from .models import CADENCE_OFF, Notification, send
 
 logger = logging.getLogger(__name__)
 
 GROUP_PROJECTS = "projects"  # activity on projects you own
 GROUP_REPLIES = "replies"  # responses to things you wrote
 GROUP_FOLLOWS = "follows"  # people and work you follow (phase 4)
+GROUP_NEW_PROJECTS = "new_projects"  # sitewide new-project notices
 GROUP_ACCOUNT = "account"  # moderation and administrative notices
 GROUP_STAFF = "staff"  # staff-only operational events
 
@@ -52,6 +54,7 @@ EVENTS = {
     "project_published": GROUP_STAFF,
     "project_hidden": GROUP_ACCOUNT,
     "followed_creator_published": GROUP_FOLLOWS,
+    "new_project_published": GROUP_NEW_PROJECTS,
     "watched_version_published": GROUP_FOLLOWS,
     "watched_activity": GROUP_FOLLOWS,
     "lineage_claimed": GROUP_PROJECTS,
@@ -370,8 +373,10 @@ def project_hidden(project, *, hidden: bool):
 
 
 def project_published(project):
-    """A project went public: staff hear about it, and so do followers
-    of its creator. Staff followers only get the staff row."""
+    """A project went public: staff hear about it, followers of its
+    creator hear about it, and so does anyone who opted into sitewide
+    new-project notices. Each person gets at most one row: the staff
+    row wins over the follower row, which wins over the sitewide one."""
     for user in _staff():
         if user.id == project.created_by_id:
             continue
@@ -395,7 +400,9 @@ def project_published(project):
         )
         .exclude(pk=project.created_by_id)
     )
+    follower_ids = set()
     for user in followers:
+        follower_ids.add(user.pk)
         _emit(
             user,
             kind="followed_creator_published",
@@ -405,6 +412,27 @@ def project_published(project):
             ),
             url=project.get_absolute_url(),
             dedup_key=f"creator-published:{project.pk}",
+            project_slug=project.slug,
+        )
+    # Sitewide notices default on (weekly), so users who never opened
+    # notification settings have no preference row and are included.
+    opted_in = (
+        get_user_model()
+        .objects.filter(is_active=True, is_staff=False)
+        .filter(
+            Q(notification_preference__isnull=True)
+            | ~Q(notification_preference__new_projects=CADENCE_OFF)
+        )
+        .exclude(pk__in=follower_ids | {project.created_by_id})
+    )
+    for user in opted_in:
+        _emit(
+            user,
+            kind="new_project_published",
+            title=f"New on OSPREY: {project.title}",
+            body=f"by {_actor_name(project.created_by)}",
+            url=project.get_absolute_url(),
+            dedup_key=f"new-project:{project.pk}",
             project_slug=project.slug,
         )
 

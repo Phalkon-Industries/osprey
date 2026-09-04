@@ -24,7 +24,7 @@ from notifications.models import (
     QueuedEmail,
 )
 
-GROUPS = ("projects", "replies", "follows", "staff")
+GROUPS = ("projects", "replies", "follows", "new_projects", "staff")
 WEEK = timedelta(days=7)
 # First digest for a user reaches back at most this far.
 FIRST_DIGEST_WINDOW = timedelta(days=7)
@@ -90,6 +90,7 @@ class Command(BaseCommand):
             "projects": "Activity on your projects",
             "replies": "Replies and reviews",
             "follows": "People and work you follow",
+            "new_projects": "New projects on OSPREY",
             "staff": "Staff events",
         }
         total = 0

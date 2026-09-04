@@ -209,6 +209,15 @@ def notification_settings(request):
             preference.save()
             messages.success(request, "Email settings saved.")
             return redirect("notifications:settings")
+        if action == "save_new_projects":
+            # Lives outside the email form on purpose: this cadence also
+            # gates the in-app rows, so it stays usable with email off.
+            value = request.POST.get("new_projects", "")
+            if value in dict(CADENCE_CHOICES):
+                preference.new_projects = value
+                preference.save(update_fields=["new_projects", "updated_at"])
+                messages.success(request, "New project settings saved.")
+            return redirect("notifications:settings")
         if action == "save_thread_prefs":
             preference.auto_follow_threads = bool(
                 request.POST.get("auto_follow_threads")

@@ -1590,6 +1590,55 @@ class FollowAndWatchTests(TestCase):
             list(staff_rows.values_list("user_id", flat=True)), [self.staffer.pk]
         )
 
+    def test_publish_notifies_sitewide_optins_by_default(self):
+        # No preference row means the weekly default applies, so ordinary
+        # users hear about the publish; the creator and staff never get
+        # the sitewide row.
+        from notifications import events
+
+        events.project_published(self.project)
+        sitewide = Notification.objects.filter(kind="new_project_published")
+        self.assertEqual(
+            sorted(sitewide.values_list("user_id", flat=True)),
+            sorted([self.fan.pk, self.watcher.pk]),
+        )
+
+    def test_sitewide_row_skips_followers_and_opted_out(self):
+        from notifications import events
+        from notifications.models import (
+            CADENCE_OFF,
+            NotificationPreference,
+        )
+
+        self._follow()  # fan follows creator: follower row only
+        NotificationPreference.objects.create(
+            user=self.watcher, new_projects=CADENCE_OFF
+        )
+        events.project_published(self.project)
+        self.assertFalse(
+            Notification.objects.filter(kind="new_project_published").exists()
+        )
+        self.assertEqual(
+            Notification.objects.filter(
+                kind="followed_creator_published", user=self.fan
+            ).count(),
+            1,
+        )
+
+    def test_new_projects_cadence_saves_with_email_off(self):
+        from notifications.models import NotificationPreference
+
+        preference = NotificationPreference.objects.create(
+            user=self.watcher, email_enabled=False
+        )
+        self.client.force_login(self.watcher)
+        self.client.post(
+            reverse("notifications:settings"),
+            {"action": "save_new_projects", "new_projects": "off"},
+        )
+        preference.refresh_from_db()
+        self.assertEqual(preference.new_projects, "off")
+
     def test_watch_toggle_view(self):
         from projects.models import Watch
 

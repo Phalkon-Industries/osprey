@@ -29,7 +29,15 @@ UNSUBSCRIBE_MAX_AGE = 60 * 60 * 24 * 365
 SUBJECT_PREFIX = "[OSPREY] "
 
 # Scopes an unsubscribe token may carry: the preference groups plus "all".
-UNSUBSCRIBE_SCOPES = {"projects", "replies", "follows", "account", "staff", "all"}
+UNSUBSCRIBE_SCOPES = {
+    "projects",
+    "replies",
+    "follows",
+    "new_projects",
+    "account",
+    "staff",
+    "all",
+}
 
 
 def verified_address_for(user) -> str:

@@ -181,6 +181,15 @@ class NotificationPreference(models.Model):
     staff = models.CharField(
         max_length=10, choices=CADENCE_CHOICES, default=CADENCE_IMMEDIATE
     )
+    new_projects = models.CharField(
+        max_length=10,
+        choices=CADENCE_CHOICES,
+        default=CADENCE_WEEKLY,
+        help_text=(
+            "Every new project published on OSPREY, not just ones from "
+            "people you follow. Off hides them from the in-app inbox too."
+        ),
+    )
     auto_follow_threads = models.BooleanField(
         default=True,
         help_text="Automatically follow threads you start or reply in.",
