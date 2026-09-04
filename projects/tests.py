@@ -2007,3 +2007,34 @@ class LineageClaimTests(ProjectTestCase):
         edge.refresh_from_db()
         self.assertEqual(response.status_code, 302)
         self.assertEqual(edge.status, LineageEdge.STATUS_WITHDRAWN)
+
+    def test_diagram_reaches_two_generations_and_collapses_versions(self):
+        root = Project.objects.create(
+            slug="root-pump",
+            title="Root Pump",
+            summary="The ancestor of everything.",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+        grandchild = Project.objects.create(
+            slug="grandchild-pod",
+            title="Grandchild Pod",
+            summary="Built around the derived pod.",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.unrelated,
+        )
+        lineage.declare(self.public_project, "root-pump", "derived_from", self.owner)
+        lineage.declare(self.child, "public-pump", "derived_from", self.unrelated)
+        lineage.declare(grandchild, "derived-pod", "uses", self.unrelated)
+        # A second pinned edge between the same pair collapses into the
+        # same diagram line, with both relation labels.
+        self._add_version(self.child)
+        lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+
+        response = self.client.get(
+            reverse("projects:lineage", args=[self.child.slug])
+        )
+
+        self.assertContains(response, "Root Pump")  # grandparent tier
+        self.assertContains(response, "Grandchild Pod")  # grandchild tier
+        self.assertContains(response, "modified into · used in")

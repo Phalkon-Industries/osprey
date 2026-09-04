@@ -876,6 +876,156 @@ def project_citations(request, slug: str):
     )
 
 
+def _lineage_diagram(project):
+    """Layout data for the lineage diagram: project-to-project only.
+
+    Version pins are collapsed (all edges between the same pair in the
+    same direction become one line, labeled with each relation present),
+    and the view reaches one generation further each way: parents of
+    parents and children of children. Cycles are allowed; a project can
+    appear in more than one tier. Interim viewer until the real lineage
+    graph gets built.
+    """
+    width, node_w, node_h, tier_gap = 800, 160, 60, 130
+
+    def live_edges(**filt):
+        return (
+            LineageEdge.objects.filter(claimed_at__isnull=False, **filt)
+            .exclude(status=LineageEdge.STATUS_WITHDRAWN)
+            .select_related("parent", "child")
+        )
+
+    def collapse(edges, side):
+        groups = {}
+        for edge in edges:
+            other = getattr(edge, side)
+            group = groups.setdefault(
+                other.pk,
+                {"project": other, "relations": set(), "disputed": False},
+            )
+            group["relations"].add(edge.relation)
+            if edge.status == LineageEdge.STATUS_DISPUTED:
+                group["disputed"] = True
+        return list(groups.values())
+
+    def label_for(relations):
+        parts = []
+        if "derived_from" in relations:
+            parts.append("modified into")
+        if "uses" in relations:
+            parts.append("used in")
+        return " · ".join(parts)
+
+    parents = collapse(live_edges(child=project), "parent")
+    children = collapse(live_edges(parent=project), "child")
+
+    # One generation further out. Links remember which middle node they
+    # attach to; the center project is skipped so a two-step cycle
+    # doesn't redraw this project in an outer tier.
+    gp_links, gc_links = [], []
+    for pnode in parents:
+        for group in collapse(live_edges(child=pnode["project"]), "parent"):
+            if group["project"].pk != project.pk:
+                gp_links.append((group, pnode))
+    for cnode in children:
+        for group in collapse(live_edges(parent=cnode["project"]), "child"):
+            if group["project"].pk != project.pk:
+                gc_links.append((group, cnode))
+
+    def dedupe(links):
+        row = {}
+        for group, _via in links:
+            row.setdefault(group["project"].pk, {"project": group["project"]})
+        return list(row.values())
+
+    tiers = []
+    grandparents = dedupe(gp_links)
+    grandchildren = dedupe(gc_links)
+    if grandparents:
+        tiers.append(("gp", grandparents))
+    if parents:
+        tiers.append(("p", parents))
+    tiers.append(("cur", [{"project": project}]))
+    if children:
+        tiers.append(("c", children))
+    if grandchildren:
+        tiers.append(("gc", grandchildren))
+
+    nodes, centers = [], {}
+    for tier_index, (tier_name, row) in enumerate(tiers):
+        y = 20 + tier_index * tier_gap
+        for i, node in enumerate(row):
+            cx = round((i + 1) * width / (len(row) + 1))
+            centers[(tier_name, node["project"].pk)] = (cx, y)
+            nodes.append(
+                {
+                    "x": cx - node_w // 2,
+                    "cx": cx,
+                    "y": y,
+                    "text_y": y + 25,
+                    "sub_y": y + 45,
+                    "project": node["project"],
+                    "is_current": tier_name == "cur",
+                }
+            )
+
+    edges = []
+
+    def add_edge(top_key, bottom_key, relations, disputed):
+        if top_key not in centers or bottom_key not in centers:
+            return
+        (x1, y1), (x2, y2) = centers[top_key], centers[bottom_key]
+        edges.append(
+            {
+                "x1": x1,
+                "y1": y1 + node_h,
+                "x2": x2,
+                "y2": y2 - 2,
+                "label_x": round((x1 + x2) / 2),
+                "label_y": round((y1 + node_h + y2) / 2),
+                "label": label_for(relations),
+                "disputed": disputed,
+            }
+        )
+
+    for group, pnode in gp_links:
+        add_edge(
+            ("gp", group["project"].pk),
+            ("p", pnode["project"].pk),
+            group["relations"],
+            group["disputed"],
+        )
+    for pnode in parents:
+        add_edge(
+            ("p", pnode["project"].pk),
+            ("cur", project.pk),
+            pnode["relations"],
+            pnode["disputed"],
+        )
+    for cnode in children:
+        add_edge(
+            ("cur", project.pk),
+            ("c", cnode["project"].pk),
+            cnode["relations"],
+            cnode["disputed"],
+        )
+    for group, cnode in gc_links:
+        add_edge(
+            ("c", cnode["project"].pk),
+            ("gc", group["project"].pk),
+            group["relations"],
+            group["disputed"],
+        )
+
+    return {
+        "width": width,
+        "height": 20 + (len(tiers) - 1) * tier_gap + node_h + 20,
+        "nodes": nodes,
+        "edges": edges,
+        "has_relatives": bool(parents or children),
+    }
+
+
 def project_lineage(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     if not project.viewable_by(request.user):
@@ -907,8 +1057,7 @@ def project_lineage(request, slug: str):
             "project": project,
             "parents": parents,
             "children": children,
-            "diagram_parents": [e for e in parents if not e.is_withdrawn],
-            "diagram_children": [e for e in children if not e.is_withdrawn],
+            "diagram": _lineage_diagram(project),
             "can_edit": can_edit,
             "show_withdrawn": show_withdrawn,
             "has_withdrawn": has_withdrawn,

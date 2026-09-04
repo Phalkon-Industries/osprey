@@ -44,8 +44,8 @@ def markdown_guide(request):
     return render(request, "core/markdown_guide.html")
 
 
-def derivative_guide(request):
-    return render(request, "core/derivative_guide.html")
+def lineage_guide(request):
+    return render(request, "core/lineage_guide.html")
 
 
 @staff_member_required

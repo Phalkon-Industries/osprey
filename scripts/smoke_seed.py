@@ -604,14 +604,167 @@ Contribution.objects.update_or_create(
 TagAssignment.objects.get_or_create(project=firmware_fork, tag=tag_pump)
 
 
-# --- Lineage edges -------------------------------------------------------------
+# --- Lineage demo chain ----------------------------------------------------
+# Four generations deep (Tide Logger -> Reef Tide Logger -> Reef Array
+# Controller -> Reef Array Shore Kit), with version pins going both ways:
+# the reef fork starts from Tide Logger v1, and Tide Logger v2 then pulls
+# the reef improvements back in. Exercises the graph, the pins, and both
+# relation kinds.
 
-LineageEdge.objects.get_or_create(parent=pump, child=deriv, relation="derived_from")
-LineageEdge.objects.get_or_create(parent=pump_mark_i, child=pump, relation="derived_from")
-LineageEdge.objects.get_or_create(parent=osh_pump, child=pump, relation="uses")
-LineageEdge.objects.get_or_create(
-    parent=pump, child=firmware_fork, relation="derived_from"
+
+def _demo_project(slug, title, summary, owner, rating, note):
+    project, _ = Project.objects.get_or_create(
+        slug=slug,
+        defaults={
+            "title": title,
+            "summary": summary,
+            "readme": f"# {title}\n\n{summary}",
+            "artifact_type": "hardware",
+            "field": "oceanography",
+            "license": "CERN-OHL-S-2.0",
+            "institution": WHOI,
+            "visibility": Project.VISIBILITY_PUBLIC,
+            "created_by": owner,
+            "self_rating": rating,
+            "self_rating_note": note,
+        },
+    )
+    Project.objects.filter(pk=project.pk).update(
+        visibility=Project.VISIBILITY_PUBLIC, created_by=owner
+    )
+    project.refresh_from_db()
+    return project
+
+
+def _demo_versions(project, base_id, count, owner):
+    deposit, _ = ProjectDeposit.objects.update_or_create(
+        project=project,
+        provider=ProjectDeposit.PROVIDER_ZENODO,
+        sandbox=True,
+        defaults={
+            "deposition_id": str(base_id + count - 1),
+            "record_id": str(base_id + count - 1),
+            "concept_id": str(base_id),
+            "doi": f"10.5281/zenodo.{base_id + count - 1}",
+            "concept_doi": f"10.5281/zenodo.{base_id}",
+            "state": ProjectDeposit.STATE_PUBLISHED,
+            "created_by": owner,
+            "published_at": timezone.now(),
+        },
+    )
+    versions = []
+    for index in range(1, count + 1):
+        version, _ = ProjectDepositVersion.objects.update_or_create(
+            deposit=deposit,
+            version_index=index,
+            defaults={
+                "deposition_id": str(base_id + index - 1),
+                "record_id": str(base_id + index - 1),
+                "doi": f"10.5281/zenodo.{base_id + index - 1}",
+                "changelog": f"v{index} release.",
+                "published_at": timezone.now(),
+            },
+        )
+        versions.append(version)
+    return versions
+
+
+def _demo_edge(parent, child, relation, parent_version, child_version, declared_by):
+    LineageEdge.objects.get_or_create(
+        parent=parent,
+        child=child,
+        relation=relation,
+        parent_version=parent_version,
+        child_version=child_version,
+        defaults={
+            "declared_by": declared_by,
+            "claimed_at": timezone.now(),
+            "status": "active",
+        },
+    )
+
+
+tide = _demo_project(
+    "tide-logger",
+    "Tide Logger Mk I",
+    "Self-contained tide logger for harbor moorings.",
+    alice,
+    7,
+    "Two seasons on the Woods Hole town dock.",
 )
+reef = _demo_project(
+    "tide-logger-reef",
+    "Reef Tide Logger",
+    "Tide Logger reworked for reef-flat deployments.",
+    bob,
+    5,
+    "Survived one field season on the test reef.",
+)
+array_controller = _demo_project(
+    "reef-array-controller",
+    "Reef Array Controller",
+    "Controller that coordinates a grid of reef tide loggers.",
+    bob,
+    4,
+    "Bench-tested with six loggers on the wall.",
+)
+shore_kit = _demo_project(
+    "reef-array-shore-kit",
+    "Reef Array Shore Kit",
+    "Shore-station adaptation of the array controller.",
+    alice,
+    3,
+    "First prototype boxed up, not yet deployed.",
+)
+
+tide_versions = _demo_versions(tide, 98100, 2, alice)
+reef_versions = _demo_versions(reef, 98200, 2, bob)
+array_versions = _demo_versions(array_controller, 98300, 1, bob)
+shore_versions = _demo_versions(shore_kit, 98400, 1, alice)
+
+# The reef fork started from Tide Logger v1.
+_demo_edge(tide, reef, "derived_from", tide_versions[0], reef_versions[0], bob)
+# Tide Logger v2 pulled the reef improvements back in.
+_demo_edge(reef, tide, "derived_from", reef_versions[0], tide_versions[1], alice)
+# The array controller drives reef loggers as components (their v2).
+_demo_edge(reef, array_controller, "uses", reef_versions[1], array_versions[0], bob)
+# The shore kit is an adaptation of the controller.
+_demo_edge(
+    array_controller,
+    shore_kit,
+    "derived_from",
+    array_versions[0],
+    shore_versions[0],
+    alice,
+)
+
+
+# --- Pump family lineage (pinned) ------------------------------------------
+# The original pump-family edges predate version pins; recreate them as
+# proper pinned, live claims. Old unpinned seed rows are cleaned up so a
+# reseeded database doesn't carry both shapes.
+_pump_family = [pump, deriv, pump_mark_i, osh_pump, firmware_fork]
+LineageEdge.objects.filter(
+    parent__in=_pump_family,
+    child__in=_pump_family,
+    parent_version__isnull=True,
+).delete()
+
+mark_i_versions = _demo_versions(pump_mark_i, 98500, 1, alice)
+deriv_versions = _demo_versions(deriv, 98600, 1, bob)
+osh_versions = _demo_versions(osh_pump, 98700, 1, alice)
+fork_versions = _demo_versions(firmware_fork, 98800, 1, bob)
+pump_v1 = ProjectDepositVersion.objects.get(deposit=pump_deposit, version_index=1)
+pump_v2 = ProjectDepositVersion.objects.get(deposit=pump_deposit, version_index=2)
+
+# The estuary pump kept the v1 mechanical head.
+_demo_edge(pump, deriv, "derived_from", pump_v1, deriv_versions[0], bob)
+# The pump grew out of the 2018 bench prototype.
+_demo_edge(pump_mark_i, pump, "derived_from", mark_i_versions[0], pump_v1, alice)
+# The community pump's mechanical layout is used in the WHOI design.
+_demo_edge(osh_pump, pump, "uses", osh_versions[0], pump_v1, alice)
+# The experimental firmware forked off the v2 release.
+_demo_edge(pump, firmware_fork, "derived_from", pump_v2, fork_versions[0], bob)
 
 
 print("=== Seeded ===")

@@ -12,7 +12,7 @@ through the lineage page.
             {{ edge.get_relation_display }}
             <a href="{{ edge.parent.get_absolute_url }}">{{ edge.parent.title }}</a>
             <span class="small">
-                {% if edge.parent_version %}(their v{{ edge.parent_version.version_index }}{% if edge.child_version %}, from this project's v{{ edge.child_version.version_index }}{% endif %}){% endif %}
+                {% if edge.parent_version %}(their v{{ edge.parent_version.version_index }}{% if edge.child_version %}, into this project's v{{ edge.child_version.version_index }}{% endif %}){% endif %}
                 {% if edge.claimed_at is None %}&middot; goes live at publish{% elif edge.status == "disputed" %}&middot; disputed{% endif %}
             </span>
         </li>

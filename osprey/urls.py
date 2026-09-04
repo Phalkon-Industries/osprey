@@ -19,7 +19,12 @@ urlpatterns = [
     path("about/", core_views.about, name="about"),
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
-    path("about/derivatives/", core_views.derivative_guide, name="derivative_guide"),
+    path("about/lineage/", core_views.lineage_guide, name="lineage_guide"),
+    # The guide lived at /about/derivatives/ before the lineage rename.
+    path(
+        "about/derivatives/",
+        RedirectView.as_view(pattern_name="lineage_guide"),
+    ),
     path("about/privacy/", core_views.privacy, name="privacy"),
     path(
         "about/privacy/request/",
