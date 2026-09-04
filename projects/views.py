@@ -801,13 +801,16 @@ def project_lineage(request, slug: str):
 
 @login_required
 def watch_toggle(request, slug: str):
-    """Watch or unwatch a project's activity (new versions, wiki pages,
-    use reports)."""
+    """Follow or unfollow a project's activity (new versions, wiki pages,
+    use reports). Only public projects can be followed, and not by their
+    own editors, who already get owner notifications."""
     if request.method != "POST":
         return redirect("projects:detail", slug=slug)
     project = get_object_or_404(Project, slug=slug)
     if not project.viewable_by(request.user):
         raise Http404
+    if not project.is_public or project.editable_by(request.user):
+        return redirect("projects:detail", slug=project.slug)
     existing = Watch.objects.filter(user=request.user, project=project).first()
     if existing:
         existing.delete()
