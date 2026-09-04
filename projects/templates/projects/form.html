@@ -12,20 +12,47 @@
 <form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave>
     {% csrf_token %}
     {% if form.non_field_errors %}
-    <p style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
+    <p class="field-error" style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
     {% endif %}
 
-    {% for field in form %}
-    {% if not field.is_hidden and field.name != 'license_choice' and field.name != 'cover_image_zoom' %}
-    <p>
-        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required %} <span
-                class="req" aria-label="required">*</span>{% else %} <span class="muted"
-                style="font-weight:normal;font-size:.85rem">(optional)</span>{% endif %}</label><br>
-        {{ field }}
-        {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
-        {% if field.errors %}<br><span style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
-    </p>
-    {% if field.name == 'cover_image' %}
+    <nav class="project-tabs form-tabs" data-form-tabs aria-label="Form sections">
+        <button type="button" class="project-tab is-active" data-form-tab="basics">Basics <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="description">Description <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="contributors">Contributors <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="cover">Cover image <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="details">More details <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="related">Related projects <span class="form-tab-state" data-tab-state></span></button>
+    </nav>
+
+    <section class="form-tab-panel" data-form-panel="basics"
+        data-check-fields="title,summary,field,artifact_type,license_choice,self_rating">
+        {% include "projects/_form_field.html" with field=form.title %}
+        {% include "projects/_form_field.html" with field=form.summary %}
+        {% include "projects/_form_field.html" with field=form.field %}
+        {% include "projects/_form_field.html" with field=form.artifact_type %}
+
+        <p>
+            <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong> <span class="req"
+                    aria-label="required">*</span></label><br>
+            {{ form.license_choice }}
+            <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
+                <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.
+                Need a license that isn't listed? Ask through the Suggestion Box.</span>
+            {% if form.license_choice.errors %}<br><span class="field-error" style="color:#fca5a5">{{ form.license_choice.errors|join:" "
+                }}</span>{% endif %}
+        </p>
+
+        {% include "projects/_form_field.html" with field=form.self_rating %}
+        {% include "projects/_form_field.html" with field=form.self_rating_note %}
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="description" data-check-fields="readme">
+        {% include "projects/_form_field.html" with field=form.readme %}
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="cover">
+    {% include "projects/_form_field.html" with field=form.cover_image %}
     <section class="cover-crop-editor" data-cover-crop-editor data-existing-url="{{ form.instance.cover_image_display_url|default_if_none:'' }}">
         <h2>Cover image crop</h2>
         <div class="cover-crop-layout">
@@ -55,28 +82,17 @@
         </div>
         <span class="cover-hidden-fields">{{ form.cover_image_focal_x }}{{ form.cover_image_focal_y }}</span>
         {% if form.cover_image_focal_x.errors or form.cover_image_focal_y.errors or form.cover_image_zoom.errors %}
-        <p style="color:#fca5a5">
+        <p class="field-error" style="color:#fca5a5">
             {{ form.cover_image_focal_x.errors|join:" " }}
             {{ form.cover_image_focal_y.errors|join:" " }}
             {{ form.cover_image_zoom.errors|join:" " }}
         </p>
         {% endif %}
     </section>
-    {% endif %}
-    {% endif %}
-    {% endfor %}
+    <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    </section>
 
-    <p>
-        <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong> <span class="req"
-                aria-label="required">*</span></label><br>
-        {{ form.license_choice }}
-        <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
-            <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.
-            Need a license that isn't listed? Ask through the Suggestion Box.</span>
-        {% if form.license_choice.errors %}<br><span style="color:#fca5a5">{{ form.license_choice.errors|join:" "
-            }}</span>{% endif %}
-    </p>
-
+    <section class="form-tab-panel" data-form-panel="files">
     <h2 style="margin-top:1.5rem">Project files</h2>
     <p class="muted" style="font-size:.9rem">
         Optional. Attach a single <code>.zip</code> archive of the project
@@ -104,7 +120,10 @@
         <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed">
         <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally.</span>
     </p>
+    <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    </section>
 
+    <section class="form-tab-panel" data-form-panel="contributors">
     <h2 style="margin-top:1.5rem">Contributors</h2>
     <p class="muted" style="font-size:.9rem">
         Everyone who worked on the project belongs here. The first row is you;
@@ -119,7 +138,7 @@
 
     {{ formset.management_form }}
     {% if formset.non_form_errors %}
-    <p style="color:#fca5a5">{{ formset.non_form_errors|join:" " }}</p>
+    <p class="field-error" style="color:#fca5a5">{{ formset.non_form_errors|join:" " }}</p>
     {% endif %}
 
     <div class="contributor-formset" data-contributor-formset>
@@ -152,7 +171,7 @@
                 <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ cform.affiliation }}</span><span class="muted small">Institution this person was at while working on the project. Each contributor can list their own.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
                 {% if cform.errors %}
-                <p style="color:#fca5a5;margin:.25rem 0 0">
+                <p class="field-error" style="color:#fca5a5;margin:.25rem 0 0">
                     {% for fname, errs in cform.errors.items %}
                     <strong>{{ fname }}:</strong> {{ errs|join:" " }}<br>
                     {% endfor %}
@@ -197,6 +216,26 @@
             </div>
         </fieldset>
     </template>
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="details">
+        {% include "projects/_form_field.html" with field=form.canonical_url %}
+        {% include "projects/_form_field.html" with field=form.institution %}
+        {% include "projects/_form_field.html" with field=form.funding %}
+        {% include "projects/_form_field.html" with field=form.publications %}
+        {% include "projects/_form_field.html" with field=form.tags_input %}
+        {% include "projects/_form_field.html" with field=form.wiki_requires_approval %}
+        <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="related">
+        <h2 style="margin-top:1.5rem">Related projects</h2>
+        <p class="muted">
+            Linking projects together (forks, derivatives, components you
+            build on) is coming soon. Until then, describe relationships in
+            the README.
+        </p>
+    </section>
 
     <div class="form-actions">
         {% if mode == 'edit' and project.is_public %}
@@ -700,6 +739,128 @@
             formsetRoot.querySelectorAll('[data-contributor-row]').forEach(refreshOrcidUI);
         });
         observer.observe(formsetRoot, { childList: true, subtree: false });
+    })();
+
+    (function () {
+        // Tabbed form sections. Panels are all visible without JS (the form
+        // degrades to stacked sections); with JS, one panel shows at a time
+        // and each tab carries a state mark: a check when the section is
+        // filled in, an error count after a failed submit.
+        var form = document.querySelector('[data-project-form]');
+        var nav = document.querySelector('[data-form-tabs]');
+        if (!form || !nav) return;
+        var tabs = Array.prototype.slice.call(nav.querySelectorAll('[data-form-tab]'));
+        var panels = Array.prototype.slice.call(form.querySelectorAll('[data-form-panel]'));
+        var order = tabs.map(function (t) { return t.dataset.formTab; });
+        var doneKey = 'osprey-form-done:' + window.location.pathname;
+        var done = {};
+        try { done = JSON.parse(window.localStorage.getItem(doneKey) || '{}') || {}; } catch (e) { done = {}; }
+
+        function tabByName(name) {
+            for (var i = 0; i < tabs.length; i++) {
+                if (tabs[i].dataset.formTab === name) return tabs[i];
+            }
+            return null;
+        }
+        function activate(name) {
+            tabs.forEach(function (t) { t.classList.toggle('is-active', t.dataset.formTab === name); });
+            panels.forEach(function (p) { p.hidden = p.dataset.formPanel !== name; });
+        }
+        function filled(name) {
+            var el = form.elements.namedItem(name);
+            if (!el) return false;
+            if (el.type === 'checkbox') return true;
+            return !!(el.value && String(el.value).trim());
+        }
+        function contributorsComplete() {
+            var rows = form.querySelectorAll('[data-contributor-row]');
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].hidden) continue;
+                var nameInput = rows[i].querySelector('[data-contributor-display] input, [data-contributor-display] textarea');
+                var roleInput = rows[i].querySelector('input[name$="-role"]');
+                if (nameInput && nameInput.value.trim() && roleInput && roleInput.value.trim()) return true;
+            }
+            return false;
+        }
+        function completeFor(panel) {
+            var name = panel.dataset.formPanel;
+            if (name === 'contributors') return contributorsComplete();
+            var spec = panel.dataset.checkFields;
+            if (spec) {
+                var names = spec.split(',');
+                for (var i = 0; i < names.length; i++) {
+                    if (!filled(names[i])) return false;
+                }
+                return true;
+            }
+            if (name === 'related') return false;
+            return !!done[name];
+        }
+        function refreshState() {
+            panels.forEach(function (panel) {
+                var name = panel.dataset.formPanel;
+                var tab = tabByName(name);
+                var state = tab && tab.querySelector('[data-tab-state]');
+                if (!state) return;
+                var errors = panel.querySelectorAll('.field-error').length;
+                if (errors) {
+                    state.textContent = '!';
+                    state.className = 'form-tab-state has-errors';
+                    state.title = errors + ' problem' + (errors === 1 ? '' : 's') + ' in this section';
+                } else if (completeFor(panel)) {
+                    state.textContent = '✓';
+                    state.className = 'form-tab-state is-complete';
+                    state.title = 'Section complete';
+                } else {
+                    state.textContent = '';
+                    state.className = 'form-tab-state';
+                    state.removeAttribute('title');
+                }
+                var doneBtn = panel.querySelector('[data-mark-done]');
+                if (doneBtn) {
+                    doneBtn.textContent = done[name]
+                        ? 'Marked as done ✓ (click to undo)'
+                        : 'Mark as done and continue';
+                }
+            });
+        }
+
+        nav.addEventListener('click', function (event) {
+            var btn = event.target.closest('[data-form-tab]');
+            if (btn) activate(btn.dataset.formTab);
+        });
+        form.addEventListener('click', function (event) {
+            var btn = event.target.closest('[data-mark-done]');
+            if (!btn) return;
+            var panel = btn.closest('[data-form-panel]');
+            if (!panel) return;
+            var name = panel.dataset.formPanel;
+            done[name] = !done[name];
+            try { window.localStorage.setItem(doneKey, JSON.stringify(done)); } catch (e) { /* storage unavailable */ }
+            refreshState();
+            if (done[name]) {
+                var next = order[order.indexOf(name) + 1];
+                if (next) activate(next);
+            }
+        });
+        form.addEventListener('input', refreshState);
+        form.addEventListener('change', refreshState);
+        // A required-but-empty field in a hidden panel would block submit
+        // invisibly (the browser can't focus it); reveal its panel first.
+        form.addEventListener('invalid', function (event) {
+            var panel = event.target.closest('[data-form-panel]');
+            if (panel && panel.hidden) activate(panel.dataset.formPanel);
+        }, true);
+
+        var firstError = null;
+        for (var i = 0; i < panels.length; i++) {
+            if (panels[i].querySelectorAll('.field-error').length) {
+                firstError = panels[i].dataset.formPanel;
+                break;
+            }
+        }
+        activate(firstError || order[0]);
+        refreshState();
     })();
 </script>
 {% endblock %}

@@ -1,0 +1,13 @@
+{% comment %}
+One project-form field: label with required marker, widget, help text,
+errors. Pass `field`. Error spans carry .field-error so the tab strip
+can count them per panel.
+{% endcomment %}
+<p>
+    <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required %} <span
+            class="req" aria-label="required">*</span>{% else %} <span class="muted"
+            style="font-weight:normal;font-size:.85rem">(optional)</span>{% endif %}</label><br>
+    {{ field }}
+    {% if field.help_text %}<br><span class="muted" style="font-size:.85rem">{{ field.help_text }}</span>{% endif %}
+    {% if field.errors %}<br><span class="field-error" style="color:#fca5a5">{{ field.errors|join:" " }}</span>{% endif %}
+</p>

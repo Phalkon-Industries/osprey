@@ -938,6 +938,36 @@ button.ghost:hover {
     text-decoration: none;
 }
 
+/* Submission-form tab strip: same look as project tabs, but buttons. */
+.form-tabs button.project-tab {
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.form-tabs button.project-tab.is-active {
+    border-bottom-color: var(--accent);
+}
+
+.form-tab-state {
+    font-weight: 700;
+}
+
+.form-tab-state.is-complete {
+    color: #22c55e;
+}
+
+.form-tab-state.has-errors {
+    color: #f87171;
+}
+
+.form-tab-panel[hidden] {
+    display: none !important;
+}
+
 .project-tab:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
