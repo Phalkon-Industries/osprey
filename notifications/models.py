@@ -235,6 +235,21 @@ class QueuedEmail(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="queued_emails",
+        null=True,
+        blank=True,
+        help_text="Null for external mail (contributor invites), which "
+        "carries its own to_address instead.",
+    )
+    to_address = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Raw recipient for external mail only. Ephemeral rows "
+        "are deleted right after sending so the address isn't kept.",
+    )
+    ephemeral = models.BooleanField(
+        default=False,
+        help_text="Delete this row after the send attempt settles, "
+        "instead of keeping it as a delivery record.",
     )
     group = models.CharField(max_length=20, default="")
     subject = models.CharField(max_length=300)
@@ -253,7 +268,8 @@ class QueuedEmail(models.Model):
         indexes = [models.Index(fields=["status", "scheduled_for"])]
 
     def __str__(self) -> str:
-        return f"{self.status} email to user {self.user_id}: {self.subject[:60]}"
+        who = self.user_id or self.to_address or "?"
+        return f"{self.status} email to {who}: {self.subject[:60]}"
 
 
 class Announcement(models.Model):

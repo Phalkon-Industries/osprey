@@ -351,6 +351,21 @@ class ProjectForm(forms.ModelForm):
 class ContributionForm(forms.ModelForm):
     """One row in the contributor formset."""
 
+    def clean(self):
+        cleaned = super().clean()
+        # The Project Owner's own row can't be removed: ghost-submitting
+        # for someone else means staying on the contributor list (an
+        # "Uploaded project" role is fine). Silently ignore the delete.
+        if (
+            cleaned.get("DELETE")
+            and self.instance.pk
+            and self.instance.user_id
+            and self.instance.project_id
+            and self.instance.user_id == self.instance.project.created_by_id
+        ):
+            cleaned["DELETE"] = False
+        return cleaned
+
     class Meta:
         model = Contribution
         fields = [
@@ -433,8 +448,7 @@ class NewVersionForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 6}),
         help_text=(
             "Required. Describe what is different from the previous version. "
-            "Plain text or Markdown. Shown on the project's versions page and "
-            "included in the Zenodo record's notes."
+            "Plain text or Markdown."
         ),
     )
     repo_link = forms.URLField(

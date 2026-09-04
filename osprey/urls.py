@@ -32,6 +32,11 @@ urlpatterns = [
         name="privacy_request",
     ),
     path("settings/", core_views.settings_home, name="settings"),
+    path(
+        "settings/claims/",
+        project_views.contributor_claims,
+        name="contributor_claims",
+    ),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
     path("accounts/", include("allauth.urls")),

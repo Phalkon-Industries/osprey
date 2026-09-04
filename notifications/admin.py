@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .email import build_delivery_backend, send_test_email
-from .models import Announcement, EmailSettings, Notification
+from .models import Announcement, EmailSettings, Notification, QueuedEmail
 
 
 @admin.register(Notification)
@@ -207,3 +207,42 @@ class AnnouncementAdmin(admin.ModelAdmin):
             )
             return HttpResponseRedirect(request.path)
         return super().response_change(request, obj)
+
+
+@admin.register(QueuedEmail)
+class QueuedEmailAdmin(admin.ModelAdmin):
+    """Read-only window into the outbox: what's queued, what sent, what
+    failed and why. Rows are created by events and digests, delivered by
+    the notifier loop; ephemeral invite rows delete themselves after
+    sending, so their absence means delivered."""
+
+    list_display = (
+        "created_at",
+        "status",
+        "user",
+        "to_address",
+        "group",
+        "subject",
+        "attempts",
+        "scheduled_for",
+        "sent_at",
+    )
+    list_filter = ("status", "group")
+    search_fields = ("subject", "user__username", "to_address", "last_error")
+    readonly_fields = [
+        "user",
+        "to_address",
+        "ephemeral",
+        "group",
+        "subject",
+        "body_text",
+        "status",
+        "attempts",
+        "scheduled_for",
+        "sent_at",
+        "last_error",
+        "created_at",
+    ]
+
+    def has_add_permission(self, request):
+        return False

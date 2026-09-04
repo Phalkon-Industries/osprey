@@ -21,7 +21,9 @@
         <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
         {% else %}
         <button type="submit" name="action" value="draft" class="ghost" data-submit-button>Save draft</button>
+        {% if can_publish_project %}
         <button type="submit" name="action" value="publish" data-publish-button data-submit-button>Publish</button>
+        {% endif %}
         {% if mode == 'edit' %}
         <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>
         {% endif %}
@@ -155,6 +157,13 @@
         attach a verified iD. The display name and affiliation pre-fill from
         the ORCID record; you can edit either after.
     </p>
+    <p class="muted" style="font-size:.85rem">
+        Listing someone is quiet: they can view the project but aren't
+        notified until you send a confirmation request or publish. The
+        send buttons also save the draft. Project Editor access takes
+        effect once they accept their credit.
+    </p>
+    {% if can_publish_project %}
     <datalist id="contributor-role-suggestions">
         {% for role in role_suggestions %}<option value="{{ role }}"></option>{% endfor %}
     </datalist>
@@ -166,7 +175,7 @@
 
     <div class="contributor-formset" data-contributor-formset>
         {% for cform in formset %}
-        <fieldset class="contributor-row" data-contributor-row>
+        <fieldset class="contributor-row" data-contributor-row id="contrib-{{ forloop.counter0 }}">
             <div class="contributor-controls" aria-label="Contributor row controls">
                 <button type="button" class="ghost" data-contributor-up>Up</button>
                 <button type="button" class="ghost" data-contributor-down>Down</button>
@@ -183,7 +192,7 @@
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry. Saves you typing the name, role hints, and affiliation.</span>
+                            <span class="muted small">Required to publish. Attach a verified iD by searching ORCID&apos;s public registry; it also fills the name and affiliation.</span>
                         </span>
                     </div>
                 </div>
@@ -191,6 +200,7 @@
                     <label>Display name<br><span data-contributor-display>{{ cform.display_name }}</span></label>
                     <label>Role<br>{{ cform.role }}</label>
                 </div>
+
                 <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ cform.affiliation }}</span><span class="muted small">Institution this person was at while working on the project. Each contributor can list their own.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ cform.credit_statement }}</label>
                 {% if cform.errors %}
@@ -200,12 +210,97 @@
                     {% endfor %}
                 </p>
                 {% endif %}
+                {% if can_publish_project %}
+                <div class="contributor-access" data-contributor-access>
+                    <div class="contributor-access-label">Status &amp; access</div>
+                    {% if cform.instance.pk and cform.instance.user_id and cform.instance.user_id == project.created_by_id %}
+                    <p class="contributor-access-status"><strong>Project Owner</strong></p>
+                    {% else %}
+                    <p class="contributor-access-status" data-access-status>
+                        {% if cform.instance.claim_status == "verified" %}
+                        Status: <span class="access-accepted">Accepted &#10004;</span>
+                        {% elif cform.instance.claim_status == "invited" %}
+                        Status: {% if cform.instance.orcid_id in known_orcids %}Confirmation request sent{% else %}OSPREY invitation sent{% endif %}
+                        {% elif cform.instance.claim_status == "declined" %}
+                        Status: Declined
+                        {% elif cform.instance.claim_status == "disputed" %}
+                        Status: Removal requested
+                        {% elif not cform.instance.orcid_id %}
+                        Status: No ORCID iD attached
+                        {% elif cform.instance.orcid_id in known_orcids %}
+                        Status: Listed, waiting to send confirmation
+                        {% else %}
+                        Status: Not on OSPREY yet
+                        {% endif %}
+                    </p>
+                    <div class="contributor-access-controls">
+                        {% if not cform.instance.pk or cform.instance.claim_status == "unclaimed" %}
+                        <span data-access-confirm-wrap {% if cform.instance.pk and not cform.instance.orcid_id in known_orcids %}hidden{% endif %}>
+                            <button type="submit" class="ghost" name="contrib_confirm" value="{{ forloop.counter0 }}" data-access-confirm
+                                {% if cform.instance.pk and not cform.instance.orcid_id %}disabled{% endif %}
+                                title="Saves the draft and sends the request">Send confirmation request</button>
+                        </span>
+                        {% endif %}
+                        {% if cform.instance.claim_status != "declined" and cform.instance.claim_status != "disputed" %}
+                        <label><input type="checkbox" name="contrib_editor" value="{{ forloop.counter0 }}" data-access-editor
+                            {% if cform.instance.editor %}checked{% endif %}
+                            {% if cform.instance.pk and not cform.instance.orcid_id %}disabled{% endif %}>
+                            Project Editor{% if cform.instance.claim_status != "verified" %} <span class="muted">(takes effect after they accept)</span>{% endif %}</label>
+                        {% endif %}
+                    </div>
+                    <div class="contributor-access-controls" data-access-email {% if not cform.instance.orcid_id or cform.instance.orcid_id in known_orcids or cform.instance.claim_status == "verified" or cform.instance.claim_status == "declined" or cform.instance.claim_status == "disputed" %}hidden{% endif %}>
+                        <input type="email" name="contrib_invite_email_{{ forloop.counter0 }}"
+                            placeholder="their email (one-time, not stored)"
+                            style="min-width:18rem">
+                        <button type="submit" class="ghost" name="contrib_send_invite" value="{{ forloop.counter0 }}"
+                            title="Saves the draft and emails the invitation">{% if cform.instance.claim_status == "invited" %}Resend OSPREY invite{% else %}Send OSPREY invite{% endif %}</button>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if not cform.instance.pk or not cform.instance.user_id or cform.instance.user_id != project.created_by_id %}
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
+                {% endif %}
             </div>
         </fieldset>
         {% endfor %}
     </div>
     <button type="button" class="ghost" data-add-contributor>Add contributor</button>
+
+    {% if mode == 'edit' and can_publish_project %}
+    <section class="lineage-row" style="margin-top:1.25rem">
+        <h3 style="margin:.25rem 0">Project Ownership</h3>
+        <p class="muted" style="font-size:.85rem;margin:.25rem 0">
+            Project Owner: @{{ project.created_by.get_username }}.<br>
+            Contributors with the Project Editor box ticked can edit the
+            project once they accept. Only the Project Owner can publish.
+        </p>
+        {% if project.pending_owner %}
+        <p class="muted" style="font-size:.85rem">
+            Ownership transfer pending:
+            @{{ project.pending_owner.get_username }} hasn't answered yet.
+            <label style="margin-left:.5rem"><input type="checkbox" name="cancel_transfer" value="1"> cancel on save</label>
+        </p>
+        {% elif verified_contributors %}
+        <label class="muted" style="font-size:.85rem">Transfer ownership to<br>
+            <select name="transfer_to" style="max-width:20rem">
+                <option value="">— keep ownership —</option>
+                {% for c in verified_contributors %}
+                <option value="{{ c.pk }}">{{ c.display_name }} (@{{ c.user.get_username }})</option>
+                {% endfor %}
+            </select>
+        </label>
+        <p class="muted" style="font-size:.85rem;margin:.25rem 0 0">
+            Takes effect only when they accept. You stay on as an editor.
+        </p>
+        {% else %}
+        <p class="muted" style="font-size:.85rem">
+            Ownership can be transferred once another contributor has
+            accepted their listing.
+        </p>
+        {% endif %}
+    </section>
+    {% endif %}
 
     <template id="contributor-empty-form">
         <fieldset class="contributor-row" data-contributor-row>
@@ -225,7 +320,7 @@
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Attach a verified iD by searching ORCID&apos;s public registry. Saves you typing the name, role hints, and affiliation.</span>
+                            <span class="muted small">Required to publish. Attach a verified iD by searching ORCID&apos;s public registry; it also fills the name and affiliation.</span>
                         </span>
                     </div>
                 </div>
@@ -235,14 +330,45 @@
                 </div>
                 <label class="contributor-credit">Affiliation (optional)<br><span data-contributor-affiliation>{{ formset.empty_form.affiliation }}</span><span class="muted small">Institution this person was at while working on the project.</span></label>
                 <label class="contributor-credit">Credit statement<br>{{ formset.empty_form.credit_statement }}</label>
+                {% if can_publish_project %}
+                <div class="contributor-access" data-contributor-access>
+                    <div class="contributor-access-label">Status &amp; access</div>
+                    <p class="contributor-access-status" data-access-status>Status: No ORCID iD attached</p>
+                    <div class="contributor-access-controls">
+                        <span data-access-confirm-wrap>
+                            <button type="submit" class="ghost" name="contrib_confirm" value="__prefix__" data-access-confirm disabled
+                                title="Saves the draft and sends the request">Send confirmation request</button>
+                        </span>
+                        <label><input type="checkbox" name="contrib_editor" value="__prefix__" data-access-editor disabled>
+                            Project Editor <span class="muted">(takes effect after they accept)</span></label>
+                    </div>
+                    <div class="contributor-access-controls" data-access-email hidden>
+                        <input type="email" name="contrib_invite_email___prefix__"
+                            placeholder="their email (one-time, not stored)"
+                            style="min-width:18rem">
+                        <button type="submit" class="ghost" name="contrib_send_invite" value="__prefix__"
+                            title="Saves the draft and emails the invitation">Send OSPREY invite</button>
+                    </div>
+                </div>
+                {% endif %}
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
             </div>
         </fieldset>
     </template>
     <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    {% else %}
+    <ul class="contributor-list">
+        {% for c in project.contributions.all %}
+        <li>{{ c.display_name }} <span class="muted">— {{ c.role }}</span></li>
+        {% endfor %}
+    </ul>
+    <p class="muted" style="font-size:.85rem">
+        Only the Project Owner can edit the contributor list.
+    </p>
+    {% endif %}
     </section>
 
-    <section class="form-tab-panel" data-form-panel="details">
+    <section class="form-tab-panel" data-form-panel="details">    <section class="form-tab-panel" data-form-panel="details">
         {% include "projects/_form_field.html" with field=form.field %}
         {% include "projects/_form_field.html" with field=form.canonical_url %}
         {% include "projects/_form_field.html" with field=form.institution %}
@@ -653,7 +779,37 @@
             var affInput = activeRow.querySelector('[data-contributor-affiliation] input, [data-contributor-affiliation] textarea');
             if (affInput && result.affiliation && !affInput.value.trim()) affInput.value = result.affiliation;
             refreshOrcidUI(activeRow);
+            updateAccessStrip(activeRow, result);
             closeModal();
+        }
+        function updateAccessStrip(row, result) {
+            var access = row.querySelector('[data-contributor-access]');
+            if (!access) return;
+            var status = access.querySelector('[data-access-status]');
+            var confirmWrap = access.querySelector('[data-access-confirm-wrap]');
+            var confirm = access.querySelector('[data-access-confirm]');
+            var editor = access.querySelector('[data-access-editor]');
+            var emailWrap = access.querySelector('[data-access-email]');
+            if (result === null) {
+                if (status) status.textContent = 'Status: No ORCID iD attached';
+                if (confirmWrap) confirmWrap.hidden = false;
+                if (confirm) { confirm.disabled = true; confirm.checked = false; }
+                if (editor) { editor.disabled = true; editor.checked = false; }
+                if (emailWrap) emailWrap.hidden = true;
+                return;
+            }
+            if (editor) editor.disabled = false;
+            if (result.on_osprey) {
+                if (status) status.textContent = 'Status: Listed, waiting to send confirmation';
+                if (confirmWrap) confirmWrap.hidden = false;
+                if (confirm) confirm.disabled = false;
+                if (emailWrap) emailWrap.hidden = true;
+            } else {
+                if (status) status.textContent = 'Status: Not on OSPREY yet';
+                if (confirmWrap) confirmWrap.hidden = true;
+                if (confirm) { confirm.disabled = true; confirm.checked = false; }
+                if (emailWrap) emailWrap.hidden = false;
+            }
         }
         function refreshOrcidUI(row) {
             var hidden = row.querySelector('input[data-contributor-orcid]');
@@ -683,6 +839,7 @@
                 var hidden = row.querySelector('input[data-contributor-orcid]');
                 if (hidden) hidden.value = '';
                 refreshOrcidUI(row);
+                updateAccessStrip(row, null);
             }
         });
 
@@ -979,8 +1136,24 @@
                 break;
             }
         }
-        activate(firstError || order[0]);
+        var requested = new URLSearchParams(window.location.search).get('tab');
+        if (requested && order.indexOf(requested) === -1) requested = null;
+        activate(firstError || requested || order[0]);
         refreshState();
+        // A send button's redirect anchors to the row it acted on, but
+        // the browser's own anchor scroll runs before the tabs hide the
+        // other panels, and can fire again at load; correct it at every
+        // point the layout can have shifted.
+        function scrollToActedRow() {
+            if (window.location.hash.indexOf('#contrib-') !== 0) return;
+            var target = document.querySelector(window.location.hash);
+            if (target) target.scrollIntoView({ block: 'center' });
+        }
+        scrollToActedRow();
+        window.addEventListener('load', function () {
+            scrollToActedRow();
+            setTimeout(scrollToActedRow, 150);
+        });
     })();
 </script>
 {% endblock %}

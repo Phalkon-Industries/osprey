@@ -1014,6 +1014,51 @@ button.ghost:hover {
     display: none !important;
 }
 
+/* Invitation & access sub-section of a contributor card */
+.contributor-access {
+    border-top: 1px solid var(--border-soft);
+    margin-top: 0.6rem;
+    padding-top: 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+}
+
+.contributor-access-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.contributor-access-status {
+    margin: 0;
+    color: var(--fg);
+}
+
+.contributor-access-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* display:flex would otherwise defeat the hidden attribute. */
+.contributor-access-controls[hidden] {
+    display: none !important;
+}
+
+.contributor-access-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.access-accepted {
+    color: #22c55e;
+    font-weight: 600;
+}
+
 /* Lineage rows on the submission form */
 .lineage-row {
     border: 1px solid var(--border);
@@ -1094,8 +1139,8 @@ summary.lineage-action::-webkit-details-marker {
     text-overflow: ellipsis;
 }
 
-.project-form .lineage-row-fields select,
-.project-form .lineage-row-fields input {
+.lineage-row-fields select,
+.lineage-row-fields input {
     width: auto;
 }
 
@@ -1104,8 +1149,9 @@ summary.lineage-action::-webkit-details-marker {
     min-width: 14rem;
 }
 
-.project-form .lineage-row .lineage-target input {
+.lineage-row .lineage-target input {
     width: 100%;
+    box-sizing: border-box;
 }
 
 .lineage-preview {

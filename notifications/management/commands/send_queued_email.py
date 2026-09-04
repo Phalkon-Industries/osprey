@@ -32,7 +32,10 @@ class Command(BaseCommand):
         sent = failed = cancelled = 0
         with transaction.atomic():
             due = list(
-                QueuedEmail.objects.select_for_update(skip_locked=True)
+                # of=("self",): user is nullable now (external invite
+                # rows), and Postgres refuses FOR UPDATE on the nullable
+                # side of the join select_related would add.
+                QueuedEmail.objects.select_for_update(skip_locked=True, of=("self",))
                 .filter(status=QueuedEmail.STATUS_QUEUED, scheduled_for__lte=now)
                 .select_related("user")[: options["limit"]]
             )
@@ -55,26 +58,42 @@ class Command(BaseCommand):
         # are re-checked here, so digest rows pass through too.)
         from notifications.models import NotificationPreference
 
-        to_address = emails.verified_address_for(row.user)
-        preference = NotificationPreference.for_user(row.user)
-        if not to_address or not preference.email_enabled:
-            row.status = QueuedEmail.STATUS_CANCELLED
-            row.save(update_fields=["status"])
-            return "cancelled"
-        message = EmailMessage(
-            subject=row.subject,
-            body=row.body_text + emails.email_footer(row.user, row.group),
-            to=[to_address],
-            headers={
-                "List-Unsubscribe": "<"
-                + emails.absolute_url(
-                    "/inbox/unsubscribe/"
-                    + emails.make_unsubscribe_token(row.user, "all")
-                    + "/"
-                )
-                + ">",
-            },
-        )
+        if row.user is None:
+            # External mail (contributor invites): raw address, no
+            # account to unsubscribe, body carries its own explanation.
+            if not row.to_address:
+                if row.ephemeral:
+                    row.delete()
+                else:
+                    row.status = QueuedEmail.STATUS_CANCELLED
+                    row.save(update_fields=["status"])
+                return "cancelled"
+            message = EmailMessage(
+                subject=row.subject,
+                body=row.body_text,
+                to=[row.to_address],
+            )
+        else:
+            to_address = emails.verified_address_for(row.user)
+            preference = NotificationPreference.for_user(row.user)
+            if not to_address or not preference.email_enabled:
+                row.status = QueuedEmail.STATUS_CANCELLED
+                row.save(update_fields=["status"])
+                return "cancelled"
+            message = EmailMessage(
+                subject=row.subject,
+                body=row.body_text + emails.email_footer(row.user, row.group),
+                to=[to_address],
+                headers={
+                    "List-Unsubscribe": "<"
+                    + emails.absolute_url(
+                        "/inbox/unsubscribe/"
+                        + emails.make_unsubscribe_token(row.user, "all")
+                        + "/"
+                    )
+                    + ">",
+                },
+            )
         try:
             message.send(fail_silently=False)
         except Exception as exc:  # noqa: BLE001 - provider/network errors
@@ -82,6 +101,10 @@ class Command(BaseCommand):
             row.attempts += 1
             row.last_error = str(exc)[:1000]
             if row.attempts >= MAX_ATTEMPTS:
+                if row.ephemeral:
+                    # The address must not linger on a dead row.
+                    row.delete()
+                    return "failed"
                 row.status = QueuedEmail.STATUS_FAILED
             else:
                 delay = BACKOFF_BASE_MINUTES * (2 ** (row.attempts - 1))
@@ -90,6 +113,10 @@ class Command(BaseCommand):
                 update_fields=["attempts", "last_error", "status", "scheduled_for"]
             )
             return "failed"
+        if row.ephemeral:
+            # Sent; drop the row so the raw address isn't kept anywhere.
+            row.delete()
+            return "sent"
         row.status = QueuedEmail.STATUS_SENT
         row.sent_at = timezone.now()
         row.save(update_fields=["status", "sent_at"])

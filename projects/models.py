@@ -153,6 +153,15 @@ class Project(models.Model):
         default=VISIBILITY_PRIVATE,
         help_text="Drafts default to private. Flip to public when ready to share.",
     )
+    pending_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_ownerships",
+        help_text="Ownership transfer offered to this user; takes effect "
+        "only when they accept. One pending transfer at a time.",
+    )
     is_staff_hidden = models.BooleanField(
         default=False,
         help_text=(
@@ -292,20 +301,51 @@ class Project(models.Model):
             return False
         if user.is_staff:
             return True
-        return (
+        if (
             self.contributions.filter(user=user).exists()
             or self.created_by_id == user.id
+        ):
+            return True
+        # Being listed (by ORCID iD) grants quiet view access to drafts:
+        # the owner deliberately attached that exact iD, and asking
+        # someone to confirm credit on a draft they can't see would be
+        # backwards. Declined listings give it up.
+        uids = list(
+            user.socialaccount_set.filter(provider="orcid").values_list(
+                "uid", flat=True
+            )
         )
+        if uids:
+            return (
+                self.contributions.exclude(claim_status="declined")
+                .filter(orcid_id__in=uids)
+                .exists()
+            )
+        return False
 
     def editable_by(self, user) -> bool:
+        """Owner, staff, or a verified contributor with the editor flag.
+
+        Credit and access are decoupled (decided 2026-09-04): being
+        listed never confers edit rights by itself; the owner grants
+        them per contributor via the editor flag.
+        """
         if user is None or not user.is_authenticated:
             return False
         if user.is_staff:
             return True
-        return (
-            self.contributions.filter(user=user).exists()
-            or self.created_by_id == user.id
-        )
+        if self.created_by_id == user.id:
+            return True
+        return self.contributions.filter(
+            user=user, claim_status="verified", editor=True
+        ).exists()
+
+    def publishable_by(self, user) -> bool:
+        """Publishing (and new versions) mint DOIs; only the owner (or
+        staff) holds that irreversible click."""
+        if user is None or not user.is_authenticated:
+            return False
+        return user.is_staff or self.created_by_id == user.id
 
     @property
     def normalized_doi(self) -> str:
@@ -517,9 +557,27 @@ class ProjectDepositVersion(models.Model):
 class Contribution(models.Model):
     """A credit row on a project.
 
-    ORCID iDs are only populated from authenticated ORCID sign-in. Named
-    contributors can be listed before they have claimed or verified a row.
+    Listing is a claim about a person, so it needs their consent before
+    it links anywhere: a row starts unclaimed, the person is invited
+    (manually at draft stage or automatically at publish), and only
+    their acceptance sets `user` and shows the row as verified. The
+    `editor` flag is the project's whole access model: edit rights are
+    owner + verified rows with editor on, nothing else. Pre-granting is
+    fine; the flag has no effect until the row verifies.
     """
+
+    CLAIM_UNCLAIMED = "unclaimed"
+    CLAIM_INVITED = "invited"
+    CLAIM_VERIFIED = "verified"
+    CLAIM_DECLINED = "declined"
+    CLAIM_DISPUTED = "disputed"
+    CLAIM_CHOICES = [
+        (CLAIM_UNCLAIMED, "Not invited"),
+        (CLAIM_INVITED, "Confirmation requested"),
+        (CLAIM_VERIFIED, "Accepted"),
+        (CLAIM_DECLINED, "Declined"),
+        (CLAIM_DISPUTED, "Removal requested"),
+    ]
 
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="contributions"
@@ -557,6 +615,15 @@ class Contribution(models.Model):
             "Free text. Different contributors can list different institutions."
         ),
     )
+    claim_status = models.CharField(
+        max_length=12, choices=CLAIM_CHOICES, default=CLAIM_UNCLAIMED
+    )
+    editor = models.BooleanField(
+        default=False,
+        help_text="Owner-granted edit access. Takes effect only once the "
+        "row is verified.",
+    )
+    invited_at = models.DateTimeField(null=True, blank=True)
     credit_statement = models.CharField(
         max_length=400,
         blank=True,
@@ -594,19 +661,9 @@ class Contribution(models.Model):
             return self.orcid_id
         return ""
 
-    def save(self, *args, **kwargs):
-        if self.orcid_id and self.user_id is None:
-            # Try to attach an existing user with this ORCID iD.
-            from people.models import Profile  # avoid circular import at module load
-
-            profile = (
-                Profile.objects.filter(orcid_placeholder=self.orcid_id)
-                .select_related("user")
-                .first()
-            )
-            if profile is not None:
-                self.user = profile.user
-        super().save(*args, **kwargs)
+    # Note: rows are never auto-linked to users anymore. Linking happens
+    # only through the claim flow (invite -> the person accepts), so a
+    # listing can't attach to someone's profile without their consent.
 
 
 class ArtifactLink(models.Model):

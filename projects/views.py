@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from allauth.socialaccount.models import SocialAccount
 from django_ratelimit.decorators import ratelimit
@@ -29,6 +30,7 @@ from .models import (
     ProjectDeposit,
     Watch,
 )
+from . import claiming
 from . import lineage as lineage_claims
 from .models import LineageEdge, ProjectDepositVersion
 from .zenodo import (
@@ -133,6 +135,10 @@ def _activate_lineage(project: Project) -> None:
         lineage_claims.activate_pending(project)
     except Exception:
         logger.exception("lineage activation failed for %s", project.slug)
+    try:
+        claiming.sweep_on_publish(project)
+    except Exception:
+        logger.exception("contributor invite sweep failed for %s", project.slug)
 
 
 def _looks_like_zip(upload) -> bool:
@@ -226,13 +232,26 @@ def orcid_search_json(request):
     if not query:
         return JsonResponse({"results": [], "error": ""})
     cache_key = f"orcid-search:{query.lower()}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return JsonResponse(cached)
-    data = expanded_search(query, rows=10)
-    if not data.get("error"):
-        cache.set(cache_key, data, 300)
-    return JsonResponse(data)
+    data = cache.get(cache_key)
+    if data is None:
+        data = expanded_search(query, rows=10)
+        if not data.get("error"):
+            cache.set(cache_key, data, 300)
+    # Annotate whether each iD already has an OSPREY account, computed
+    # fresh (not cached) so the contributor form can decide between an
+    # in-app invite and a one-time email invite.
+    results = data.get("results") or []
+    ids = [r.get("orcid_id") for r in results if r.get("orcid_id")]
+    known = set(
+        SocialAccount.objects.filter(
+            provider="orcid", uid__in=ids, user__is_active=True
+        ).values_list("uid", flat=True)
+    )
+    payload = dict(data)
+    payload["results"] = [
+        {**r, "on_osprey": r.get("orcid_id") in known} for r in results
+    ]
+    return JsonResponse(payload)
 
 
 def project_list(request):
@@ -320,7 +339,7 @@ def project_detail(request, slug: str):
             "citations_count": citations_count,
             "is_watching": is_watching,
             "can_new_version": bool(
-                project.editable_by(request.user)
+                project.publishable_by(request.user)
                 and deposit
                 and deposit.state == ProjectDeposit.STATE_PUBLISHED
             ),
@@ -462,6 +481,190 @@ def _display_name_for(user) -> str:
     return profile_name or user.get_full_name() or user.get_username()
 
 
+def _osprey_invite_rate_limited(request) -> bool:
+    """1/min burst plus an hourly cap on invite-to-OSPREY emails. The
+    address is never stored, so re-sending means re-entering it; these
+    limits keep that from becoming a harassment channel."""
+    if not settings.RATELIMIT_ENABLE:
+        return False
+    from django_ratelimit.core import is_ratelimited
+
+    burst = is_ratelimited(
+        request,
+        group="projects.osprey_invite_burst",
+        key="user",
+        rate="1/m",
+        increment=True,
+    )
+    hourly = is_ratelimited(
+        request,
+        group="projects.osprey_invite",
+        key="user",
+        rate=settings.RATELIMIT_OSPREY_INVITE,
+        increment=True,
+    )
+    return burst or hourly
+
+
+def _send_button_used(request) -> bool:
+    """True when the save came from a per-row send button, so the user
+    should land back on the form's Contributors tab, not the project
+    page."""
+    return bool(
+        request.POST.get("contrib_confirm")
+        or request.POST.get("contrib_send_invite")
+    )
+
+
+def _send_return_url(request, slug: str) -> str:
+    """Edit-form URL that reopens the Contributors tab, scrolled to the
+    row whose send button was pressed."""
+    index = request.POST.get("contrib_confirm") or request.POST.get(
+        "contrib_send_invite"
+    )
+    anchor = f"#contrib-{index}" if index and str(index).isdigit() else ""
+    return (
+        reverse("projects:edit", args=[slug]) + "?tab=contributors" + anchor
+    )
+
+
+def _process_access(request, project: Project, formset) -> None:
+    """Owner-only: apply Project Editor checkboxes, fire invites flagged
+    for this save, and handle the transfer-ownership pick.
+
+    Everything is keyed by formset index rather than pk, so it works in
+    the same request that creates the rows: no save-and-reopen dance.
+    Only rows actually rendered in the submitted formset are touched.
+    """
+    if project.created_by_id != request.user.id:
+        return
+    editor_indices = set(request.POST.getlist("contrib_editor"))
+    confirm_indices = set(request.POST.getlist("contrib_confirm"))
+    send_invite_indices = set(request.POST.getlist("contrib_send_invite"))
+    if confirm_indices and settings.RATELIMIT_ENABLE:
+        from django_ratelimit.core import is_ratelimited
+
+        if is_ratelimited(
+            request,
+            group="projects.confirm_request",
+            key="user",
+            rate=settings.RATELIMIT_CONTRIBUTOR_INVITE,
+            increment=True,
+        ):
+            messages.error(
+                request,
+                "Too many confirmation requests in a short time; try "
+                "again later.",
+            )
+            confirm_indices = set()
+    for i, form in enumerate(formset.forms):
+        row = form.instance
+        if not row.pk:
+            continue
+        if form.cleaned_data.get("DELETE"):
+            continue
+        if row.user_id and row.user_id == project.created_by_id:
+            continue  # the owner needs no editor flag
+        should = str(i) in editor_indices
+        if row.editor != should:
+            row.editor = should
+            row.save(update_fields=["editor"])
+            if should and row.claim_status == Contribution.CLAIM_VERIFIED:
+                try:
+                    from notifications import events
+
+                    events.editor_granted(row, request.user)
+                except Exception:
+                    logger.exception("editor_granted notification failed")
+        if str(i) in confirm_indices:
+            error = claiming.request_confirmation(row, request.user)
+            if error:
+                messages.warning(
+                    request,
+                    f"Confirmation request for {row.display_name}: {error}",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"Confirmation requested from {row.display_name}.",
+                )
+        email = (request.POST.get(f"contrib_invite_email_{i}") or "").strip()
+        if str(i) in send_invite_indices and not email:
+            messages.warning(
+                request,
+                f"OSPREY invite for {row.display_name}: enter an email "
+                "address first.",
+            )
+        if str(i) in send_invite_indices and email:
+            if _osprey_invite_rate_limited(request):
+                messages.error(
+                    request,
+                    "Too many OSPREY invitations; wait a minute and try "
+                    "again.",
+                )
+            else:
+                error = claiming.send_osprey_invite(row, request.user, email)
+                if error:
+                    messages.warning(
+                        request,
+                        f"OSPREY invite for {row.display_name}: {error}",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"One-time OSPREY invitation emailed for "
+                        f"{row.display_name}. Re-enter the address later "
+                        "to send it again.",
+                    )
+    transfer_to = request.POST.get("transfer_to", "")
+    if request.POST.get("cancel_transfer") and project.pending_owner_id:
+        project.pending_owner = None
+        project.save(update_fields=["pending_owner"])
+        messages.info(request, "Ownership transfer cancelled.")
+    elif transfer_to.isdigit() and not project.pending_owner_id:
+        row = project.contributions.filter(
+            pk=int(transfer_to),
+            claim_status=Contribution.CLAIM_VERIFIED,
+            user__isnull=False,
+        ).first()
+        if row and row.user_id != project.created_by_id:
+            project.pending_owner = row.user
+            project.save(update_fields=["pending_owner"])
+            try:
+                from notifications import events
+
+                events.ownership_transfer_offered(project, request.user)
+            except Exception:
+                logger.exception("transfer_offered notification failed")
+            messages.success(
+                request,
+                f"Ownership transfer offered to {row.display_name}. It "
+                "takes effect when they accept.",
+            )
+
+
+def _contributors_missing_orcid(post) -> list[str]:
+    """Names of non-deleted contributor rows lacking an ORCID iD.
+
+    Publish gate (decided 2026-09-04): every contributor needs an
+    attached iD, so all credit stays claimable and verifiable. Drafts
+    are lax; the check runs on the publish action only.
+    """
+    try:
+        total = int(post.get("contributions-TOTAL_FORMS", "0"))
+    except (TypeError, ValueError):
+        return []
+    missing = []
+    for i in range(total):
+        if post.get(f"contributions-{i}-DELETE"):
+            continue
+        name = (post.get(f"contributions-{i}-display_name") or "").strip()
+        orcid = (post.get(f"contributions-{i}-orcid_id") or "").strip()
+        if name and not orcid:
+            missing.append(name)
+    return missing
+
+
 def _attach_verified_submitter(project: Project, user, orcid_id: str) -> None:
     if not orcid_id:
         return
@@ -483,6 +686,9 @@ def _attach_verified_submitter(project: Project, user, orcid_id: str) -> None:
         )
     contribution.user = user
     contribution.orcid_id = orcid_id
+    # Attaching the person who is signed in and saving right now needs
+    # no invite: it's self-consent by definition.
+    contribution.claim_status = Contribution.CLAIM_VERIFIED
     if not contribution.display_name:
         contribution.display_name = display_name
     if not contribution.role:
@@ -503,6 +709,15 @@ def project_new(request):
         can_publish = action != "publish" or bool(verified_orcid)
         if not can_publish:
             form.add_error(None, "Sign in with ORCID before publishing a project.")
+        if action == "publish" and can_publish:
+            missing = _contributors_missing_orcid(request.POST)
+            if missing:
+                can_publish = False
+                form.add_error(
+                    None,
+                    "Every contributor needs an attached ORCID iD before "
+                    f"publishing. Missing for: {', '.join(missing)}.",
+                )
         if form.is_valid() and formset.is_valid() and can_publish:
             project = form.save(commit=False)
             project.created_by = request.user
@@ -512,6 +727,7 @@ def project_new(request):
             formset.instance = project
             formset.save()
             _attach_verified_submitter(project, request.user, verified_orcid)
+            _process_access(request, project, formset)
             _process_attachments(request, project)
             _process_lineage(request, project)
             if action == "publish":
@@ -544,6 +760,8 @@ def project_new(request):
                     request,
                     f"Draft saved as “{project.title}.” You can find it on your profile page under Your projects.",
                 )
+            if _send_button_used(request):
+                return redirect(_send_return_url(request, project.slug))
             return redirect(project.get_absolute_url())
     else:
         form = ProjectForm()
@@ -559,6 +777,7 @@ def project_new(request):
             "mode": "new",
             "project": None,
             "role_suggestions": ROLE_SUGGESTIONS,
+            "can_publish_project": True,
         },
     )
 
@@ -568,22 +787,51 @@ def project_edit(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     if not project.editable_by(request.user):
         raise Http404
+    # The contributor list (and everything riding on it: credit, invites,
+    # editor grants, transfer) is owner-only. Editors edit content; the
+    # formset from their POST is ignored entirely.
+    manage_contributors = project.publishable_by(request.user)
     if request.method == "POST":
         action = request.POST.get("action", "save")
         verified_orcid = _verified_orcid_for(request.user)
         form = ProjectForm(request.POST, request.FILES, instance=project)
-        formset = ContributionFormSet(request.POST, instance=project)
+        if manage_contributors:
+            formset = ContributionFormSet(request.POST, instance=project)
+        else:
+            formset = ContributionFormSet(instance=project)
         can_publish = action != "publish" or bool(verified_orcid)
         if not can_publish:
             form.add_error(None, "Sign in with ORCID before publishing a project.")
-        if form.is_valid() and formset.is_valid() and can_publish:
+        if action == "publish" and not project.publishable_by(request.user):
+            can_publish = False
+            form.add_error(
+                None,
+                "Only the project owner can publish. Your changes can "
+                "still be saved as a draft.",
+            )
+        if action == "publish" and can_publish:
+            missing = _contributors_missing_orcid(request.POST)
+            if missing:
+                can_publish = False
+                form.add_error(
+                    None,
+                    "Every contributor needs an attached ORCID iD before "
+                    f"publishing. Missing for: {', '.join(missing)}.",
+                )
+        if (
+            form.is_valid()
+            and (not manage_contributors or formset.is_valid())
+            and can_publish
+        ):
             saved = form.save(commit=False)
             was_public = project.visibility == Project.VISIBILITY_PUBLIC
             saved.visibility = _resolve_visibility(project, action, is_new=False)
             saved.save()
             form.save_m2m()
-            formset.save()
-            _attach_verified_submitter(saved, request.user, verified_orcid)
+            if manage_contributors:
+                formset.save()
+                _attach_verified_submitter(saved, request.user, verified_orcid)
+                _process_access(request, saved, formset)
             _process_attachments(request, saved)
             _process_lineage(request, saved)
             if action == "publish" and not was_public:
@@ -637,6 +885,8 @@ def project_edit(request, slug: str):
                     )
             else:
                 messages.success(request, "Project updated.")
+            if _send_button_used(request):
+                return redirect(_send_return_url(request, saved.slug))
             return redirect(saved.get_absolute_url())
     else:
         form = ProjectForm(instance=project)
@@ -650,6 +900,26 @@ def project_edit(request, slug: str):
             "mode": "edit",
             "project": project,
             "role_suggestions": ROLE_SUGGESTIONS,
+            "can_publish_project": project.publishable_by(request.user),
+            "known_orcids": set(
+                SocialAccount.objects.filter(
+                    provider="orcid",
+                    uid__in=[
+                        c.orcid_id
+                        for c in project.contributions.all()
+                        if c.orcid_id
+                    ],
+                    user__is_active=True,
+                ).values_list("uid", flat=True)
+            ),
+            "verified_contributors": list(
+                project.contributions.filter(
+                    claim_status=Contribution.CLAIM_VERIFIED,
+                    user__isnull=False,
+                )
+                .exclude(user=project.created_by)
+                .select_related("user")
+            ),
             "existing_lineage": list(
                 project.lineage_parents.exclude(
                     status=LineageEdge.STATUS_WITHDRAWN
@@ -680,6 +950,11 @@ def project_zenodo_new_version(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     if not project.editable_by(request.user):
         raise Http404
+    if not project.publishable_by(request.user):
+        messages.error(
+            request, "Only the project owner can publish new versions."
+        )
+        return redirect(project.get_absolute_url())
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
     if deposit is None or deposit.state != ProjectDeposit.STATE_PUBLISHED:
         messages.error(
@@ -1160,6 +1435,118 @@ def lineage_withdraw(request, slug: str, edge_id: int):
         "projects/lineage_withdraw.html",
         {"project": project, "edge": edge},
     )
+
+
+@login_required
+def contributor_claims(request):
+    """The claims page under Settings: pending invites plus accepted
+    listings, with the leave/removal actions."""
+    if request.method == "POST":
+        contribution = get_object_or_404(
+            Contribution, pk=request.POST.get("contribution_id")
+        )
+        action = request.POST.get("action", "")
+        error = None
+        if action == "accept":
+            error = claiming.accept(contribution, request.user)
+            if error is None:
+                extra = (
+                    " You can edit the project."
+                    if contribution.editor
+                    else ""
+                )
+                messages.success(
+                    request,
+                    f"You've accepted the contributor listing on "
+                    f"“{contribution.project.title}”.{extra}",
+                )
+        elif action == "decline":
+            report = request.POST.get("report") == "1"
+            reason = request.POST.get("reason", "") if report else None
+            error = claiming.decline(contribution, request.user, reason)
+            if error is None:
+                messages.success(
+                    request,
+                    "Listing declined."
+                    + (" Staff have been notified." if report else ""),
+                )
+        elif action == "leave":
+            error = claiming.leave_draft(contribution, request.user)
+            if error is None:
+                messages.success(request, "You've left the draft.")
+        elif action == "request_removal":
+            error = claiming.request_removal(
+                contribution, request.user, request.POST.get("reason", "")
+            )
+            if error is None:
+                messages.success(
+                    request,
+                    "Removal requested. Staff will review it and be in touch.",
+                )
+        else:
+            error = "Unknown action."
+        if error:
+            messages.error(request, error)
+        return redirect("contributor_claims")
+    return render(
+        request,
+        "projects/contributor_claims.html",
+        {
+            "pending": list(claiming.pending_for(request.user)),
+            "accepted": list(claiming.verified_for(request.user)),
+            "settings_tab": "claims",
+        },
+    )
+
+
+@login_required
+def ownership_transfer_respond(request, slug: str):
+    """The intended new owner accepts or declines a pending transfer."""
+    if request.method != "POST":
+        return redirect("projects:detail", slug=slug)
+    project = get_object_or_404(Project, slug=slug)
+    if project.pending_owner_id != request.user.id:
+        raise Http404
+    old_owner = project.created_by
+    accepted = request.POST.get("action") == "accept"
+    if accepted:
+        project.created_by = request.user
+        project.pending_owner = None
+        project.save(update_fields=["created_by", "pending_owner"])
+        # The previous owner keeps working access as a verified editor;
+        # create their row if they never listed themselves.
+        if old_owner is not None:
+            row = project.contributions.filter(user=old_owner).first()
+            if row is None:
+                project.contributions.create(
+                    user=old_owner,
+                    display_name=old_owner.get_full_name()
+                    or old_owner.get_username(),
+                    role="Previous owner",
+                    orcid_id=claiming.orcid_for(old_owner),
+                    claim_status=Contribution.CLAIM_VERIFIED,
+                    editor=True,
+                    order=project.contributions.count(),
+                )
+            else:
+                row.editor = True
+                if row.claim_status != Contribution.CLAIM_VERIFIED:
+                    row.claim_status = Contribution.CLAIM_VERIFIED
+                row.save(update_fields=["editor", "claim_status"])
+        messages.success(request, "You now own this project.")
+    else:
+        project.pending_owner = None
+        project.save(update_fields=["pending_owner"])
+        messages.info(request, "Transfer declined.")
+    try:
+        from notifications import events
+
+        events.ownership_transfer_resolved(
+            project, old_owner, accepted, actor=request.user
+        )
+    except Exception:
+        logger.exception("transfer_resolved notification failed")
+    return redirect("projects:detail", slug=project.slug)
 
 
 @login_required

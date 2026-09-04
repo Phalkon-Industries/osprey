@@ -135,6 +135,7 @@ pump, _ = Project.objects.get_or_create(
 )
 Project.objects.filter(pk=pump.pk).update(
     title="WHOI Pump",
+    created_by=alice,
     visibility=Project.VISIBILITY_PUBLIC,
     readme=PUMP_README,
     summary="Peristaltic pump for in-situ ocean sampling. v2 is the current release.",
@@ -284,6 +285,7 @@ deriv, _ = Project.objects.get_or_create(
 )
 Project.objects.filter(pk=deriv.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
+    created_by=bob,
     readme=DERIV_README,
     summary="Splash-rated peristaltic pump for shallow estuary deployments.",
     institution="URI Graduate School of Oceanography",
@@ -513,6 +515,7 @@ pump_mark_i, _ = Project.objects.get_or_create(
 )
 Project.objects.filter(pk=pump_mark_i.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
+    created_by=alice,
     summary="Bench-top peristaltic pump prototype from 2018.",
     institution=WHOI,
     cover_image_url="",
@@ -590,6 +593,7 @@ firmware_fork, _ = Project.objects.get_or_create(
 )
 Project.objects.filter(pk=firmware_fork.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
+    created_by=bob,
     summary="Pump controller firmware using an adaptive sliding-mode flow controller.",
     institution="MIT",
     cover_image_url="",
@@ -766,6 +770,13 @@ _demo_edge(osh_pump, pump, "uses", osh_versions[0], pump_v1, alice)
 # The experimental firmware forked off the v2 release.
 _demo_edge(pump, firmware_fork, "derived_from", pump_v2, fork_versions[0], bob)
 
+
+# Seed rows created with a user attached predate the claim flow; mark
+# them verified so the pages render the same on a fresh database as on
+# a migrated one.
+Contribution.objects.filter(user__isnull=False, claim_status="unclaimed").update(
+    claim_status="verified", editor=True
+)
 
 print("=== Seeded ===")
 print(f"users:           {User.objects.count()}")

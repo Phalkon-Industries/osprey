@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Contributor Credits &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:46rem">
+    <h1>Settings</h1>
+    {% include "core/_settings_tabs.html" %}
+
+    <h2>Contributor Credits</h2>
+    <p class="muted">
+        Projects that list you as a contributor. Nothing links to your
+        profile until you accept.
+    </p>
+
+    {% if pending %}
+    <h3>Waiting on you</h3>
+    {% for row in pending %}
+    <article class="feedback-item">
+        <p style="margin:0 0 .35rem">
+            <a href="{{ row.project.get_absolute_url }}">{{ row.project.title }}</a>
+            <span class="muted small">
+                &middot; listed by
+                {% if row.project.created_by %}@{{ row.project.created_by.get_username }}{% else %}the project owner{% endif %}
+                &middot; role: {{ row.role }}
+                {% if row.editor %}&middot; includes Project Editor access{% endif %}
+                {% if not row.project.is_public %}&middot; draft project{% endif %}
+            </span>
+        </p>
+        {% if row.credit_statement %}<p class="muted small" style="margin:0 0 .5rem">“{{ row.credit_statement }}”</p>{% endif %}
+        <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            {% csrf_token %}
+            <input type="hidden" name="contribution_id" value="{{ row.pk }}">
+            <button type="submit" name="action" value="accept">Accept</button>
+            <button type="submit" name="action" value="decline" class="ghost">Decline</button>
+            <label class="muted small" style="display:inline-flex;align-items:center;gap:.3rem">
+                <input type="checkbox" name="report" value="1"> also report as abuse
+            </label>
+            <input type="text" name="reason" maxlength="500" placeholder="Report reason (optional)" style="flex:1;min-width:12rem">
+        </form>
+    </article>
+    {% endfor %}
+    {% else %}
+    <p class="muted">No listings waiting on you.</p>
+    {% endif %}
+
+    {% if accepted %}
+    <h3>Your accepted listings</h3>
+    <ul>
+        {% for row in accepted %}
+        <li style="margin-bottom:.5rem">
+            <a href="{{ row.project.get_absolute_url }}">{{ row.project.title }}</a>
+            <span class="muted small">&middot; {{ row.role }}{% if row.editor %} &middot; Project Editor{% endif %}</span>
+            {% if row.claim_status == "disputed" %}
+            <span class="badge">removal requested</span>
+            {% elif not row.project.is_public %}
+            <form method="post" style="display:inline;margin:0 0 0 .4rem">
+                {% csrf_token %}
+                <input type="hidden" name="contribution_id" value="{{ row.pk }}">
+                <button type="submit" name="action" value="leave" class="ghost" style="padding:.15rem .5rem;font-size:.8rem">Leave draft</button>
+            </form>
+            {% else %}
+            <details style="display:inline-block;vertical-align:middle;margin-left:.4rem">
+                <summary class="muted small" style="cursor:pointer;display:inline">Request removal</summary>
+                <form method="post" style="display:flex;gap:.5rem;margin:.35rem 0">
+                    {% csrf_token %}
+                    <input type="hidden" name="contribution_id" value="{{ row.pk }}">
+                    <input type="hidden" name="action" value="request_removal">
+                    <input type="text" name="reason" maxlength="500" placeholder="Why? (goes to staff)" style="flex:1">
+                    <button type="submit" class="ghost">Ask staff to remove me</button>
+                </form>
+            </details>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endblock %}

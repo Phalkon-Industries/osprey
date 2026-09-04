@@ -7,4 +7,6 @@ Shared tab strip for the account settings pages. Pass `settings_tab`
         {% if settings_tab == 'profile' %}aria-current="page"{% endif %}>Profile</a>
     <a href="{% url 'notifications:settings' %}" class="project-tab{% if settings_tab == 'notifications' %} is-active{% endif %}"
         {% if settings_tab == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
+    <a href="{% url 'contributor_claims' %}" class="project-tab{% if settings_tab == 'claims' %} is-active{% endif %}"
+        {% if settings_tab == 'claims' %}aria-current="page"{% endif %}>Contributor Credits</a>
 </nav>

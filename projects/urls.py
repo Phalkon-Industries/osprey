@@ -24,6 +24,11 @@ urlpatterns = [
         name="lineage_withdraw",
     ),
     path(
+        "<slug:slug>/transfer/",
+        views.ownership_transfer_respond,
+        name="ownership_transfer_respond",
+    ),
+    path(
         "<slug:slug>/zenodo/new-version/",
         views.project_zenodo_new_version,
         name="zenodo_new_version",

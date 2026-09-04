@@ -45,6 +45,20 @@ class OrcidSocialAccountAdapter(DefaultSocialAccountAdapter):
         )
         return user
 
+    def save_user(self, request, sociallogin, form=None):
+        user = super().save_user(request, sociallogin, form=form)
+        try:
+            from projects.claiming import sweep_on_signup
+
+            sweep_on_signup(user)
+        except Exception:  # noqa: BLE001 - a sweep bug must not break signup
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "contributor claim sweep failed at signup"
+            )
+        return user
+
     def pre_social_login(self, request, sociallogin) -> None:
         if sociallogin.account.provider == "orcid":
             self._enforce_verified_domain_gate(request, sociallogin)

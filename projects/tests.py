@@ -135,7 +135,9 @@ class ProjectTestCase(TestCase):
             "contributions-0-display_name": "Owner Person",
             "contributions-0-role": "Project lead",
             "contributions-0-affiliation": "",
-            "contributions-0-orcid_id": "",
+            "contributions-0-orcid_id": (
+                "0000-0001-2345-6789" if action == "publish" else ""
+            ),
             "contributions-0-credit_statement": "Built the prototype.",
             "contributions-0-order": "0",
             "action": action,
@@ -153,8 +155,16 @@ class ProjectModelTests(ProjectTestCase):
         self.assertTrue(self.private_project.viewable_by(self.staff))
         self.assertFalse(self.private_project.viewable_by(self.unrelated))
         self.assertTrue(self.private_project.editable_by(self.owner))
+        # Credit alone no longer confers edit rights; a verified row with
+        # the owner-granted editor flag does.
+        self.assertFalse(self.private_project.editable_by(self.contributor))
+        Contribution.objects.filter(
+            project=self.private_project, user=self.contributor
+        ).update(claim_status=Contribution.CLAIM_VERIFIED, editor=True)
         self.assertTrue(self.private_project.editable_by(self.contributor))
         self.assertFalse(self.private_project.editable_by(self.unrelated))
+        self.assertTrue(self.private_project.publishable_by(self.owner))
+        self.assertFalse(self.private_project.publishable_by(self.contributor))
 
     def test_doi_and_deposit_urls(self):
         self.public_project.doi = "https://doi.org/10.5281/zenodo.456"
@@ -196,7 +206,7 @@ class ProjectModelTests(ProjectTestCase):
         contribution.orcid_id = "0000-0001-9999-9999"
         self.assertEqual(contribution.verified_orcid_id, "")
 
-    def test_contribution_save_attaches_existing_profile_orcid(self):
+    def test_contribution_save_never_auto_links(self):
         Profile.objects.filter(user=self.owner).update(
             orcid_placeholder="0000-0001-2345-6789"
         )
@@ -208,7 +218,9 @@ class ProjectModelTests(ProjectTestCase):
             role="Project lead",
         )
 
-        self.assertEqual(contribution.user, self.owner)
+        # Linking requires the person's acceptance; nothing attaches on save.
+        self.assertIsNone(contribution.user)
+        self.assertEqual(contribution.claim_status, Contribution.CLAIM_UNCLAIMED)
 
 
 class ProjectFormTests(ProjectTestCase):
@@ -1350,6 +1362,7 @@ class DraftDataLossRegressionTests(ProjectTestCase):
         add_orcid_account(self.owner)
         self.client.force_login(self.owner)
         data = self._edit_post_data(action="publish", title="Edited Crash Survivor")
+        data["contributions-0-orcid_id"] = "0000-0001-2345-6789"
 
         response = self.client.post(
             reverse("projects:edit", args=[self.private_project.slug]), data
@@ -2041,3 +2054,404 @@ class LineageClaimTests(ProjectTestCase):
         self.assertContains(response, "Root Pump")  # grandparent tier
         self.assertContains(response, "Grandchild Pod")  # grandchild tier
         self.assertContains(response, "modified into · used in")
+
+
+class ContributorClaimingTests(ProjectTestCase):
+    def setUp(self):
+        super().setUp()
+        self.collab = get_user_model().objects.create_user(username="collab")
+        add_orcid_account(self.collab, "0000-0002-1111-2222")
+        self.row = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Collab Person",
+            role="Firmware",
+            orcid_id="0000-0002-1111-2222",
+            order=1,
+        )
+
+    def _notifications(self, **filters):
+        from notifications.models import Notification
+
+        return Notification.objects.filter(**filters)
+
+    def test_confirmation_request_notifies_and_flips_status(self):
+        from projects import claiming
+
+        err = claiming.request_confirmation(self.row, self.owner)
+
+        self.row.refresh_from_db()
+        self.assertIsNone(err)
+        self.assertEqual(self.row.claim_status, Contribution.CLAIM_INVITED)
+        self.assertIsNone(self.row.user)  # nothing links before acceptance
+        note = self._notifications(
+            user=self.collab, kind="contributor_listed"
+        ).get()
+        self.assertIn("listed you as a contributor", note.title)
+
+        # Asking again while pending is refused.
+        err = claiming.request_confirmation(self.row, self.owner)
+        self.assertIn("already requested", err)
+
+    def test_declined_rows_cannot_be_asked_again(self):
+        from projects import claiming
+
+        claiming.request_confirmation(self.row, self.owner)
+        claiming.decline(self.row, self.collab)
+        self.row.refresh_from_db()
+        self.assertEqual(self.row.claim_status, Contribution.CLAIM_DECLINED)
+
+        err = claiming.request_confirmation(self.row, self.owner)
+        self.assertIn("declined", err)
+
+    def test_external_invite_queues_ephemeral_email_without_storing(self):
+        from notifications.models import QueuedEmail
+        from projects import claiming
+
+        row = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Not Here Yet",
+            role="CAD",
+            orcid_id="0000-0003-9999-0000",
+            order=2,
+        )
+
+        err = claiming.request_confirmation(row, self.owner)
+        self.assertIn("No OSPREY account", err)
+
+        err = claiming.send_osprey_invite(row, self.owner, "them@example.org")
+        self.assertIsNone(err)
+        queued = QueuedEmail.objects.get(group="invite")
+        self.assertIsNone(queued.user)
+        self.assertEqual(queued.to_address, "them@example.org")
+        self.assertTrue(queued.ephemeral)
+        self.assertIn("credited", queued.subject.lower())
+        # The invite implies the confirmation request: the row waits for
+        # them the moment they join, drafts included.
+        row.refresh_from_db()
+        self.assertEqual(row.claim_status, Contribution.CLAIM_INVITED)
+
+        # Re-sending (re-entered address) is allowed.
+        err = claiming.send_osprey_invite(row, self.owner, "them@example.org")
+        self.assertIsNone(err)
+        self.assertEqual(QueuedEmail.objects.filter(group="invite").count(), 2)
+
+    def test_accept_links_and_arms_editor_pregrant(self):
+        from projects import claiming
+
+        self.row.editor = True
+        self.row.save(update_fields=["editor"])
+        claiming.request_confirmation(self.row, self.owner)
+
+        self.assertIsNotNone(claiming.accept(self.row, self.unrelated))
+
+        err = claiming.accept(self.row, self.collab)
+        self.row.refresh_from_db()
+        self.assertIsNone(err)
+        self.assertEqual(self.row.user, self.collab)
+        self.assertEqual(self.row.claim_status, Contribution.CLAIM_VERIFIED)
+        self.assertTrue(self.public_project.editable_by(self.collab))
+        self.assertFalse(self.public_project.publishable_by(self.collab))
+        self.assertTrue(
+            self._notifications(
+                user=self.owner, kind="contributor_claim_resolved"
+            ).exists()
+        )
+
+    def test_decline_with_report_files_moderation_report(self):
+        from moderation.models import Report
+        from projects import claiming
+
+        claiming.request_confirmation(self.row, self.owner)
+        err = claiming.decline(self.row, self.collab, report_reason="Spam listing")
+
+        self.assertIsNone(err)
+        report = Report.objects.get()
+        self.assertEqual(report.reporter, self.collab)
+        self.assertIn("Spam listing", report.reason)
+
+    def test_publish_sweep_invites_matching_rows(self):
+        from projects import claiming
+
+        count = claiming.sweep_on_publish(self.public_project)
+
+        self.row.refresh_from_db()
+        self.assertEqual(count, 1)
+        self.assertEqual(self.row.claim_status, Contribution.CLAIM_INVITED)
+
+    def test_signup_sweep_flips_public_rows(self):
+        from projects import claiming
+
+        late = get_user_model().objects.create_user(username="latecomer")
+        add_orcid_account(late, "0000-0004-5555-6666")
+        row = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Late Comer",
+            role="Testing",
+            orcid_id="0000-0004-5555-6666",
+            order=3,
+        )
+        draft_row = Contribution.objects.create(
+            project=self.private_project,
+            display_name="Late Comer",
+            role="Testing",
+            orcid_id="0000-0004-5555-6666",
+            order=1,
+        )
+
+        count = claiming.sweep_on_signup(late)
+
+        row.refresh_from_db()
+        draft_row.refresh_from_db()
+        self.assertEqual(count, 1)
+        self.assertEqual(row.claim_status, Contribution.CLAIM_INVITED)
+        self.assertEqual(draft_row.claim_status, Contribution.CLAIM_UNCLAIMED)
+
+    def test_claims_page_accept_flow(self):
+        from projects import claiming
+
+        claiming.request_confirmation(self.row, self.owner)
+        self.client.force_login(self.collab)
+
+        response = self.client.get(reverse("contributor_claims"))
+        self.assertContains(response, "Public Pump")
+
+        response = self.client.post(
+            reverse("contributor_claims"),
+            {"contribution_id": str(self.row.pk), "action": "accept"},
+        )
+        self.row.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.row.user, self.collab)
+
+    def test_leave_draft_and_removal_dispute(self):
+        from moderation.models import Report
+        from projects import claiming
+
+        draft_row = Contribution.objects.create(
+            project=self.private_project,
+            display_name="Collab Person",
+            role="Firmware",
+            orcid_id="0000-0002-1111-2222",
+            user=self.collab,
+            claim_status=Contribution.CLAIM_VERIFIED,
+            order=1,
+        )
+        self.assertIsNone(claiming.leave_draft(draft_row, self.collab))
+        draft_row.refresh_from_db()
+        self.assertIsNone(draft_row.user)
+        self.assertEqual(draft_row.claim_status, Contribution.CLAIM_UNCLAIMED)
+
+        public_row = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Collab Person 2",
+            role="Docs",
+            orcid_id="0000-0002-1111-2233",
+            user=self.collab,
+            claim_status=Contribution.CLAIM_VERIFIED,
+            order=4,
+        )
+        self.assertIsNotNone(claiming.leave_draft(public_row, self.collab))
+        self.assertIsNone(
+            claiming.request_removal(public_row, self.collab, "Wrong person")
+        )
+        public_row.refresh_from_db()
+        self.assertEqual(public_row.claim_status, Contribution.CLAIM_DISPUTED)
+        self.assertTrue(Report.objects.filter(reporter=self.collab).exists())
+
+    def test_listed_person_can_quietly_view_draft(self):
+        draft_row = Contribution.objects.create(
+            project=self.private_project,
+            display_name="Collab Person",
+            role="Firmware",
+            orcid_id="0000-0002-1111-2222",
+            order=1,
+        )
+
+        # Listed by ORCID iD: view access, no notification, no link.
+        self.assertTrue(self.private_project.viewable_by(self.collab))
+        self.assertFalse(self.private_project.editable_by(self.collab))
+        self.assertFalse(
+            self._notifications(user=self.collab).exists()
+        )
+
+        # Declining gives the quiet view access up.
+        draft_row.claim_status = Contribution.CLAIM_DECLINED
+        draft_row.save(update_fields=["claim_status"])
+        self.assertFalse(self.private_project.viewable_by(self.collab))
+
+    def test_ownership_transfer_flow(self):
+        self.row.user = self.collab
+        self.row.claim_status = Contribution.CLAIM_VERIFIED
+        self.row.save(update_fields=["user", "claim_status"])
+
+        # Owner offers the transfer through the edit form.
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data()
+        data["contributions-INITIAL_FORMS"] = "0"
+        data["contributions-TOTAL_FORMS"] = "1"
+        data["transfer_to"] = str(self.row.pk)
+        response = self.client.post(
+            reverse("projects:edit", args=[self.public_project.slug]), data
+        )
+        self.public_project.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.public_project.pending_owner, self.collab)
+        self.assertTrue(
+            self._notifications(
+                user=self.collab, kind="ownership_transfer_offered"
+            ).exists()
+        )
+
+        # Recipient accepts; old owner keeps access as a verified editor.
+        self.client.force_login(self.collab)
+        response = self.client.post(
+            reverse(
+                "projects:ownership_transfer_respond",
+                args=[self.public_project.slug],
+            ),
+            {"action": "accept"},
+        )
+        self.public_project.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.public_project.created_by, self.collab)
+        self.assertIsNone(self.public_project.pending_owner)
+        self.assertTrue(self.public_project.editable_by(self.owner))
+        self.assertFalse(self.public_project.publishable_by(self.owner))
+        self.assertTrue(
+            self._notifications(
+                user=self.owner, kind="ownership_transfer_resolved"
+            ).exists()
+        )
+
+    def test_editor_cannot_publish_via_edit_form(self):
+        self.row.user = self.collab
+        self.row.claim_status = Contribution.CLAIM_VERIFIED
+        self.row.editor = True
+        self.row.save(update_fields=["user", "claim_status", "editor"])
+        add_orcid_account(self.collab)  # already has one; ensures verified path
+        self.client.force_login(self.collab)
+        data = self.project_form_post_data(action="publish")
+        data["contributions-INITIAL_FORMS"] = "0"
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.private_project.slug]), data
+        )
+
+        # Editors can't even open this draft (not listed on it), but on
+        # projects they CAN edit, publish is still owner-only: check the
+        # guard directly too.
+        self.assertFalse(self.private_project.publishable_by(self.collab))
+        self.assertIn(response.status_code, (200, 404))
+
+    def test_one_pass_invite_and_editor_from_new_project_form(self):
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data()
+        data.update({
+            "contributions-TOTAL_FORMS": "2",
+            "contributions-1-display_name": "Collab Person",
+            "contributions-1-role": "Firmware",
+            "contributions-1-affiliation": "",
+            "contributions-1-orcid_id": "0000-0002-1111-2222",
+            "contributions-1-credit_statement": "",
+            "contributions-1-order": "1",
+            "contrib_confirm": ["1"],
+            "contrib_editor": ["1"],
+        })
+
+        response = self.client.post(reverse("projects:new"), data)
+
+        self.assertEqual(response.status_code, 302)
+        project = Project.objects.get(title="Submitted Pump")
+        row = project.contributions.get(display_name="Collab Person")
+        self.assertEqual(row.claim_status, Contribution.CLAIM_INVITED)
+        self.assertTrue(row.editor)
+        self.assertIsNone(row.user)
+        self.assertTrue(
+            self._notifications(
+                user=self.collab, kind="contributor_listed"
+            ).exists()
+        )
+
+    def test_owner_row_cannot_be_deleted(self):
+        add_orcid_account(self.owner, "0000-0001-2345-6789")
+        owner_row = Contribution.objects.create(
+            project=self.public_project,
+            user=self.owner,
+            display_name="Owner Person",
+            role="Project lead",
+            orcid_id="0000-0001-2345-6789",
+            claim_status=Contribution.CLAIM_VERIFIED,
+            order=0,
+        )
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data()
+        data.update({
+            "contributions-INITIAL_FORMS": "1",
+            "contributions-0-id": str(owner_row.pk),
+            "contributions-0-DELETE": "on",
+        })
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.public_project.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            Contribution.objects.filter(pk=owner_row.pk).exists()
+        )
+
+    def test_editors_cannot_touch_the_contributor_list(self):
+        # collab becomes an accepted Project Editor.
+        self.row.user = self.collab
+        self.row.claim_status = Contribution.CLAIM_VERIFIED
+        self.row.editor = True
+        self.row.save(update_fields=["user", "claim_status", "editor"])
+        victim = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Third Person",
+            role="Docs",
+            orcid_id="0000-0005-7777-8888",
+            order=2,
+        )
+        before = self.public_project.contributions.count()
+
+        self.client.force_login(self.collab)
+        data = self.project_form_post_data()
+        data["title"] = "Edited By Editor"
+        data.update({
+            # Contributor list is owner-only: an added row, a deletion,
+            # an editor grant, and a transfer must all be ignored.
+            "contributions-TOTAL_FORMS": "2",
+            "contributions-INITIAL_FORMS": "1",
+            "contributions-0-id": str(victim.pk),
+            "contributions-0-display_name": "Third Person",
+            "contributions-0-role": "Docs",
+            "contributions-0-orcid_id": "0000-0005-7777-8888",
+            "contributions-0-order": "0",
+            "contributions-0-DELETE": "on",
+            "contributions-1-display_name": "Added By Editor",
+            "contributions-1-role": "Testing",
+            "contributions-1-orcid_id": "0000-0006-1234-5678",
+            "contributions-1-order": "1",
+            "contrib_editor": ["1"],
+            "transfer_to": str(self.row.pk),
+        })
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.public_project.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.public_project.refresh_from_db()
+        self.assertEqual(self.public_project.title, "Edited By Editor")
+        self.assertEqual(
+            self.public_project.contributions.count(), before
+        )
+        self.assertFalse(
+            self.public_project.contributions.filter(
+                display_name="Added By Editor"
+            ).exists()
+        )
+        victim.refresh_from_db()  # not deleted, not granted
+        self.assertFalse(victim.editor)
+        self.assertIsNone(self.public_project.pending_owner)

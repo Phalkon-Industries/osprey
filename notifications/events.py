@@ -43,6 +43,11 @@ EVENTS = {
     "feedback_reopen_requested": GROUP_STAFF,
     "staff_message_received": GROUP_ACCOUNT,
     "service_announcement": GROUP_ACCOUNT,
+    "contributor_listed": GROUP_ACCOUNT,
+    "contributor_claim_resolved": GROUP_PROJECTS,
+    "editor_granted": GROUP_ACCOUNT,
+    "ownership_transfer_offered": GROUP_ACCOUNT,
+    "ownership_transfer_resolved": GROUP_PROJECTS,
     "content_report": GROUP_STAFF,
     "project_published": GROUP_STAFF,
     "project_hidden": GROUP_ACCOUNT,
@@ -438,6 +443,102 @@ def watched_wiki_page_created(page, project, author):
             dedup_key=f"watched-wiki:{page.pk}",
             project_slug=project.slug,
         )
+
+
+# --- contributor claiming and project access ---------------------------
+
+
+def contributor_listed(contribution, by_user):
+    """Invite the person behind the row's ORCID iD to claim it."""
+    target = contribution.user
+    if target is None:
+        from projects.claiming import user_for_orcid
+
+        target = user_for_orcid(contribution.orcid_id)
+    if target is None or (by_user and target == by_user):
+        return
+    _emit(
+        target,
+        kind="contributor_listed",
+        title=(
+            f"{_actor_name(by_user)} listed you as a contributor on "
+            f"“{contribution.project.title}”"
+        ),
+        body=f"Role: {contribution.role}. Review it and accept or decline.",
+        url=reverse("contributor_claims"),
+        dedup_key=f"contrib-invite:{contribution.pk}",
+        contribution_id=contribution.pk,
+    )
+
+
+def contributor_claim_resolved(contribution, accepted):
+    """Tell the owner the invitee answered."""
+    recipient = contribution.project.created_by
+    if recipient is None or (
+        contribution.user_id and recipient.id == contribution.user_id
+    ):
+        return
+    verb = "accepted" if accepted else "declined"
+    _emit(
+        recipient,
+        kind="contributor_claim_resolved",
+        title=(
+            f"{contribution.display_name} {verb} the contributor listing "
+            f"on “{contribution.project.title}”"
+        ),
+        url=contribution.project.get_absolute_url(),
+        dedup_key=f"contrib-resolved:{contribution.pk}:{verb}",
+        contribution_id=contribution.pk,
+    )
+
+
+def editor_granted(contribution, by_user):
+    """Tell a verified contributor they can now edit the project."""
+    if contribution.user is None or (by_user and contribution.user == by_user):
+        return
+    _emit(
+        contribution.user,
+        kind="editor_granted",
+        title=f"You can now edit “{contribution.project.title}”",
+        body=f"{_actor_name(by_user)} made you an editor.",
+        url=contribution.project.get_absolute_url(),
+        dedup_key=f"editor:{contribution.pk}",
+        contribution_id=contribution.pk,
+    )
+
+
+def ownership_transfer_offered(project, by_user):
+    """Tell the intended new owner; nothing changes until they accept."""
+    recipient = project.pending_owner
+    if recipient is None or (by_user and recipient == by_user):
+        return
+    _emit(
+        recipient,
+        kind="ownership_transfer_offered",
+        title=(
+            f"{_actor_name(by_user)} wants to transfer ownership of "
+            f"“{project.title}” to you"
+        ),
+        body="Accept or decline from the project page.",
+        url=project.get_absolute_url(),
+        dedup_key=f"transfer:{project.pk}",
+        project_slug=project.slug,
+    )
+
+
+def ownership_transfer_resolved(project, old_owner, accepted, actor=None):
+    """Tell the previous owner how the transfer ended."""
+    if old_owner is None or (actor and old_owner == actor):
+        return
+    verb = "accepted" if accepted else "declined"
+    _emit(
+        old_owner,
+        kind="ownership_transfer_resolved",
+        title=f"Ownership transfer of “{project.title}” was {verb}",
+        url=project.get_absolute_url(),
+        dedup_key=f"transfer-resolved:{project.pk}:{verb}",
+        project_slug=project.slug,
+    )
 
 
 # --- lineage claims ----------------------------------------------------

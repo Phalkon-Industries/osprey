@@ -6,6 +6,17 @@
 <article>
     {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching can_new_version=can_new_version %}
 
+    {% if user.is_authenticated and project.pending_owner_id == user.id %}
+    <div class="callout">
+        <strong>@{{ project.created_by.get_username }} wants to transfer ownership of this project to you.</strong>
+        <form method="post" action="{% url 'projects:ownership_transfer_respond' project.slug %}" style="display:flex;gap:.5rem;margin-top:.5rem">
+            {% csrf_token %}
+            <button type="submit" name="action" value="accept">Accept ownership</button>
+            <button type="submit" name="action" value="decline" class="ghost">Decline</button>
+        </form>
+    </div>
+    {% endif %}
+
     {% if project.readme %}
     <section>
         <div class="prose">{{ project.readme|markdown }}</div>
