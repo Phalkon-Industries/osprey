@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Message a user &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:42rem">
+    <h1>Message a user</h1>
+    <p class="muted">
+        Opens a staff message thread with the user. They're notified,
+        can reply on their Staff Messages page, and the thread lands in
+        the queue like any other.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <label for="compose-username"><strong>Username</strong></label><br>
+            <input type="text" id="compose-username" name="username" value="{{ username }}" placeholder="e.g. alice" required style="max-width:20rem">
+        </p>
+        <p>
+            <label for="compose-message"><strong>Message</strong></label><br>
+            <textarea id="compose-message" name="message" rows="6" maxlength="4000" required style="width:100%"></textarea>
+        </p>
+        <p>
+            <button type="submit">Send message</button>
+            <a class="button ghost" href="{% url 'feedback:review' %}">Cancel</a>
+        </p>
+    </form>
+</section>
+{% endblock %}

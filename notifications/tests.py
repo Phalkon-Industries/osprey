@@ -17,7 +17,9 @@ from anymail.backends.mailjet import EmailBackend as MailjetBackend
 from anymail.exceptions import AnymailAPIError
 
 from .email import OspreyEmailBackend
+from allauth.account.models import EmailAddress as _AnnEmailAddress
 from .models import (
+    Announcement,
     EmailSettings,
     Notification,
     NotificationPreference,
@@ -1804,3 +1806,133 @@ class SendTestNotificationCommandTests(TestCase):
     def test_unknown_user_errors(self):
         with self.assertRaises(CommandError):
             call_command("send_test_notification", "nobody-here")
+
+
+EmailAddress = _AnnEmailAddress
+
+
+class AnnouncementTests(TestCase):
+    """Service announcements: in-app to all actives, email gated only by
+    the master toggle plus a verified address, cadence groups ignored."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.with_email = User.objects.create_user(username="ann-emailed")
+        EmailAddress.objects.create(
+            user=self.with_email,
+            email="ann-emailed@example.org",
+            verified=True,
+            primary=True,
+        )
+        self.without_email = User.objects.create_user(username="ann-plain")
+        self.inactive = User.objects.create_user(
+            username="ann-gone", is_active=False
+        )
+        self.announcement = Announcement.objects.create(
+            subject="Maintenance window",
+            body="OSPREY will be down for an hour on Saturday.",
+            url="/about/",
+        )
+
+    def test_fan_out_reaches_actives_and_emails_only_verified(self):
+        from notifications.announcements import send_announcement
+
+        delivered, emailed = send_announcement(self.announcement)
+
+        active_count = get_user_model().objects.filter(is_active=True).count()
+        self.assertEqual(delivered, active_count)
+        self.assertEqual(emailed, 1)
+        self.assertTrue(
+            Notification.objects.filter(
+                user=self.with_email, kind="service_announcement"
+            ).exists()
+        )
+        self.assertFalse(
+            Notification.objects.filter(user=self.inactive).exists()
+        )
+        queued = QueuedEmail.objects.get(group="announcement")
+        self.assertEqual(queued.user, self.with_email)
+        self.assertIn("Maintenance window", queued.subject)
+        self.assertIn("down for an hour", queued.body_text)
+
+    def test_cadence_groups_are_ignored(self):
+        from notifications.announcements import send_announcement
+
+        preference = NotificationPreference.for_user(self.with_email)
+        NotificationPreference.objects.filter(pk=preference.pk).update(
+            projects="off", replies="off", follows="off", staff="off",
+            account="off",
+        )
+
+        _, emailed = send_announcement(self.announcement)
+
+        self.assertEqual(emailed, 1)
+
+    def test_master_toggle_still_rules(self):
+        from notifications.announcements import send_announcement
+
+        preference = NotificationPreference.for_user(self.with_email)
+        NotificationPreference.objects.filter(pk=preference.pk).update(
+            email_enabled=False
+        )
+
+        _, emailed = send_announcement(self.announcement)
+
+        self.assertEqual(emailed, 0)
+        self.assertTrue(
+            Notification.objects.filter(
+                user=self.with_email, kind="service_announcement"
+            ).exists()
+        )
+
+    def test_resend_does_not_duplicate_unread_in_app_rows(self):
+        from notifications.announcements import send_announcement
+
+        send_announcement(self.announcement)
+        delivered, _ = send_announcement(self.announcement)
+
+        self.assertEqual(delivered, 0)
+        self.assertEqual(
+            Notification.objects.filter(
+                user=self.with_email, kind="service_announcement"
+            ).count(),
+            1,
+        )
+
+    def test_admin_test_and_send_all_buttons(self):
+        User = get_user_model()
+        admin_user = User.objects.create_superuser(
+            username="ann-admin", email="", password="x"
+        )
+        self.client.force_login(admin_user)
+        url = reverse(
+            "admin:notifications_announcement_change",
+            args=[self.announcement.pk],
+        )
+        data = {
+            "subject": self.announcement.subject,
+            "body": self.announcement.body,
+            "url": self.announcement.url,
+        }
+
+        response = self.client.post(url, {**data, "_send_test": "1"})
+        self.announcement.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(self.announcement.test_sent_at)
+        self.assertIsNone(self.announcement.sent_at)
+        self.assertTrue(
+            Notification.objects.filter(
+                user=admin_user, kind="service_announcement"
+            ).exists()
+        )
+
+        response = self.client.post(url, {**data, "_send_all": "1"})
+        self.announcement.refresh_from_db()
+        self.assertIsNotNone(self.announcement.sent_at)
+        self.assertGreater(self.announcement.sent_count, 0)
+
+        # A second broadcast attempt is refused.
+        sent_at = self.announcement.sent_at
+        self.client.post(url, {**data, "_send_all": "1"})
+        self.announcement.refresh_from_db()
+        self.assertEqual(self.announcement.sent_at, sent_at)

@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+{{ block.super }}
+{% if not original.is_sent %}
+<div class="submit-row">
+    <input type="submit" name="_send_test" value="Save and send test to me">
+    <input type="submit" name="_send_all" value="Send to all users"
+        onclick="return confirm('Send this announcement to every active user? This cannot be undone.');">
+</div>
+{% endif %}
+{% endblock %}

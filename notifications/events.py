@@ -39,6 +39,10 @@ EVENTS = {
     "wiki_suggestion_reviewed": GROUP_REPLIES,
     "feedback_reply": GROUP_REPLIES,
     "feedback_submitted": GROUP_STAFF,
+    "feedback_user_replied": GROUP_STAFF,
+    "feedback_reopen_requested": GROUP_STAFF,
+    "staff_message_received": GROUP_ACCOUNT,
+    "service_announcement": GROUP_ACCOUNT,
     "content_report": GROUP_STAFF,
     "project_published": GROUP_STAFF,
     "project_hidden": GROUP_ACCOUNT,
@@ -263,6 +267,68 @@ def feedback_replied(reply):
         body=reply.body[:200],
         url=reverse("feedback:mine"),
         feedback_id=feedback.pk,
+    )
+
+
+def feedback_user_replied(reply):
+    """Tell staff a user replied on one of their message threads."""
+    for user in _staff():
+        if user.id == reply.author_id:
+            continue
+        _emit(
+            user,
+            kind="feedback_user_replied",
+            title=f"{_actor_name(reply.author)} replied on a staff message thread",
+            body=reply.body[:200],
+            url=reverse("feedback:review"),
+            feedback_id=reply.feedback_id,
+        )
+
+
+def feedback_reopen_requested(feedback, requester):
+    """Tell staff a user asked to reopen a closed thread."""
+    for user in _staff():
+        if user.id == (requester.id if requester else None):
+            continue
+        _emit(
+            user,
+            kind="feedback_reopen_requested",
+            title=f"{_actor_name(requester)} asked to reopen a closed thread",
+            body=feedback.message[:200],
+            url=reverse("feedback:review") + "?reopen=1",
+            dedup_key=f"reopen:{feedback.pk}",
+            feedback_id=feedback.pk,
+        )
+
+
+def staff_message_received(feedback):
+    """Tell a user that staff opened a message thread with them."""
+    if not feedback.user_id:
+        return
+    _emit(
+        feedback.user,
+        kind="staff_message_received",
+        title="OSPREY staff sent you a message",
+        body=feedback.message[:200],
+        url=reverse("feedback:mine"),
+        dedup_key=f"staff-msg:{feedback.pk}",
+        feedback_id=feedback.pk,
+    )
+
+
+def service_announcement(user, announcement):
+    """In-app half of a service announcement. Email is queued separately
+    by notifications.announcements, which deliberately ignores cadence
+    groups (only the master toggle gates it)."""
+    return _emit(
+        user,
+        kind="service_announcement",
+        title=announcement.subject,
+        body=announcement.body[:200],
+        url=announcement.url or "",
+        email=False,
+        dedup_key=f"announcement:{announcement.pk}",
+        announcement_id=announcement.pk,
     )
 
 

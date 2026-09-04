@@ -28,10 +28,15 @@ class Feedback(models.Model):
 
     CATEGORY_SUGGESTION = "suggestion"
     CATEGORY_PRIVACY = "privacy"
+    CATEGORY_OUTREACH = "outreach"
     CATEGORY_CHOICES = [
         (CATEGORY_SUGGESTION, "Suggestion"),
         (CATEGORY_PRIVACY, "Privacy request"),
+        (CATEGORY_OUTREACH, "Staff outreach"),
     ]
+
+    OPEN_STATUSES = ["new", "triaged"]
+    ARCHIVED_STATUSES = ["resolved", "wontfix"]
 
     STATUS_NEW = "new"
     STATUS_TRIAGED = "triaged"
@@ -84,6 +89,20 @@ class Feedback(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_NEW,
     )
+    opened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="opened_staff_threads",
+        help_text="Staff member who opened this thread, for outreach "
+        "threads. Null when the user opened it themselves.",
+    )
+    reopen_requested = models.BooleanField(
+        default=False,
+        help_text="The user asked to reopen this closed thread. Staff "
+        "reopen (set an open status) or dismiss the request.",
+    )
     admin_notes = models.TextField(
         blank=True,
         help_text="Triage notes. Not shown to the submitter.",
@@ -100,6 +119,10 @@ class Feedback(models.Model):
     def __str__(self) -> str:
         who = self.user.get_username() if self.user_id else "anon"
         return f"[{self.status}] {who}: {self.message[:60]}"
+
+    @property
+    def is_closed(self) -> bool:
+        return self.status in self.ARCHIVED_STATUSES
 
 
 class FeedbackReply(models.Model):

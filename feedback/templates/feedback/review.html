@@ -4,6 +4,7 @@
 <div class="project-header">
     <h1>Staff Messages</h1>
     <span class="spacer"></span>
+    <a class="button ghost" href="{% url 'feedback:compose' %}">Message a user</a>
     <a class="button ghost" href="{% url 'admin:feedback_feedback_changelist' %}">Django admin</a>
 </div>
 
@@ -15,8 +16,12 @@
         class="project-tab{% if active_tab == 'archived' %} is-active{% endif %}"
         {% if active_tab == 'archived' %}aria-current="page"{% endif %}>Archived ({{ archived_count }})</a>
     <a href="?tab=all{% if active_category %}&amp;category={{ active_category }}{% endif %}"
-        class="project-tab{% if active_tab == 'all' %} is-active{% endif %}"
-        {% if active_tab == 'all' %}aria-current="page"{% endif %}>All</a>
+        class="project-tab{% if active_tab == 'all' and not show_reopen %} is-active{% endif %}"
+        {% if active_tab == 'all' and not show_reopen %}aria-current="page"{% endif %}>All</a>
+    {% if reopen_count %}
+    <a href="?reopen=1" class="project-tab{% if show_reopen %} is-active{% endif %}"
+        {% if show_reopen %}aria-current="page"{% endif %}>Reopen requests ({{ reopen_count }})</a>
+    {% endif %}
 </nav>
 
 <form method="get" class="filters feedback-filters">
@@ -40,6 +45,15 @@
             </div>
             <span>
                 {% if item.category == "privacy" %}<span class="badge">Privacy request</span>{% endif %}
+                {% if item.category == "outreach" %}<span class="badge">Outreach{% if item.opened_by %} by @{{ item.opened_by.get_username }}{% endif %}</span>{% endif %}
+                {% if item.reopen_requested %}<span class="badge">reopen requested</span>
+                <form method="post" style="display:inline;margin:0">
+                    {% csrf_token %}
+                    <input type="hidden" name="feedback_id" value="{{ item.id }}">
+                    <input type="hidden" name="action" value="dismiss_reopen">
+                    <button type="submit" class="ghost" title="Keep the thread closed and clear the request">Dismiss request</button>
+                </form>
+                {% endif %}
                 <span class="badge">{{ item.get_status_display }}</span>
                 {% if item.status == "new" or item.status == "triaged" %}
                 <form method="post" style="display:inline;margin:0">

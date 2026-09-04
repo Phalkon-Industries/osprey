@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .email import build_delivery_backend, send_test_email
-from .models import EmailSettings, Notification
+from .models import Announcement, EmailSettings, Notification
 
 
 @admin.register(Notification)
@@ -117,6 +117,93 @@ class EmailSettingsAdmin(admin.ModelAdmin):
             obj.last_test_at = timezone.now()
             obj.save(
                 update_fields=["last_test_at", "last_test_result", "updated_at"]
+            )
+            return HttpResponseRedirect(request.path)
+        return super().response_change(request, obj)
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    """Draft, test, and broadcast service announcements.
+
+    The form carries two extra buttons: "Save and send test to me"
+    delivers the announcement to just the signed-in admin (in-app plus
+    email, same path as the real send), and "Send to all users" does the
+    broadcast once. A sent announcement is frozen; duplicate it to send
+    a follow-up.
+    """
+
+    list_display = ("subject", "created_by", "created_at", "sent_at", "sent_count")
+    readonly_fields = (
+        "created_by",
+        "created_at",
+        "test_sent_at",
+        "sent_at",
+        "sent_count",
+        "emailed_count",
+    )
+    fields = (
+        "subject",
+        "body",
+        "url",
+        "created_by",
+        "created_at",
+        "test_sent_at",
+        "sent_at",
+        "sent_count",
+        "emailed_count",
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is not None and obj.is_sent:
+            return self.readonly_fields + ("subject", "body", "url")
+        return self.readonly_fields
+
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def response_change(self, request, obj):
+        from .announcements import send_announcement
+
+        if "_send_test" in request.POST:
+            delivered, emailed = send_announcement(
+                obj, recipients=[request.user]
+            )
+            obj.test_sent_at = timezone.now()
+            obj.save(update_fields=["test_sent_at"])
+            self.message_user(
+                request,
+                f"Test sent to you: {delivered} in-app notification, "
+                f"{emailed} email queued"
+                + (
+                    "."
+                    if emailed
+                    else " (no email: address missing or email disabled)."
+                ),
+                level=messages.SUCCESS,
+            )
+            return HttpResponseRedirect(request.path)
+        if "_send_all" in request.POST:
+            if obj.is_sent:
+                self.message_user(
+                    request,
+                    "Already sent. Duplicate the announcement to send again.",
+                    level=messages.ERROR,
+                )
+                return HttpResponseRedirect(request.path)
+            delivered, emailed = send_announcement(obj)
+            obj.sent_at = timezone.now()
+            obj.sent_count = delivered
+            obj.emailed_count = emailed
+            obj.save(update_fields=["sent_at", "sent_count", "emailed_count"])
+            self.message_user(
+                request,
+                f"Announcement sent: {delivered} users notified in-app, "
+                f"{emailed} emails queued (delivery within about a minute "
+                "via the notifier loop).",
+                level=messages.SUCCESS,
             )
             return HttpResponseRedirect(request.path)
         return super().response_change(request, obj)

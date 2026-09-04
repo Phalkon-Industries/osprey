@@ -12,6 +12,7 @@ import logging
 import re
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.files.base import ContentFile
 from django.http import JsonResponse
@@ -179,6 +180,90 @@ def privacy_request(request):
     )
 
 
+def _thread_rate_limited(request) -> bool:
+    """Shared limit for user-side thread writes (replies and reopen
+    requests)."""
+    from django.conf import settings as django_settings
+    from django_ratelimit.core import is_ratelimited
+
+    if not django_settings.RATELIMIT_ENABLE:
+        return False
+    if is_ratelimited(
+        request,
+        group="feedback.user_thread",
+        key="user",
+        rate=django_settings.RATELIMIT_STAFF_THREAD_REPLY,
+        increment=True,
+    ):
+        messages.error(
+            request, "Too many messages in a short time. Try again later."
+        )
+        return True
+    return False
+
+
+@login_required
+@require_POST
+def user_reply(request, feedback_id):
+    """A user replying on their own open thread."""
+    fb = get_object_or_404(Feedback, pk=feedback_id, user=request.user)
+    if fb.is_closed:
+        messages.error(
+            request, "This thread is closed. You can request to reopen it."
+        )
+        return redirect("feedback:mine")
+    body = (request.POST.get("body") or "").strip()
+    if not body:
+        messages.error(request, "Write a message first.")
+        return redirect("feedback:mine")
+    if _thread_rate_limited(request):
+        return redirect("feedback:mine")
+    reply = FeedbackReply.objects.create(
+        feedback=fb, author=request.user, body=body[:4000]
+    )
+    try:
+        from notifications import events
+
+        events.feedback_user_replied(reply)
+    except Exception:
+        logger.exception("feedback_user_replied notification failed")
+    messages.success(request, "Reply sent.")
+    return redirect("feedback:mine")
+
+
+@login_required
+@require_POST
+def reopen_request(request, feedback_id):
+    """A user asking staff to reopen their closed thread. One pending
+    request at a time; staff reopen or dismiss it."""
+    fb = get_object_or_404(Feedback, pk=feedback_id, user=request.user)
+    if not fb.is_closed:
+        messages.error(request, "This thread is already open.")
+        return redirect("feedback:mine")
+    if fb.reopen_requested:
+        messages.info(request, "You already asked to reopen this thread.")
+        return redirect("feedback:mine")
+    if _thread_rate_limited(request):
+        return redirect("feedback:mine")
+    why = (request.POST.get("body") or "").strip()
+    body = "Requested to reopen this thread."
+    if why:
+        body += f" Reason: {why}"
+    FeedbackReply.objects.create(
+        feedback=fb, author=request.user, body=body[:4000]
+    )
+    fb.reopen_requested = True
+    fb.save(update_fields=["reopen_requested", "updated_at"])
+    try:
+        from notifications import events
+
+        events.feedback_reopen_requested(fb, request.user)
+    except Exception:
+        logger.exception("feedback_reopen_requested notification failed")
+    messages.success(request, "Reopen requested. Staff will take a look.")
+    return redirect("feedback:mine")
+
+
 def _staff_required(user) -> bool:
     return user.is_authenticated and user.is_staff
 
@@ -193,6 +278,13 @@ ARCHIVED_STATUSES = [Feedback.STATUS_RESOLVED, Feedback.STATUS_WONTFIX]
 def review(request):
     if request.method == "POST":
         fb = get_object_or_404(Feedback, pk=request.POST.get("feedback_id"))
+        if request.POST.get("action") == "dismiss_reopen":
+            fb.reopen_requested = False
+            fb.save(update_fields=["reopen_requested", "updated_at"])
+            messages.success(
+                request, "Reopen request dismissed; the thread stays closed."
+            )
+            return redirect(request.get_full_path())
         if request.POST.get("action") == "archive":
             fb.status = Feedback.STATUS_RESOLVED
             fb.save(update_fields=["status", "updated_at"])
@@ -213,7 +305,11 @@ def review(request):
         if status in dict(Feedback.STATUS_CHOICES):
             fb.status = status
         fb.admin_notes = request.POST.get("admin_notes", "")
-        fb.save(update_fields=["status", "admin_notes", "updated_at"])
+        update_fields = ["status", "admin_notes", "updated_at"]
+        if fb.status in OPEN_STATUSES and fb.reopen_requested:
+            fb.reopen_requested = False
+            update_fields.append("reopen_requested")
+        fb.save(update_fields=update_fields)
         messages.success(request, "Submission updated.")
         return redirect(request.get_full_path())
 
@@ -224,6 +320,10 @@ def review(request):
     feedback = Feedback.objects.select_related("user").prefetch_related("replies")
     if category in dict(Feedback.CATEGORY_CHOICES):
         feedback = feedback.filter(category=category)
+    show_reopen = request.GET.get("reopen") == "1"
+    if show_reopen:
+        feedback = feedback.filter(reopen_requested=True)
+        tab = "all"
     open_count = feedback.filter(status__in=OPEN_STATUSES).count()
     archived_count = feedback.filter(status__in=ARCHIVED_STATUSES).count()
     if tab == "open":
@@ -239,9 +339,53 @@ def review(request):
             "category_choices": Feedback.CATEGORY_CHOICES,
             "active_tab": tab,
             "active_category": category,
+            "show_reopen": show_reopen,
+            "reopen_count": Feedback.objects.filter(
+                reopen_requested=True
+            ).count(),
             "open_count": open_count,
             "archived_count": archived_count,
         },
+    )
+
+
+@user_passes_test(_staff_required, login_url="/login/")
+def compose(request):
+    """Staff opening a message thread with a user (outreach)."""
+    if request.method == "POST":
+        username = (request.POST.get("username") or "").strip().lstrip("@")
+        body = (request.POST.get("message") or "").strip()
+        target = (
+            get_user_model()
+            .objects.filter(username=username, is_active=True)
+            .first()
+        )
+        if target is None:
+            messages.error(request, f"No active user named “{username}”.")
+        elif not body:
+            messages.error(request, "Write a message.")
+        else:
+            fb = Feedback.objects.create(
+                user=target,
+                category=Feedback.CATEGORY_OUTREACH,
+                message=body[:4000],
+                opened_by=request.user,
+                status=Feedback.STATUS_TRIAGED,
+            )
+            try:
+                from notifications import events
+
+                events.staff_message_received(fb)
+            except Exception:
+                logger.exception("staff_message_received notification failed")
+            messages.success(
+                request, f"Message sent to @{target.get_username()}."
+            )
+            return redirect("feedback:review")
+    return render(
+        request,
+        "feedback/compose.html",
+        {"username": request.GET.get("to", "")},
     )
 
 

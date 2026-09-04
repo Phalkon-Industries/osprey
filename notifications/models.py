@@ -254,3 +254,54 @@ class QueuedEmail(models.Model):
 
     def __str__(self) -> str:
         return f"{self.status} email to user {self.user_id}: {self.subject[:60]}"
+
+
+class Announcement(models.Model):
+    """A service announcement broadcast to every active user.
+
+    Written and sent from the admin: draft, send a test to yourself,
+    then send to everyone. Sending creates an in-app notification for
+    each active user and queues email for everyone with email enabled
+    and a verified address. Cadence groups are deliberately ignored (a
+    service notice must not wait for a digest); only the master email
+    toggle gates the email. A sent announcement is frozen and can't be
+    sent twice; duplicate the row to send a follow-up.
+    """
+
+    subject = models.CharField(max_length=200)
+    body = models.TextField(
+        help_text="Plain text. Sent as written, with the standard email "
+        "footer appended."
+    )
+    url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional link shown with the notification, e.g. /about/.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="announcements",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    test_sent_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    sent_count = models.PositiveIntegerField(
+        default=0, help_text="Users reached in-app on the real send."
+    )
+    emailed_count = models.PositiveIntegerField(
+        default=0, help_text="Emails queued on the real send."
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        state = "sent" if self.sent_at else "draft"
+        return f"[{state}] {self.subject[:60]}"
+
+    @property
+    def is_sent(self) -> bool:
+        return self.sent_at is not None

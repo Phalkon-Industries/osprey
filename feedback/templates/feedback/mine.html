@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}My Staff Messages &middot; OSPREY{% endblock %}
 {% block content %}
-<section>
+<section style="max-width:46rem">
     <h1>My Staff Messages</h1>
     <p class="muted">
         Everything you've sent to the staff, and their replies.
@@ -13,18 +13,46 @@
             <span class="muted small">{{ item.created_at|date:"Y-m-d H:i" }}</span>
             <span>
                 {% if item.category == "privacy" %}<span class="badge">Privacy request</span>{% endif %}
-                <span class="badge">{{ item.get_status_display }}</span>
+                {% if item.category == "outreach" %}<span class="badge">From staff</span>{% endif %}
+                {% if item.is_closed %}<span class="badge">closed</span>{% else %}<span class="badge ok">open</span>{% endif %}
             </span>
         </header>
+        {% if item.category == "outreach" %}
+        <p class="muted small" style="margin:0 0 .25rem">OSPREY staff wrote:</p>
+        {% endif %}
         <p>{{ item.message|linebreaksbr }}</p>
         {% if item.page_url %}<p class="muted small">On <a href="{{ item.page_url }}">{{ item.page_url }}</a></p>{% endif %}
         {% if item.replies.all %}
         <div class="feedback-replies">
             <h3>Replies</h3>
             {% for r in item.replies.all %}
-            <p><strong>{{ r.author.get_username|default:"staff" }}</strong> <span class="muted small">{{ r.created_at|date:"Y-m-d H:i" }}</span><br>{{ r.body|linebreaksbr }}</p>
+            <p>
+                <strong>{% if r.author == user %}You{% elif r.author.is_staff %}OSPREY staff{% else %}{{ r.author.get_username|default:"staff" }}{% endif %}</strong>
+                <span class="muted small">{{ r.created_at|date:"Y-m-d H:i" }}</span><br>{{ r.body|linebreaksbr }}
+            </p>
             {% endfor %}
         </div>
+        {% endif %}
+
+        {% if item.is_closed %}
+        {% if item.reopen_requested %}
+        <p class="muted small">Reopen requested. Staff will take a look.</p>
+        {% else %}
+        <details>
+            <summary class="muted small" style="cursor:pointer">Request to reopen this thread</summary>
+            <form method="post" action="{% url 'feedback:reopen_request' item.pk %}" style="display:flex;gap:.5rem;margin:.4rem 0">
+                {% csrf_token %}
+                <input type="text" name="body" maxlength="500" placeholder="Why? (optional)" style="flex:1">
+                <button type="submit" class="ghost">Request reopen</button>
+            </form>
+        </details>
+        {% endif %}
+        {% else %}
+        <form method="post" action="{% url 'feedback:user_reply' item.pk %}" style="display:flex;gap:.5rem;margin-top:.5rem">
+            {% csrf_token %}
+            <input type="text" name="body" maxlength="4000" placeholder="Reply to staff" style="flex:1">
+            <button type="submit" class="ghost">Send</button>
+        </form>
         {% endif %}
     </article>
     {% empty %}

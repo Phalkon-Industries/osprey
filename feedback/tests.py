@@ -215,3 +215,169 @@ class PrivacyRequestTests(TestCase):
     def test_privacy_policy_links_to_form(self):
         response = self.client.get(reverse("privacy"))
         self.assertContains(response, reverse("privacy_request"))
+
+
+class StaffThreadInteractionTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="alice")
+        self.other = User.objects.create_user(username="mallory")
+        self.staff = User.objects.create_user(username="staff", is_staff=True)
+
+    def _notifications(self, **filters):
+        from notifications.models import Notification
+
+        return Notification.objects.filter(**filters)
+
+    def test_user_reply_on_open_thread_notifies_staff(self):
+        fb = Feedback.objects.create(user=self.user, message="An idea")
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("feedback:user_reply", args=[fb.pk]), {"body": "More detail"}
+        )
+
+        self.assertEqual(response.status_code, 302)
+        reply = fb.replies.get()
+        self.assertEqual(reply.author, self.user)
+        self.assertEqual(reply.body, "More detail")
+        self.assertTrue(
+            self._notifications(
+                user=self.staff, kind="feedback_user_replied"
+            ).exists()
+        )
+
+    def test_user_cannot_reply_on_someone_elses_thread(self):
+        fb = Feedback.objects.create(user=self.user, message="Mine")
+
+        self.client.force_login(self.other)
+        response = self.client.post(
+            reverse("feedback:user_reply", args=[fb.pk]), {"body": "Sneaky"}
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(fb.replies.exists())
+
+    def test_reply_blocked_on_closed_thread(self):
+        fb = Feedback.objects.create(
+            user=self.user, message="Done", status=Feedback.STATUS_RESOLVED
+        )
+
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("feedback:user_reply", args=[fb.pk]), {"body": "But wait"}
+        )
+
+        self.assertFalse(fb.replies.exists())
+
+    def test_reopen_request_flow(self):
+        fb = Feedback.objects.create(
+            user=self.user, message="Old", status=Feedback.STATUS_RESOLVED
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("feedback:reopen_request", args=[fb.pk]),
+            {"body": "It broke again"},
+        )
+
+        fb.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(fb.reopen_requested)
+        self.assertIn("It broke again", fb.replies.get().body)
+        self.assertTrue(
+            self._notifications(
+                user=self.staff, kind="feedback_reopen_requested"
+            ).exists()
+        )
+
+        # Second request is refused while one is pending.
+        self.client.post(reverse("feedback:reopen_request", args=[fb.pk]), {})
+        self.assertEqual(fb.replies.count(), 1)
+
+    def test_staff_dismiss_reopen_keeps_thread_closed(self):
+        fb = Feedback.objects.create(
+            user=self.user,
+            message="Old",
+            status=Feedback.STATUS_RESOLVED,
+            reopen_requested=True,
+        )
+
+        self.client.force_login(self.staff)
+        self.client.post(
+            reverse("feedback:review"),
+            {"feedback_id": str(fb.pk), "action": "dismiss_reopen"},
+        )
+
+        fb.refresh_from_db()
+        self.assertFalse(fb.reopen_requested)
+        self.assertEqual(fb.status, Feedback.STATUS_RESOLVED)
+
+    def test_reopening_clears_the_request_flag(self):
+        fb = Feedback.objects.create(
+            user=self.user,
+            message="Old",
+            status=Feedback.STATUS_RESOLVED,
+            reopen_requested=True,
+        )
+
+        self.client.force_login(self.staff)
+        self.client.post(
+            reverse("feedback:review"),
+            {
+                "feedback_id": str(fb.pk),
+                "status": Feedback.STATUS_TRIAGED,
+                "admin_notes": "",
+            },
+        )
+
+        fb.refresh_from_db()
+        self.assertEqual(fb.status, Feedback.STATUS_TRIAGED)
+        self.assertFalse(fb.reopen_requested)
+
+    def test_compose_is_staff_only_and_notifies_recipient(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("feedback:compose"))
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("feedback:compose"),
+            {"username": "alice", "message": "About your dispute"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        fb = Feedback.objects.get()
+        self.assertEqual(fb.category, Feedback.CATEGORY_OUTREACH)
+        self.assertEqual(fb.user, self.user)
+        self.assertEqual(fb.opened_by, self.staff)
+        self.assertEqual(fb.status, Feedback.STATUS_TRIAGED)
+        note = self._notifications(
+            user=self.user, kind="staff_message_received"
+        ).get()
+        self.assertIn("staff sent you a message", note.title)
+
+    def test_compose_rejects_unknown_user(self):
+        self.client.force_login(self.staff)
+        self.client.post(
+            reverse("feedback:compose"),
+            {"username": "nobody", "message": "Hello?"},
+        )
+        self.assertFalse(Feedback.objects.exists())
+
+    def test_mine_page_shows_reply_or_reopen_controls(self):
+        open_fb = Feedback.objects.create(user=self.user, message="Open one")
+        closed_fb = Feedback.objects.create(
+            user=self.user, message="Closed one", status=Feedback.STATUS_WONTFIX
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("feedback:mine"))
+
+        self.assertContains(
+            response, reverse("feedback:user_reply", args=[open_fb.pk])
+        )
+        self.assertContains(
+            response, reverse("feedback:reopen_request", args=[closed_fb.pk])
+        )
+        self.assertContains(response, ">closed<")
