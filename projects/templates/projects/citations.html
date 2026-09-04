@@ -8,9 +8,9 @@
     <h1 style="margin-top:1rem">Citations dashboard</h1>
     <p class="muted">
         Works that reference this project. Maintainers can add citations directly.
-        Anyone signed in can submit a citation through an
-        <a href="{% url 'use_reports:new' project.slug %}">use report</a>;
-        those are listed under <em>User-submitted</em>.
+        Anyone signed in can submit a citation through a
+        <a href="{% url 'use_reports:new' project.slug %}">use report</a>,
+        which are listed under <em>User-submitted</em>.
     </p>
 
     {% if not citations %}

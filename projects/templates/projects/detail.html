@@ -4,11 +4,19 @@
 
 {% block content %}
 <article>
-    {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching %}
+    {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching can_new_version=can_new_version %}
 
     {% if project.readme %}
     <section>
         <div class="prose">{{ project.readme|markdown }}</div>
+    </section>
+    {% endif %}
+
+    {% if project.self_rating %}
+    <section>
+        <h2>Maturity</h2>
+        <p><strong>{{ project.self_rating_label }}</strong> <span class="muted small">({{ project.self_rating }}/10, self-assessed)</span></p>
+        {% if project.self_rating_note %}<p style="white-space:pre-line">{{ project.self_rating_note }}</p>{% endif %}
     </section>
     {% endif %}
 
@@ -101,6 +109,13 @@
         </section>
     </div>
 
+    {% if project.funding %}
+    <section>
+        <h2>Funding</h2>
+        <p style="white-space:pre-line">{{ project.funding }}</p>
+    </section>
+    {% endif %}
+
     {% if project.doi or zenodo_deposit %}
     <section class="project-doi">
         <h2>Cite this project</h2>
@@ -151,39 +166,12 @@
     </section>
     {% endif %}
 
-    {% if can_edit and zenodo_deposit and zenodo_deposit.state == 'published' %}
-    <section class="project-zenodo">
-        <h2>New version</h2>
-        <p class="muted small">
-            Made significant changes? Publish a new version to mint a fresh
-            DOI for the snapshot. The project DOI will keep pointing at the
-            latest version.
-        </p>
-        <a class="button ghost" href="{% url 'projects:zenodo_new_version' project.slug %}">Create a new version</a>
-    </section>
-    {% endif %}
-
     {% if project.tags.all %}
     <section>
         <h2>Tags</h2>
         {% for tag in project.tags.all %}
         <a href="{% url 'projects:list' %}?tag={{ tag.name }}" class="pill">{{ tag.name }}</a>
         {% endfor %}
-    </section>
-    {% endif %}
-
-    {% if project.self_rating %}
-    <section>
-        <h2>Maturity</h2>
-        <p><strong>{{ project.self_rating_label }}</strong> <span class="muted small">({{ project.self_rating }}/10, self-assessed)</span></p>
-        {% if project.self_rating_note %}<p style="white-space:pre-line">{{ project.self_rating_note }}</p>{% endif %}
-    </section>
-    {% endif %}
-
-    {% if project.funding %}
-    <section>
-        <h2>Funding</h2>
-        <p style="white-space:pre-line">{{ project.funding }}</p>
     </section>
     {% endif %}
 

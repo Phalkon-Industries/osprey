@@ -10,6 +10,15 @@
         See the <a href="{% url 'lineage_guide' %}">project lineage guide</a>
         to learn more.
     </p>
+    {% if can_edit %}
+    <p>
+        {% if manage %}
+        <a class="button ghost" href="{% url 'projects:lineage' project.slug %}">Done managing</a>
+        {% else %}
+        <a class="button ghost" href="{% url 'projects:lineage' project.slug %}?manage=1">Manage lineage edges</a>
+        {% endif %}
+    </p>
+    {% endif %}
 
     {% if diagram.has_relatives %}
     <div class="lineage-graph" data-lineage-graph>
@@ -45,7 +54,7 @@
             {% endif %}
             {% endfor %}
         </svg>
-        <p class="muted small">Two generations each way, project to project. Hover a node for a summary; click to open that project.</p>
+        <p class="muted small">Hover a node for a summary; click to open that project.</p>
     </div>
     {% endif %}
 
@@ -64,7 +73,7 @@
             <br><span class="muted small">Their reason: {{ edge.dispute_reason }}</span>
             {% endif %}
             {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
-            {% if can_edit and not edge.is_withdrawn %}
+            {% if manage and not edge.is_withdrawn %}
             <a class="lineage-action" style="margin-left:.5rem" href="{% url 'projects:lineage_withdraw' project.slug edge.pk %}">Withdraw</a>
             {% endif %}
         </li>
@@ -86,7 +95,7 @@
             {% if edge.status == "disputed" and edge.dispute_reason %}
             <br><span class="muted small">Dispute reason: {{ edge.dispute_reason }}</span>
             {% endif %}
-            {% if can_edit and not edge.is_withdrawn %}
+            {% if manage and not edge.is_withdrawn %}
             <span style="margin-left:.5rem">
                 {% if edge.status == "disputed" %}
                 <form method="post" action="{% url 'projects:lineage_respond' project.slug edge.pk %}" style="display:inline;margin:0">

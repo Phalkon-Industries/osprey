@@ -319,6 +319,11 @@ def project_detail(request, slug: str):
             "recent_citations": recent_citations,
             "citations_count": citations_count,
             "is_watching": is_watching,
+            "can_new_version": bool(
+                project.editable_by(request.user)
+                and deposit
+                and deposit.state == ProjectDeposit.STATE_PUBLISHED
+            ),
         },
     )
 
@@ -1059,6 +1064,7 @@ def project_lineage(request, slug: str):
             "children": children,
             "diagram": _lineage_diagram(project),
             "can_edit": can_edit,
+            "manage": can_edit and request.GET.get("manage") == "1",
             "show_withdrawn": show_withdrawn,
             "has_withdrawn": has_withdrawn,
         },

@@ -9,9 +9,9 @@
     <h1 style="margin-top:1rem">{{ project.title }} wiki</h1>
     <p class="muted">
         {% if project.wiki_requires_approval %}
-        Maintainer-reviewed wiki. Anyone signed in can suggest edits; maintainers apply or decline them.
+        This is a maintainer-reviewed wiki. Anyone signed in can suggest edits.
         {% else %}
-        Open wiki. Anyone signed in can edit pages directly. All revisions are saved.
+        This is an open wiki. Anyone signed in can make edits.
         {% endif %}
     </p>
     {% if can_edit %}

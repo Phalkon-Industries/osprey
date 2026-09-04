@@ -33,6 +33,7 @@ project Edit button (kept separate from sub-page `can_edit` flags).
     </form>
     {% endif %}
     {% if project_can_edit %}<a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>{% endif %}
+    {% if can_new_version %}<a class="button ghost" href="{% url 'projects:zenodo_new_version' project.slug %}" title="Publish a new version with a fresh version DOI">New version</a>{% endif %}
 </header>
 
 {% if project.summary %}

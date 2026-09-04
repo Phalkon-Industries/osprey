@@ -1909,12 +1909,15 @@ class LineageClaimTests(ProjectTestCase):
         lineage.declare(self.draft_child, "public-pump", "uses", self.unrelated)
 
         self.client.force_login(self.owner)
-        response = self.client.get(
-            reverse("projects:lineage", args=[self.public_project.slug])
-        )
+        url = reverse("projects:lineage", args=[self.public_project.slug])
+        response = self.client.get(url)
 
         self.assertContains(response, "Derived Pod")
         self.assertNotContains(response, "Draft Pod")
+        self.assertContains(response, "Manage lineage edges")
+        self.assertNotContains(response, ">Dispute<")
+
+        response = self.client.get(url, {"manage": "1"})
         self.assertNotContains(response, ">Accept<")
         self.assertContains(response, "Dispute")
 
