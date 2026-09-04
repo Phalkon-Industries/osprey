@@ -57,7 +57,10 @@ COMPOSE=(
     -f "$OVERRIDE"
 )
 
-"${COMPOSE[@]}" build web
+# Build every image-bearing service: the notifier has its own build
+# (different args), and a redeploy that skips it leaves the old loop
+# running stale code against a migrated schema.
+"${COMPOSE[@]}" build web notifier
 "${COMPOSE[@]}" run --rm web python manage.py migrate --noinput
 "${COMPOSE[@]}" run --rm web python manage.py collectstatic --noinput
 "${COMPOSE[@]}" up -d
