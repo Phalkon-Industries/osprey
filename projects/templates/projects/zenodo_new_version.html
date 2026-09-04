@@ -57,6 +57,18 @@
             {% if form.repo_link.help_text %}<p class="muted small">{{ form.repo_link.help_text }}</p>{% endif %}
             {% if form.repo_link.errors %}<p class="form-error">{{ form.repo_link.errors|join:" " }}</p>{% endif %}
         </div>
+
+        <h2 style="margin-top:1.5rem">Lineage</h2>
+        <p class="muted" style="font-size:.9rem">
+            Did this version pull in updates or new files from another
+            OSPREY project? Add a link for it here; the link goes live
+            when this version publishes. Existing links stay true for the
+            versions they were made at, so there's nothing to update. If
+            nothing came across, there's nothing to add.
+        </p>
+        {% include "projects/_lineage_widget.html" %}
+        {% include "projects/_lineage_existing.html" with edges=lineage_links heading="Previous version edges" %}
+
         <div class="form-actions">
             <button type="submit" name="action" value="draft" class="ghost" data-submit-button>Save draft</button>
             <button type="submit" name="action" value="publish" data-submit-button data-publish-button>Publish new version</button>

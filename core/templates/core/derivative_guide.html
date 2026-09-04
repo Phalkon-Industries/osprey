@@ -2,68 +2,73 @@
 {% block title %}Derivative projects &middot; OSPREY{% endblock %}
 
 {% block content %}
-<section>
+<section style="max-width:46rem">
     <h1>Derivative projects</h1>
     <p class="muted">
-        How to think about forks, new versions, and derivatives on OSPREY,
-        and what the lineage graph is actually claiming.
+        How forks, new versions, and reuse work on OSPREY, and what a
+        lineage link actually claims.
     </p>
 
-    <h2>Three things people lump together</h2>
+    <h2>The two kinds of link</h2>
     <p>
-        Saying "I'm building on top of project X" can mean very different
-        things in practice. OSPREY splits them into three relations so the
-        credit and the history stay readable.
+        A lineage link connects your project to an OSPREY project it
+        builds on. Ask yourself whether you changed their work or used
+        it as-is.
+    </p>
+    <p>
+        <strong>Derived From</strong> means you started from their files
+        or design and modified them. Think things like a fork of their
+        firmware, a rewrite of their controller, or a redesign of their
+        pump housing to fit your deployment platform.
+    </p>
+    <p>
+        <strong>Uses</strong> means their project is used inside yours,
+        mostly unmodified. For example, their pump is a component in
+        your instrument, or their library is compiled into your
+        firmware.
+    </p>
+    <p>
+        If you read their design notes and it shaped your approach but
+        you didn't directly copy or modify files or designs, don't add a
+        link. Put an acknowledgement in your README instead.
     </p>
 
-    <h3>New version</h3>
+    <h2>How links work</h2>
     <p>
-        Same team, same project, later release. Pump v2 by the same lab
-        that made Pump v1 is a new version, not a derivative. Use the
-        "new version" workflow so the version history page lists them in
-        order and the DOI chain stays clean.
+        You add links on your project's edit form, under the Lineage
+        tab, by pasting the other project's URL. Every link records
+        which version of each project it applies to, so it stays
+        accurate as both projects keep releasing. If a later version of
+        your project pulls in new files or updates from the same source,
+        add a new link when you publish that version. The old link was
+        correct when it was made and doesn't change.
     </p>
-
-    <h3>Derivative</h3>
     <p>
-        Different team picks up the design, modifies it, and ships their
-        own thing. The original maintainers do not control the new
-        project. This is a derivative. The lineage edge points from the
-        derivative back to its parent. Both projects keep their own
-        wikis, use reports, and version histories.
+        A link is public as soon as you make it. The other project's
+        team gets a notification of the link. They can't block a link,
+        but they can dispute one they think is wrong, with a reason that
+        shows publicly. A disputed link stays visible on both projects
+        with the dispute attached. Staff will work with both teams to
+        attempt to resolve any disputed links.
     </p>
-
-    <h3>Inspired by</h3>
     <p>
-        Heavy intellectual debt without a shared codebase or BOM. Worth
-        recording in a project's description; usually not worth a
-        lineage edge unless the reuse is substantial.
+        If you made a mistake, withdraw the link from the lineage page.
+        A withdrawn link stays in the record with a withdrawn label, and
+        the other team is notified of withdrawals. Pinned the wrong
+        version? Withdraw it and add a new link.
     </p>
 
     <h2>Etiquette</h2>
     <ul>
         <li>
-            If you derive from a project, add the lineage edge and a short
-            note explaining what you changed and why.
+            If you derive from a project, add the lineage link and in
+            your README explain what you changed and why.
         </li>
         <li>
-            If a derivative supersedes the original for a specific use
-            case, say so plainly. That is useful information, not an
-            insult.
-        </li>
-        <li>
-            Wikis on derivatives can either fork the parent's pages or
-            link out. Both are fine. Linking out avoids drift.
+            Only claim what is true. A Derived From link to a well-known
+            project you barely touched or is unrelated to your project
+            looks like credit farming.
         </li>
     </ul>
-
-    <h2>What the lineage graph claims</h2>
-    <p>
-        A lineage edge is a factual claim that one project built on
-        another. It is not an endorsement. The graph view shows parents
-        and descendants for any project; it is not a citation count and
-        should not be used as one. For citations, see the citations
-        dashboard on each project.
-    </p>
 </section>
 {% endblock %}

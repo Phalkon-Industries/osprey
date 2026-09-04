@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ArtifactLink,
     Contribution,
+    LineageEdge,
     Project,
     ProjectDeposit,
     ProjectDepositVersion,
@@ -10,6 +11,30 @@ from .models import (
     Tag,
     TagAssignment,
 )
+
+
+@admin.register(LineageEdge)
+class LineageEdgeAdmin(admin.ModelAdmin):
+    list_display = (
+        "declared_at",
+        "child",
+        "relation",
+        "parent",
+        "status",
+        "claimed_at",
+        "declared_by",
+    )
+    list_filter = ("status", "relation")
+    search_fields = (
+        "parent__title",
+        "parent__slug",
+        "child__title",
+        "child__slug",
+        "declared_by__username",
+    )
+    list_select_related = ("parent", "child", "declared_by")
+    readonly_fields = ("declared_at", "claimed_at", "responded_at")
+    autocomplete_fields = ("parent", "child")
 
 
 class ContributionInline(admin.TabularInline):

@@ -29,6 +29,8 @@ from .models import (
     ProjectDeposit,
     Watch,
 )
+from . import lineage as lineage_claims
+from .models import LineageEdge, ProjectDepositVersion
 from .zenodo import (
     ZenodoError,
     publish_new_version_now,
@@ -60,6 +62,77 @@ def _notify_project_published(project: Project) -> None:
         events.project_published(project)
     except Exception:
         logger.exception("project_published notification failed")
+
+
+def _process_lineage(request, project: Project, defer: bool = False) -> None:
+    """Create lineage claims from the form's Lineage rows.
+
+    Rows arrive as parallel lineage_target / lineage_relation /
+    lineage_version lists; empty targets are skipped. Failures become
+    flash messages, never exceptions: a bad lineage row must not eat a
+    project save. `defer=True` (the new-version flow) keeps claims
+    dormant until that version publishes.
+    """
+    targets = request.POST.getlist("lineage_target")
+    relations = request.POST.getlist("lineage_relation")
+    versions = request.POST.getlist("lineage_version")
+    rows = []
+    for i, raw in enumerate(targets):
+        target = raw.strip()
+        if not target:
+            continue
+        relation = relations[i] if i < len(relations) else ""
+        version = versions[i] if i < len(versions) else ""
+        rows.append((target, relation, version))
+    if not rows:
+        return
+    from django.conf import settings as django_settings
+    from django_ratelimit.core import is_ratelimited
+
+    if django_settings.RATELIMIT_ENABLE and is_ratelimited(
+        request,
+        group="projects.lineage_declare",
+        key="user",
+        rate=django_settings.RATELIMIT_LINEAGE_DECLARE,
+        increment=True,
+    ):
+        messages.error(
+            request, "Too many lineage links in a short time. Try again later."
+        )
+        return
+    for target, relation, version in rows:
+        edge, error = lineage_claims.declare(
+            project,
+            target,
+            relation,
+            request.user,
+            parent_version_id=int(version) if version.isdigit() else None,
+            defer=defer,
+        )
+        if error:
+            messages.warning(request, f"Lineage link skipped: {error}")
+        else:
+            phrase = lineage_claims.relation_phrase(edge.relation)
+            if edge.claimed_at is None:
+                messages.success(
+                    request,
+                    f"Noted: this project {phrase} “{edge.parent.title}”. "
+                    "The link goes live when you publish.",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"Linked: this project {phrase} “{edge.parent.title}”.",
+                )
+
+
+def _activate_lineage(project: Project) -> None:
+    """Bring dormant lineage claims live after publish; never let it
+    break the publish."""
+    try:
+        lineage_claims.activate_pending(project)
+    except Exception:
+        logger.exception("lineage activation failed for %s", project.slug)
 
 
 def _looks_like_zip(upload) -> bool:
@@ -435,6 +508,7 @@ def project_new(request):
             formset.save()
             _attach_verified_submitter(project, request.user, verified_orcid)
             _process_attachments(request, project)
+            _process_lineage(request, project)
             if action == "publish":
                 try:
                     publish_project_now(project, request.user)
@@ -454,6 +528,7 @@ def project_new(request):
                     project.save(update_fields=["visibility"])
                     messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
+                    _activate_lineage(project)
                     _notify_project_published(project)
                     messages.success(
                         request,
@@ -505,6 +580,7 @@ def project_edit(request, slug: str):
             formset.save()
             _attach_verified_submitter(saved, request.user, verified_orcid)
             _process_attachments(request, saved)
+            _process_lineage(request, saved)
             if action == "publish" and not was_public:
                 try:
                     publish_project_now(saved, request.user)
@@ -524,6 +600,7 @@ def project_edit(request, slug: str):
                     saved.save(update_fields=["visibility"])
                     messages.error(request, PUBLISH_CRASH_MESSAGE)
                 else:
+                    _activate_lineage(saved)
                     _notify_project_published(saved)
                     messages.success(
                         request,
@@ -568,6 +645,18 @@ def project_edit(request, slug: str):
             "mode": "edit",
             "project": project,
             "role_suggestions": ROLE_SUGGESTIONS,
+            "existing_lineage": list(
+                project.lineage_parents.exclude(
+                    status=LineageEdge.STATUS_WITHDRAWN
+                ).select_related("parent", "parent_version", "child_version")
+            ),
+            "existing_lineage_heading": (
+                "Previous version edges"
+                if ProjectDepositVersion.objects.filter(
+                    deposit__project=project
+                ).count() > 1
+                else "Existing links"
+            ),
         },
     )
 
@@ -624,6 +713,9 @@ def project_zenodo_new_version(request, slug: str):
                     filename=upload.name,
                     size_bytes=getattr(upload, "size", 0),
                 )
+            # Claims made here belong to the version being built: they
+            # stay dormant and go live pinned to it when it publishes.
+            _process_lineage(request, project, defer=True)
             if action == "publish":
                 try:
                     publish_new_version_now(
@@ -645,6 +737,7 @@ def project_zenodo_new_version(request, slug: str):
                         "version. Your changelog and archive are saved; try again.",
                     )
                 else:
+                    _activate_lineage(project)
                     try:
                         from notifications import events
 
@@ -703,6 +796,11 @@ def project_zenodo_new_version(request, slug: str):
             "zenodo_deposit": deposit,
             "zenodo_mode_label": zenodo_mode_label(),
             "pending_attachment": pending_attachment,
+            "lineage_links": list(
+                project.lineage_parents.exclude(
+                    status=LineageEdge.STATUS_WITHDRAWN
+                ).select_related("parent", "parent_version", "child_version")
+            ),
         },
     )
 
@@ -782,12 +880,26 @@ def project_lineage(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     if not project.viewable_by(request.user):
         raise Http404
-    parents = list(
-        project.lineage_parents.select_related("parent").order_by("relation")
+    show_withdrawn = request.GET.get("withdrawn") == "1"
+    outbound = project.lineage_parents.select_related(
+        "parent", "parent_version", "child_version", "declared_by"
+    ).order_by("-declared_at")
+    # Inbound claims from drafts stay invisible until the child publishes.
+    inbound = (
+        project.lineage_children.filter(claimed_at__isnull=False)
+        .select_related("child", "parent_version", "child_version", "declared_by")
+        .order_by("-claimed_at")
     )
-    children = list(
-        project.lineage_children.select_related("child").order_by("relation")
+    has_withdrawn = (
+        outbound.filter(status=LineageEdge.STATUS_WITHDRAWN).exists()
+        or inbound.filter(status=LineageEdge.STATUS_WITHDRAWN).exists()
     )
+    if not show_withdrawn:
+        outbound = outbound.exclude(status=LineageEdge.STATUS_WITHDRAWN)
+        inbound = inbound.exclude(status=LineageEdge.STATUS_WITHDRAWN)
+    parents = list(outbound)
+    children = list(inbound)
+    can_edit = project.editable_by(request.user)
     return render(
         request,
         "projects/lineage.html",
@@ -795,7 +907,103 @@ def project_lineage(request, slug: str):
             "project": project,
             "parents": parents,
             "children": children,
+            "diagram_parents": [e for e in parents if not e.is_withdrawn],
+            "diagram_children": [e for e in children if not e.is_withdrawn],
+            "can_edit": can_edit,
+            "show_withdrawn": show_withdrawn,
+            "has_withdrawn": has_withdrawn,
         },
+    )
+
+
+@login_required
+def lineage_lookup(request):
+    """Resolve a pasted project link/slug for the form's Lineage tab.
+
+    Returns the project's identity (so the user can confirm they grabbed
+    the right one) plus its published versions for the pin dropdown.
+    """
+    target = request.GET.get("q", "")
+    project = lineage_claims.resolve_target(target)
+    if project is None or not project.is_public:
+        return JsonResponse(
+            {
+                "found": False,
+                "error": "No published OSPREY project found for that link.",
+            }
+        )
+    versions = [
+        {
+            "id": v.pk,
+            "label": f"v{v.version_index}" + (" (latest)" if i == 0 else ""),
+        }
+        for i, v in enumerate(
+            ProjectDepositVersion.objects.filter(
+                deposit__project=project
+            ).order_by("-version_index")
+        )
+    ]
+    return JsonResponse(
+        {
+            "found": True,
+            "slug": project.slug,
+            "title": project.title,
+            "summary": (project.summary or "")[:160],
+            "versions": versions,
+        }
+    )
+
+
+@login_required
+def lineage_respond(request, slug: str, edge_id: int):
+    """Parent-side accept/dispute on an inbound lineage claim."""
+    if request.method != "POST":
+        return redirect("projects:lineage", slug=slug)
+    project = get_object_or_404(Project, slug=slug)
+    edge = get_object_or_404(LineageEdge, pk=edge_id, parent=project)
+    error = lineage_claims.respond(
+        edge,
+        request.user,
+        request.POST.get("action", ""),
+        request.POST.get("reason", ""),
+    )
+    if error:
+        messages.error(request, error)
+    elif edge.status == LineageEdge.STATUS_DISPUTED:
+        messages.success(
+            request,
+            "Dispute recorded. The link stays visible, marked as disputed.",
+        )
+    else:
+        messages.success(request, "Dispute retracted.")
+    return redirect("projects:lineage", slug=slug)
+
+
+@login_required
+def lineage_withdraw(request, slug: str, edge_id: int):
+    """Child-side withdrawal, behind its own confirmation page.
+
+    Withdrawing notifies the other team and permanently labels a public
+    record, so it deliberately isn't a one-click button anywhere.
+    """
+    project = get_object_or_404(Project, slug=slug)
+    edge = get_object_or_404(LineageEdge, pk=edge_id, child=project)
+    if not project.editable_by(request.user):
+        raise Http404
+    if request.method == "POST":
+        error = lineage_claims.withdraw(edge, request.user)
+        if error:
+            messages.error(request, error)
+        else:
+            messages.success(
+                request,
+                "Link withdrawn. It stays on record, labeled as withdrawn.",
+            )
+        return redirect("projects:lineage", slug=slug)
+    return render(
+        request,
+        "projects/lineage_withdraw.html",
+        {"project": project, "edge": edge},
     )
 
 

@@ -3,6 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.validators import RegexValidator
 from django.db import models
 from django.urls import reverse
+from django.utils import timezone
 import uuid
 
 # 16-digit ORCID iD with hyphens, last char digit or X.
@@ -22,11 +23,13 @@ ARTIFACT_KIND_CHOICES = [
     ("other", "Other"),
 ]
 
+# Two relations, on purpose (design session 2026-09-03; see
+# planning/features/lineage.md). "derived from" answers "did you start
+# from their files or design?"; "uses" answers "does their project sit
+# inside yours, unmodified?".
 LINEAGE_RELATION_CHOICES = [
     ("derived_from", "derived from"),
-    ("inspired_by", "inspired by"),
-    ("forked_from", "forked from"),
-    ("replaces", "replaces"),
+    ("uses", "uses"),
 ]
 
 
@@ -658,7 +661,26 @@ class ProjectAttachment(models.Model):
 
 
 class LineageEdge(models.Model):
-    """Directed edge from a child project to one of its parents."""
+    """A lineage claim, declared from the child side.
+
+    Edges are immutable facts once made: both ends carry version pins
+    (attached at claim time for the parent, at publish for the child),
+    corrections happen by withdrawing and re-declaring, and a withdrawn
+    edge stays in the table forever with its label. A claim is live from
+    the moment it's made (dispute-only model, decided 2026-09-04): the
+    parent project's team is notified and can dispute it at any time,
+    and retract the dispute. Edges declared while the child is still a
+    draft stay dormant (claimed_at null) and go live at publish.
+    """
+
+    STATUS_ACTIVE = "active"
+    STATUS_DISPUTED = "disputed"
+    STATUS_WITHDRAWN = "withdrawn"
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_DISPUTED, "Disputed by the parent project"),
+        (STATUS_WITHDRAWN, "Withdrawn"),
+    ]
 
     parent = models.ForeignKey(
         Project,
@@ -677,12 +699,46 @@ class LineageEdge(models.Model):
     )
     note = models.TextField(blank=True)
 
+    parent_version = models.ForeignKey(
+        "ProjectDepositVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lineage_as_parent",
+        help_text="Which published version of the parent the claim points at.",
+    )
+    child_version = models.ForeignKey(
+        "ProjectDepositVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lineage_as_child",
+        help_text="Which version of the child made the claim. Set at publish.",
+    )
+
+    declared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lineage_claims",
+    )
+    declared_at = models.DateTimeField(default=timezone.now)
+    claimed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the claim went live and the parent was notified. "
+        "Null while the child is still a draft.",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE
+    )
+    dispute_reason = models.CharField(max_length=500, blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
+        ordering = ["-declared_at"]
         constraints = [
-            models.UniqueConstraint(
-                fields=["parent", "child", "relation"],
-                name="unique_lineage_edge",
-            ),
             models.CheckConstraint(
                 check=~models.Q(parent=models.F("child")),
                 name="lineage_no_self_edge",
@@ -691,6 +747,10 @@ class LineageEdge(models.Model):
 
     def __str__(self) -> str:
         return f"{self.child} {self.get_relation_display()} {self.parent}"
+
+    @property
+    def is_withdrawn(self) -> bool:
+        return self.status == self.STATUS_WITHDRAWN
 
 
 class TagAssignment(models.Model):

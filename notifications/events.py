@@ -45,6 +45,9 @@ EVENTS = {
     "followed_creator_published": GROUP_FOLLOWS,
     "watched_version_published": GROUP_FOLLOWS,
     "watched_activity": GROUP_FOLLOWS,
+    "lineage_claimed": GROUP_PROJECTS,
+    "lineage_responded": GROUP_PROJECTS,
+    "lineage_withdrawn": GROUP_PROJECTS,
 }
 
 
@@ -369,6 +372,88 @@ def watched_wiki_page_created(page, project, author):
             dedup_key=f"watched-wiki:{page.pk}",
             project_slug=project.slug,
         )
+
+
+# --- lineage claims ----------------------------------------------------
+
+
+def _lineage_phrase(edge):
+    return "is derived from" if edge.relation == "derived_from" else "uses"
+
+
+def lineage_claimed(edge):
+    """Tell the parent project's team a lineage link to their project
+    went live. Informational: no action needed unless it's wrong."""
+    recipient = edge.parent.created_by
+    if recipient is None or (edge.declared_by and recipient == edge.declared_by):
+        return
+    phrase = _lineage_phrase(edge)
+    _emit(
+        recipient,
+        kind="lineage_claimed",
+        title=(
+            f"“{edge.child.title}” {phrase} your project "
+            f"“{edge.parent.title}”"
+        ),
+        body=(
+            "No action needed. If the claim is wrong, you can dispute it "
+            "on your project's lineage page at any time."
+        ),
+        url=reverse("projects:lineage", args=[edge.parent.slug]),
+        dedup_key=f"lineage-claim:{edge.pk}",
+        edge_id=edge.pk,
+    )
+
+
+def lineage_responded(edge, actor=None):
+    """Tell the claiming side the parent disputed the link, or retracted
+    a dispute."""
+    recipient = edge.declared_by or edge.child.created_by
+    if recipient is None or (actor and recipient == actor):
+        return
+    phrase = _lineage_phrase(edge)
+    from projects.models import LineageEdge
+
+    if edge.status == LineageEdge.STATUS_DISPUTED:
+        title = (
+            f"“{edge.parent.title}” disputed the claim that "
+            f"“{edge.child.title}” {phrase} it"
+        )
+        body = edge.dispute_reason[:200] if edge.dispute_reason else ""
+    else:
+        title = (
+            f"“{edge.parent.title}” retracted its dispute of the link "
+            f"from “{edge.child.title}”"
+        )
+        body = ""
+    _emit(
+        recipient,
+        kind="lineage_responded",
+        title=title,
+        body=body,
+        url=reverse("projects:lineage", args=[edge.child.slug]),
+        dedup_key=f"lineage-response:{edge.pk}:{edge.status}",
+        edge_id=edge.pk,
+    )
+
+
+def lineage_withdrawn(edge, actor=None):
+    """Tell the parent's team a previously confirmed link was withdrawn."""
+    recipient = edge.parent.created_by
+    if recipient is None or (actor and recipient == actor):
+        return
+    _emit(
+        recipient,
+        kind="lineage_withdrawn",
+        title=(
+            f"“{edge.child.title}” withdrew its link to your project "
+            f"“{edge.parent.title}”"
+        ),
+        body="The claim stays on record, labeled as withdrawn.",
+        url=reverse("projects:lineage", args=[edge.parent.slug]),
+        dedup_key=f"lineage-withdrawn:{edge.pk}",
+        edge_id=edge.pk,
+    )
 
 
 def watched_use_report_created(report):

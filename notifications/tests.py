@@ -1566,7 +1566,7 @@ class FollowAndWatchTests(TestCase):
             reverse("projects:detail", args=[self.project.slug])
         )
         body = response.content.decode().lower()
-        self.assertIn(">unwatch<", body)
+        self.assertIn(">unfollow<", body)
         self.assertNotIn("watchers", body)
         self.assertNotIn("2 watch", body)
         self.assertNotIn("watched by", body)
@@ -1620,12 +1620,12 @@ class FollowAndWatchTests(TestCase):
         response = self.client.get(
             reverse("projects:detail", args=[self.project.slug])
         )
-        self.assertContains(response, ">Watch<")
+        self.assertContains(response, ">Follow Project<")
         self._watch()
         response = self.client.get(
             reverse("projects:detail", args=[self.project.slug])
         )
-        self.assertContains(response, ">Unwatch<")
+        self.assertContains(response, ">Unfollow<")
 
     def test_new_version_notifies_watchers_not_actor(self):
         from notifications import events

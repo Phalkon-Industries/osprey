@@ -7,45 +7,17 @@
 <section>
     <h1 style="margin-top:1rem">Lineage</h1>
     <p class="muted">
-        How this project relates to others. Derivatives are projects built on
-        top of this one. New versions are successor releases.
+        How this project relates to others. Links are claims, made under
+        the claimant's name and pinned to specific versions. The other
+        project's team can dispute a link they believe is wrong, at any
+        time. Links are added on the project's edit form, under the
+        Lineage tab.
         See the <a href="{% url 'derivative_guide' %}">derivative projects guide</a>
         for what counts as which.
     </p>
 
-    {% if parents %}
-    <h2>Parents</h2>
-    <ul>
-        {% for edge in parents %}
-        <li>
-            <a href="{{ edge.parent.get_absolute_url }}">{{ edge.parent.title }}</a>
-            <span class="muted small">&middot; {{ edge.get_relation_display }}</span>
-            {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-
-    {% if children %}
-    <h2>Descendants</h2>
-    <ul>
-        {% for edge in children %}
-        <li>
-            <a href="{{ edge.child.get_absolute_url }}">{{ edge.child.title }}</a>
-            <span class="muted small">&middot; {{ edge.get_relation_display }}</span>
-            {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-
-    {% if not parents and not children %}
-    <p class="muted">No lineage recorded for this project yet.</p>
-    {% endif %}
-
-    <h2>Diagram</h2>
-    {% if parents or children %}
-    {% with parent_count=parents|length child_count=children|length %}
+    {% if diagram_parents or diagram_children %}
+    {% with parent_count=diagram_parents|length child_count=diagram_children|length %}
     <div class="lineage-graph" data-lineage-graph>
         <svg viewBox="0 0 800 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Lineage diagram">
             <defs>
@@ -53,15 +25,15 @@
                     <path d="M0,0 L8,4 L0,8 Z" fill="var(--fg-muted)"></path>
                 </marker>
             </defs>
-            {% for edge in parents %}
+            {% for edge in diagram_parents %}
             {% with cx=forloop.counter0|add:1 %}
             <g class="lineage-edge">
                 <line x1="400" y1="160" x2="{% widthratio cx parent_count|add:1 800 %}" y2="82" stroke="var(--fg-muted)" stroke-width="1.5" marker-end="url(#arrowhead)"></line>
-                <text x="{% widthratio cx parent_count|add:1 800 %}" y="115" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}</text>
+                <text x="{% widthratio cx parent_count|add:1 800 %}" y="115" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}{% if edge.status == "disputed" %} (disputed){% endif %}</text>
             </g>
             {% endwith %}
             {% endfor %}
-            {% for edge in parents %}
+            {% for edge in diagram_parents %}
             {% with cx=forloop.counter0|add:1 %}
             <a href="{{ edge.parent.get_absolute_url }}" class="lineage-node-link">
                 <g class="lineage-node">
@@ -81,15 +53,15 @@
                 <text x="400" y="205" text-anchor="middle" font-size="11" fill="var(--fg-muted)">this project</text>
             </g>
 
-            {% for edge in children %}
+            {% for edge in diagram_children %}
             {% with cx=forloop.counter0|add:1 %}
             <g class="lineage-edge">
                 <line x1="{% widthratio cx child_count|add:1 800 %}" y1="290" x2="400" y2="222" stroke="var(--fg-muted)" stroke-width="1.5" marker-end="url(#arrowhead)"></line>
-                <text x="{% widthratio cx child_count|add:1 800 %}" y="260" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}</text>
+                <text x="{% widthratio cx child_count|add:1 800 %}" y="260" text-anchor="middle" font-size="11" fill="var(--fg-muted)">{{ edge.get_relation_display }}{% if edge.status == "disputed" %} (disputed){% endif %}</text>
             </g>
             {% endwith %}
             {% endfor %}
-            {% for edge in children %}
+            {% for edge in diagram_children %}
             {% with cx=forloop.counter0|add:1 %}
             <a href="{{ edge.child.get_absolute_url }}" class="lineage-node-link">
                 <g class="lineage-node">
@@ -105,8 +77,83 @@
         <p class="muted small">Hover a node for a summary; click to open that project.</p>
     </div>
     {% endwith %}
-    {% else %}
-    <p class="muted">Diagram will appear once lineage edges are added.</p>
+    {% endif %}
+
+    {% if parents %}
+    <h2>This project builds on</h2>
+    <ul>
+        {% for edge in parents %}
+        <li style="margin-bottom:.5rem">
+            {{ edge.get_relation_display }}
+            <a href="{{ edge.parent.get_absolute_url }}">{{ edge.parent.title }}</a>
+            <span class="muted small">
+                {% if edge.parent_version %}(their v{{ edge.parent_version.version_index }}{% if edge.child_version %}, from this project's v{{ edge.child_version.version_index }}{% endif %}){% endif %}
+                {% if edge.claimed_at is None %}&middot; goes live at publish{% elif edge.status == "disputed" %}&middot; disputed by their team{% elif edge.is_withdrawn %}&middot; withdrawn{% endif %}
+            </span>
+            {% if edge.status == "disputed" and edge.dispute_reason %}
+            <br><span class="muted small">Their reason: {{ edge.dispute_reason }}</span>
+            {% endif %}
+            {% if edge.note %}<br><span class="muted small">{{ edge.note }}</span>{% endif %}
+            {% if can_edit and not edge.is_withdrawn %}
+            <a class="lineage-action" style="margin-left:.5rem" href="{% url 'projects:lineage_withdraw' project.slug edge.pk %}">Withdraw</a>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if children %}
+    <h2>Built on this project</h2>
+    <ul>
+        {% for edge in children %}
+        <li style="margin-bottom:.5rem">
+            <a href="{{ edge.child.get_absolute_url }}">{{ edge.child.title }}</a>
+            {% if edge.relation == "uses" %}uses this project{% else %}is derived from this project{% endif %}
+            <span class="muted small">
+                {% if edge.parent_version %}(v{{ edge.parent_version.version_index }}{% if edge.child_version %}, their v{{ edge.child_version.version_index }}{% endif %}){% endif %}
+                {% if edge.status == "disputed" %}&middot; disputed{% elif edge.is_withdrawn %}&middot; withdrawn{% endif %}
+            </span>
+            {% if edge.status == "disputed" and edge.dispute_reason %}
+            <br><span class="muted small">Dispute reason: {{ edge.dispute_reason }}</span>
+            {% endif %}
+            {% if can_edit and not edge.is_withdrawn %}
+            <span style="margin-left:.5rem">
+                {% if edge.status == "disputed" %}
+                <form method="post" action="{% url 'projects:lineage_respond' project.slug edge.pk %}" style="display:inline;margin:0">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="retract">
+                    <button type="submit" class="lineage-action">Retract dispute</button>
+                </form>
+                {% else %}
+                <details class="lineage-dispute">
+                    <summary class="lineage-action">Dispute</summary>
+                    <form method="post" action="{% url 'projects:lineage_respond' project.slug edge.pk %}" style="display:flex;gap:.5rem;margin:.35rem 0">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="dispute">
+                        <input type="text" name="reason" maxlength="500" placeholder="Why? (optional, shown publicly)" style="flex:1">
+                        <button type="submit" class="ghost">Dispute this link</button>
+                    </form>
+                </details>
+                {% endif %}
+            </span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if not parents and not children %}
+    <p class="muted">No lineage recorded for this project yet.</p>
+    {% endif %}
+
+    {% if has_withdrawn %}
+    <p class="muted small">
+        {% if show_withdrawn %}
+        <a href="{% url 'projects:lineage' project.slug %}">Hide withdrawn links</a>
+        {% else %}
+        <a href="{% url 'projects:lineage' project.slug %}?withdrawn=1">Show withdrawn links</a>
+        {% endif %}
+    </p>
     {% endif %}
 </section>
 </article>

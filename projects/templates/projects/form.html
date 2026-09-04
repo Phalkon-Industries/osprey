@@ -42,7 +42,7 @@
         <button type="button" class="project-tab" data-form-tab="contributors">Contributors <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="details">More details <span class="form-tab-state" data-tab-state></span></button>
-        <button type="button" class="project-tab" data-form-tab="related">Related projects <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="related">Lineage <span class="form-tab-state" data-tab-state></span></button>
     </nav>
 
     <section class="form-tab-panel" data-form-panel="basics"
@@ -250,12 +250,32 @@
     </section>
 
     <section class="form-tab-panel" data-form-panel="related">
-        <h2 style="margin-top:1.5rem">Related projects</h2>
-        <p class="muted">
-            Linking projects together (forks, derivatives, components you
-            build on) is coming soon. Until then, describe relationships in
-            the README.
+        <h2 style="margin-top:1.5rem">Lineage</h2>
+        <p class="muted" style="font-size:.9rem">
+            Link this project to any OSPREY projects it builds on. There
+            are two kinds of link. <strong>Derived From</strong> means you
+            started from their files or design and modified them (e.g. a
+            fork, a rewrite, or a redesign). And <strong>Uses</strong>
+            means their project is used inside yours, unmodified (like a
+            module or a library component).
         </p>
+        <p class="muted" style="font-size:.9rem">
+            The linked project's team is notified and can dispute a
+            link at any time if they feel it is invalid. Link claims are
+            public and carry your name, so be sure they are accurate.
+        </p>
+
+        {% include "projects/_lineage_widget.html" %}
+
+        {% include "projects/_lineage_existing.html" with edges=existing_lineage heading=existing_lineage_heading %}
+
+        {% if mode == 'new' or not project.is_public %}
+        <p class="muted" style="font-size:.85rem">
+            Links added while this is a draft go live when you publish;
+            the other team is notified then.
+        </p>
+        {% endif %}
+        <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
     </section>
 </form>
 

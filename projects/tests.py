@@ -23,13 +23,16 @@ from django.utils import timezone
 
 from people.models import Profile
 
+from . import lineage
 from .forms import ContributionFormSet, ProjectForm
 from .models import (
     ArtifactLink,
     Contribution,
+    LineageEdge,
     Project,
     ProjectAttachment,
     ProjectDeposit,
+    ProjectDepositVersion,
     Tag,
     TagAssignment,
 )
@@ -1671,3 +1674,336 @@ class PruneDraftArchivesTests(ProjectTestCase):
         self.assertTrue(
             ProjectAttachment.objects.filter(pk=cleared.pk).exists()
         )
+
+
+class LineageClaimTests(ProjectTestCase):
+    def setUp(self):
+        super().setUp()
+        self.child = Project.objects.create(
+            slug="derived-pod",
+            title="Derived Pod",
+            summary="A pod derived from the pump.",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.unrelated,
+        )
+        self.draft_child = Project.objects.create(
+            slug="draft-pod",
+            title="Draft Pod",
+            summary="Not yet published.",
+            visibility=Project.VISIBILITY_PRIVATE,
+            created_by=self.unrelated,
+        )
+
+    def _add_version(self, project, index=1):
+        deposit, _ = ProjectDeposit.objects.get_or_create(
+            project=project, defaults={"deposition_id": f"dep-{project.pk}"}
+        )
+        return ProjectDepositVersion.objects.create(
+            deposit=deposit,
+            version_index=index,
+            published_at=timezone.now(),
+        )
+
+    def _notifications(self, **filters):
+        from notifications.models import Notification
+
+        return Notification.objects.filter(**filters)
+
+    def test_resolve_target_accepts_slug_url_and_permalink(self):
+        self.assertEqual(
+            lineage.resolve_target("public-pump"), self.public_project
+        )
+        self.assertEqual(
+            lineage.resolve_target(
+                "https://osprey.phalkon.io/projects/public-pump/"
+            ),
+            self.public_project,
+        )
+        self.assertEqual(
+            lineage.resolve_target(
+                f"https://osprey.phalkon.io/p/{self.public_project.public_id}/"
+            ),
+            self.public_project,
+        )
+        self.assertIsNone(lineage.resolve_target("nope-not-here"))
+
+    def test_declare_validations(self):
+        _, err = lineage.declare(
+            self.child, "derived-pod", "derived_from", self.unrelated
+        )
+        self.assertIn("itself", err)
+        _, err = lineage.declare(
+            self.child, "private-pump", "derived_from", self.unrelated
+        )
+        self.assertIn("isn't published", err)
+        _, err = lineage.declare(self.child, "public-pump", "bogus", self.unrelated)
+        self.assertEqual(err, "Pick a relation.")
+        _, err = lineage.declare(self.child, "zzz-none", "uses", self.unrelated)
+        self.assertIn("No OSPREY project", err)
+
+    def test_declare_on_public_child_goes_live_and_notifies_parent(self):
+        parent_version = self._add_version(self.public_project)
+
+        edge, err = lineage.declare(
+            self.child, "public-pump", "derived_from", self.unrelated
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(edge.claimed_at)
+        self.assertEqual(edge.status, LineageEdge.STATUS_ACTIVE)
+        self.assertEqual(edge.parent_version, parent_version)
+        note = self._notifications(user=self.owner, kind="lineage_claimed").get()
+        self.assertIn("is derived from your project", note.title)
+        self.assertIn("dispute", note.body)
+
+    def test_declare_on_draft_child_stays_dormant(self):
+        edge, err = lineage.declare(
+            self.draft_child, "public-pump", "uses", self.unrelated
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNone(edge.claimed_at)
+        self.assertFalse(self._notifications(kind="lineage_claimed").exists())
+
+    def test_publish_activation_pins_child_and_notifies(self):
+        edge, _ = lineage.declare(
+            self.draft_child, "public-pump", "derived_from", self.unrelated
+        )
+        self.draft_child.visibility = Project.VISIBILITY_PUBLIC
+        self.draft_child.save()
+        version = self._add_version(self.draft_child)
+
+        count = lineage.activate_pending(self.draft_child)
+
+        edge.refresh_from_db()
+        self.assertEqual(count, 1)
+        self.assertEqual(edge.child_version, version)
+        self.assertIsNotNone(edge.claimed_at)
+        self.assertTrue(
+            self._notifications(user=self.owner, kind="lineage_claimed").exists()
+        )
+
+    def test_repeat_claims_between_versions_are_separate_facts(self):
+        first, _ = lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+        self._add_version(self.child)
+
+        second, err = lineage.declare(
+            self.child, "public-pump", "uses", self.unrelated
+        )
+
+        self.assertIsNone(err)
+        self.assertEqual(second.status, LineageEdge.STATUS_ACTIVE)
+        self.assertNotEqual(first.pk, second.pk)
+
+    def test_same_team_claims_do_not_self_notify(self):
+        mine = Project.objects.create(
+            slug="my-fork",
+            title="My Fork",
+            summary="Fork of my own pump.",
+            visibility=Project.VISIBILITY_PUBLIC,
+            created_by=self.owner,
+        )
+
+        edge, err = lineage.declare(mine, "public-pump", "derived_from", self.owner)
+
+        self.assertIsNone(err)
+        self.assertEqual(edge.status, LineageEdge.STATUS_ACTIVE)
+        self.assertFalse(self._notifications(kind="lineage_claimed").exists())
+
+    def test_respond_permissions_and_dispute_reason(self):
+        edge, _ = lineage.declare(
+            self.child, "public-pump", "derived_from", self.unrelated
+        )
+
+        self.assertIsNotNone(lineage.respond(edge, self.unrelated, "dispute"))
+
+        err = lineage.respond(edge, self.owner, "dispute", "Never saw these files")
+        self.assertIsNone(err)
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_DISPUTED)
+        self.assertEqual(edge.dispute_reason, "Never saw these files")
+        note = self._notifications(
+            user=self.unrelated, kind="lineage_responded", title__icontains="disputed"
+        ).get()
+        self.assertIn("disputed", note.title)
+
+        err = lineage.respond(edge, self.owner, "retract")
+        self.assertIsNone(err)
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_ACTIVE)
+        self.assertEqual(edge.dispute_reason, "")
+        self.assertTrue(
+            self._notifications(
+                user=self.unrelated,
+                kind="lineage_responded",
+                title__icontains="retracted",
+            ).exists()
+        )
+
+    def test_withdraw_keeps_row_and_notifies_parent(self):
+        edge, _ = lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+
+        self.assertIsNotNone(lineage.withdraw(edge, self.owner))
+        self.assertIsNone(lineage.withdraw(edge, self.unrelated))
+
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_WITHDRAWN)
+        self.assertTrue(
+            self._notifications(user=self.owner, kind="lineage_withdrawn").exists()
+        )
+
+    def test_duplicate_claim_blocked(self):
+        lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+        _, err = lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+        self.assertIn("already", err)
+
+    def test_edit_form_post_declares_edges(self):
+        self.client.force_login(self.unrelated)
+        data = self.project_form_post_data()
+        data["lineage_target"] = ["public-pump"]
+        data["lineage_relation"] = ["uses"]
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.child.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        edge = LineageEdge.objects.get(child=self.child)
+        self.assertEqual(edge.parent, self.public_project)
+        self.assertEqual(edge.relation, "uses")
+        self.assertEqual(edge.declared_by, self.unrelated)
+
+    def test_respond_and_withdraw_views(self):
+        edge, _ = lineage.declare(
+            self.child, "public-pump", "derived_from", self.unrelated
+        )
+
+        self.client.force_login(self.owner)
+        respond_url = reverse(
+            "projects:lineage_respond", args=[self.public_project.slug, edge.pk]
+        )
+        response = self.client.post(
+            respond_url, {"action": "dispute", "reason": "Wrong files"}
+        )
+        self.assertEqual(response.status_code, 302)
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_DISPUTED)
+
+        response = self.client.post(respond_url, {"action": "retract"})
+        self.assertEqual(response.status_code, 302)
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_ACTIVE)
+
+        self.client.force_login(self.unrelated)
+        response = self.client.post(
+            reverse("projects:lineage_withdraw", args=[self.child.slug, edge.pk])
+        )
+        self.assertEqual(response.status_code, 302)
+        edge.refresh_from_db()
+        self.assertEqual(edge.status, LineageEdge.STATUS_WITHDRAWN)
+
+    def test_lineage_page_hides_dormant_inbound_and_offers_actions(self):
+        live, _ = lineage.declare(
+            self.child, "public-pump", "derived_from", self.unrelated
+        )
+        lineage.declare(self.draft_child, "public-pump", "uses", self.unrelated)
+
+        self.client.force_login(self.owner)
+        response = self.client.get(
+            reverse("projects:lineage", args=[self.public_project.slug])
+        )
+
+        self.assertContains(response, "Derived Pod")
+        self.assertNotContains(response, "Draft Pod")
+        self.assertNotContains(response, ">Accept<")
+        self.assertContains(response, "Dispute")
+
+    def test_lineage_lookup_endpoint(self):
+        self._add_version(self.public_project, index=1)
+        self._add_version(self.public_project, index=2)
+
+        response = self.client.get(reverse("projects:lineage_lookup"), {"q": "public-pump"})
+        self.assertEqual(response.status_code, 302)  # login required
+
+        self.client.force_login(self.unrelated)
+        response = self.client.get(reverse("projects:lineage_lookup"), {"q": "public-pump"})
+        data = response.json()
+        self.assertTrue(data["found"])
+        self.assertEqual(data["title"], "Public Pump")
+        self.assertEqual([v["label"] for v in data["versions"]], ["v2 (latest)", "v1"])
+
+        response = self.client.get(reverse("projects:lineage_lookup"), {"q": "private-pump"})
+        self.assertFalse(response.json()["found"])
+
+        response = self.client.get(reverse("projects:lineage_lookup"), {"q": "nope"})
+        self.assertFalse(response.json()["found"])
+
+    def test_declare_with_version_pin_override(self):
+        v1 = self._add_version(self.public_project, index=1)
+        self._add_version(self.public_project, index=2)
+
+        edge, err = lineage.declare(
+            self.child, "public-pump", "uses", self.unrelated,
+            parent_version_id=v1.pk,
+        )
+
+        self.assertIsNone(err)
+        self.assertEqual(edge.parent_version, v1)
+
+    def test_edit_form_post_with_version_pin(self):
+        v1 = self._add_version(self.public_project, index=1)
+        self._add_version(self.public_project, index=2)
+        self.client.force_login(self.unrelated)
+        data = self.project_form_post_data()
+        data["lineage_target"] = ["public-pump"]
+        data["lineage_relation"] = ["derived_from"]
+        data["lineage_version"] = [str(v1.pk)]
+
+        response = self.client.post(
+            reverse("projects:edit", args=[self.child.slug]), data
+        )
+
+        self.assertEqual(response.status_code, 302)
+        edge = LineageEdge.objects.get(child=self.child)
+        self.assertEqual(edge.parent_version, v1)
+
+    def test_deferred_claims_stay_dormant_until_activation(self):
+        edge, err = lineage.declare(
+            self.child, "public-pump", "uses", self.unrelated, defer=True
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNone(edge.claimed_at)
+        self.assertIsNone(edge.child_version)
+        self.assertFalse(self._notifications(kind="lineage_claimed").exists())
+
+        version = self._add_version(self.child)
+        count = lineage.activate_pending(self.child)
+
+        edge.refresh_from_db()
+        self.assertEqual(count, 1)
+        self.assertEqual(edge.child_version, version)
+        self.assertIsNotNone(edge.claimed_at)
+        self.assertTrue(
+            self._notifications(user=self.owner, kind="lineage_claimed").exists()
+        )
+
+    def test_withdraw_requires_confirmation_page(self):
+        edge, _ = lineage.declare(self.child, "public-pump", "uses", self.unrelated)
+        url = reverse(
+            "projects:lineage_withdraw", args=[self.child.slug, edge.pk]
+        )
+
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+        self.client.force_login(self.unrelated)
+        response = self.client.get(url)
+        self.assertContains(response, "Withdraw this lineage link?")
+        edge.refresh_from_db()
+        self.assertNotEqual(edge.status, LineageEdge.STATUS_WITHDRAWN)
+
+        response = self.client.post(url)
+        edge.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(edge.status, LineageEdge.STATUS_WITHDRAWN)

@@ -607,10 +607,10 @@ TagAssignment.objects.get_or_create(project=firmware_fork, tag=tag_pump)
 # --- Lineage edges -------------------------------------------------------------
 
 LineageEdge.objects.get_or_create(parent=pump, child=deriv, relation="derived_from")
-LineageEdge.objects.get_or_create(parent=pump_mark_i, child=pump, relation="replaces")
-LineageEdge.objects.get_or_create(parent=osh_pump, child=pump, relation="inspired_by")
+LineageEdge.objects.get_or_create(parent=pump_mark_i, child=pump, relation="derived_from")
+LineageEdge.objects.get_or_create(parent=osh_pump, child=pump, relation="uses")
 LineageEdge.objects.get_or_create(
-    parent=pump, child=firmware_fork, relation="forked_from"
+    parent=pump, child=firmware_fork, relation="derived_from"
 )
 
 

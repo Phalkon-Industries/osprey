@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Withdraw link &middot; {{ project.title }} &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section style="max-width:42rem">
+    <h1>Withdraw this lineage link?</h1>
+
+    <div class="lineage-row" style="margin:1rem 0">
+        <p style="margin:0">
+            <strong>{{ edge.child.title }}</strong>
+            {{ edge.get_relation_display }}
+            <a href="{{ edge.parent.get_absolute_url }}">{{ edge.parent.title }}</a>
+            {% if edge.parent_version %}<span class="muted small">(their v{{ edge.parent_version.version_index }}{% if edge.child_version %}, from your v{{ edge.child_version.version_index }}{% endif %})</span>{% endif %}
+        </p>
+        <p class="muted small" style="margin:.35rem 0 0">
+            {% if edge.status == "disputed" %}Disputed by their team &middot; {% endif %}Declared {{ edge.declared_at|date:"Y-m-d" }}{% if edge.declared_by %} by @{{ edge.declared_by.get_username }}{% endif %}
+        </p>
+    </div>
+
+    <p>
+        Withdrawing doesn't delete anything. The claim stays on record
+        forever, labeled as withdrawn, hidden from the default lineage
+        view{% if edge.claimed_at %}, and “{{ edge.parent.title }}”'s
+        team is notified{% endif %}. If the link was right but pointed at
+        the wrong version, withdraw it here and add a fresh one from the
+        edit form.
+    </p>
+
+    <form method="post" style="display:flex;gap:.5rem;align-items:center">
+        {% csrf_token %}
+        <button type="submit">Withdraw this link</button>
+        <a class="button ghost" href="{% url 'projects:lineage' project.slug %}">Cancel</a>
+    </form>
+</section>
+{% endblock %}

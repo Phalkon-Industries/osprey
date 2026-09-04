@@ -1,0 +1,129 @@
+{% comment %}
+Add-a-link rows for lineage claims. Include inside a <form>; rows POST as
+parallel lineage_target / lineage_relation / lineage_version lists. Used
+by the project form's Lineage tab and the new-version page. The script
+binds once per page (one widget per page).
+{% endcomment %}
+<div data-lineage-rows data-lookup-url="{% url 'projects:lineage_lookup' %}"></div>
+<template id="lineage-row-template">
+    <fieldset class="lineage-row" data-lineage-row>
+        <div class="lineage-row-fields">
+            <label>Link type<br>
+                <select name="lineage_relation">
+                    <option value="derived_from">Derived From</option>
+                    <option value="uses">Uses</option>
+                </select>
+            </label>
+            <label class="lineage-target">URL of OSPREY project<br>
+                <input type="text" name="lineage_target" placeholder="Paste the project's URL">
+            </label>
+            <button type="button" class="ghost" data-lineage-lookup>Look up</button>
+        </div>
+        <p class="muted small lineage-preview" data-lineage-preview>Look up a project to start.</p>
+        <div class="lineage-row-fields">
+            <label>Their version<br>
+                <select name="lineage_version"><option value="">Latest</option></select>
+            </label>
+        </div>
+        <p style="margin:.6rem 0 0"><button type="button" class="ghost" data-lineage-remove>Remove</button></p>
+    </fieldset>
+</template>
+<p><button type="button" class="ghost" data-lineage-add>Add a Link</button></p>
+<script>
+    (function () {
+        // Lineage rows: resolve the pasted link so the user sees which
+        // project they grabbed, offer its published versions for the pin,
+        // and allow removing rows before submit.
+        var wrap = document.querySelector('[data-lineage-rows]');
+        var add = document.querySelector('[data-lineage-add]');
+        var template = document.getElementById('lineage-row-template');
+        if (!wrap || !add || !template) return;
+        var lookupUrl = wrap.dataset.lookupUrl;
+
+        function rows() {
+            return Array.prototype.slice.call(wrap.querySelectorAll('[data-lineage-row]'));
+        }
+        function resetPreview(preview) {
+            preview.classList.remove('lineage-preview-miss');
+            preview.textContent = 'Look up a project to start.';
+        }
+        function lookup(row) {
+            var input = row.querySelector('input[name="lineage_target"]');
+            var preview = row.querySelector('[data-lineage-preview]');
+            var versionSelect = row.querySelector('select[name="lineage_version"]');
+            var value = input.value.trim();
+            if (!value) {
+                resetPreview(preview);
+                versionSelect.innerHTML = '<option value="">Latest</option>';
+                return;
+            }
+            preview.classList.remove('lineage-preview-miss');
+            preview.textContent = 'Looking up…';
+            fetch(lookupUrl + '?q=' + encodeURIComponent(value), { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (input.value.trim() !== value) return; // stale response
+                    if (!data.found) {
+                        preview.classList.add('lineage-preview-miss');
+                        preview.textContent = data.error || 'No project found.';
+                        versionSelect.innerHTML = '<option value="">Latest</option>';
+                        return;
+                    }
+                    preview.innerHTML = '';
+                    var check = document.createElement('span');
+                    check.className = 'lineage-preview-check';
+                    check.textContent = '✓ ';
+                    preview.appendChild(check);
+                    preview.appendChild(document.createTextNode(
+                        data.title + (data.summary ? ' — ' + data.summary : '')
+                    ));
+                    // With real versions, list them ("v3 (latest)" first);
+                    // otherwise keep the generic Latest option.
+                    if (data.versions && data.versions.length) {
+                        versionSelect.innerHTML = '';
+                        data.versions.forEach(function (v) {
+                            var opt = document.createElement('option');
+                            opt.value = v.id;
+                            opt.textContent = v.label;
+                            versionSelect.appendChild(opt);
+                        });
+                    } else {
+                        versionSelect.innerHTML = '<option value="">Latest</option>';
+                    }
+                })
+                .catch(function () {
+                    preview.classList.add('lineage-preview-miss');
+                    preview.textContent = 'Lookup failed; check the link.';
+                });
+        }
+
+        var timer = null;
+        wrap.addEventListener('input', function (event) {
+            if (!event.target.matches('input[name="lineage_target"]')) return;
+            var row = event.target.closest('[data-lineage-row]');
+            clearTimeout(timer);
+            timer = setTimeout(function () { lookup(row); }, 400);
+        });
+        wrap.addEventListener('change', function (event) {
+            if (!event.target.matches('input[name="lineage_target"]')) return;
+            clearTimeout(timer);
+            lookup(event.target.closest('[data-lineage-row]'));
+        });
+        wrap.addEventListener('click', function (event) {
+            var lookupBtn = event.target.closest('[data-lineage-lookup]');
+            if (lookupBtn) {
+                clearTimeout(timer);
+                lookup(lookupBtn.closest('[data-lineage-row]'));
+                return;
+            }
+            var btn = event.target.closest('[data-lineage-remove]');
+            if (!btn) return;
+            btn.closest('[data-lineage-row]').remove();
+        });
+        add.addEventListener('click', function () {
+            wrap.insertAdjacentHTML('beforeend', template.innerHTML);
+            var newest = rows().pop();
+            newest.querySelector('input').focus();
+        });
+    })();
+</script>
