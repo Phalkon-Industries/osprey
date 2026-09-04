@@ -1,0 +1,9 @@
+{% comment %}
+Generated cover for projects without an uploaded one: a stable
+slug-derived gradient with the title over it. Pass `project` and
+`frame_class` ("thumb-frame" for cards, "hero-image-frame" for the
+project page hero).
+{% endcomment %}
+<span class="{{ frame_class }} cover-placeholder" style="--cover-hue:{{ project.cover_hue }}" aria-hidden="true">
+    <span class="cover-placeholder-title">{{ project.title }}</span>
+</span>

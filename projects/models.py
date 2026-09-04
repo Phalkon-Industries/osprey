@@ -13,6 +13,8 @@ ORCID_VALIDATOR = RegexValidator(
 )
 
 
+import zlib
+
 ARTIFACT_KIND_CHOICES = [
     ("github", "GitHub repository"),
     ("codeberg", "Codeberg repository"),
@@ -242,6 +244,12 @@ class Project(models.Model):
         from people.identity import split_institutions
 
         return split_institutions(self.institution)
+
+    @property
+    def cover_hue(self) -> int:
+        """Stable 0-359 hue derived from the slug, for the generated
+        cover shown when a project has no cover image."""
+        return zlib.crc32(self.slug.encode("utf-8")) % 360
 
     @property
     def cover_image_display_url(self) -> str:

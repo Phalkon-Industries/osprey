@@ -141,7 +141,7 @@ Project.objects.filter(pk=pump.pk).update(
     institution=WHOI,
     canonical_url="https://github.com/example/whoi-pump",
     doi="10.5281/zenodo.99000",
-    cover_image_url="https://placehold.co/1200x600/0b3d5c/ffffff?text=WHOI+Pump",
+    cover_image_url="",
     self_rating=8,
     self_rating_note=(
         "Two release generations field-deployed off the R/V Tioga and on Vineyard Sound moorings. "
@@ -287,7 +287,7 @@ Project.objects.filter(pk=deriv.pk).update(
     readme=DERIV_README,
     summary="Splash-rated peristaltic pump for shallow estuary deployments.",
     institution="URI Graduate School of Oceanography",
-    cover_image_url="https://placehold.co/1200x600/8b5e34/ffffff?text=Estuary+Pump",
+    cover_image_url="",
     wiki_requires_approval=True,
     self_rating=5,
     self_rating_note=(
@@ -515,7 +515,7 @@ Project.objects.filter(pk=pump_mark_i.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
     summary="Bench-top peristaltic pump prototype from 2018.",
     institution=WHOI,
-    cover_image_url="https://placehold.co/1200x600/4a4a4a/ffffff?text=Pump+Mark+I",
+    cover_image_url="",
     self_rating=2,
     self_rating_note="Archival. Listed for historical record.",
 )
@@ -554,7 +554,7 @@ Project.objects.filter(pk=osh_pump.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
     summary="Community open-source peristaltic pump reference design.",
     institution="Open Source Hardware Association",
-    cover_image_url="https://placehold.co/1200x600/0f766e/ffffff?text=OSH+Pump",
+    cover_image_url="",
     self_rating=6,
     self_rating_note="Catalog entry only; not maintained on OSPREY.",
 )
@@ -592,7 +592,7 @@ Project.objects.filter(pk=firmware_fork.pk).update(
     visibility=Project.VISIBILITY_PUBLIC,
     summary="Pump controller firmware using an adaptive sliding-mode flow controller.",
     institution="MIT",
-    cover_image_url="https://placehold.co/1200x600/6b21a8/ffffff?text=Firmware+Fork",
+    cover_image_url="",
     self_rating=3,
     self_rating_note="Bench only. Controller is unstable above 250 mL/min.",
 )

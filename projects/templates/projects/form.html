@@ -46,7 +46,7 @@
     </nav>
 
     <section class="form-tab-panel" data-form-panel="basics"
-        data-check-fields="title,summary,license_choice,artifact_type,self_rating,cover_image">
+        data-check-fields="title,summary,license_choice,artifact_type,self_rating">
         {% include "projects/_form_field.html" with field=form.title %}
         {% include "projects/_form_field.html" with field=form.summary %}
 
@@ -65,7 +65,11 @@
         {% include "projects/_form_field.html" with field=form.self_rating require=True %}
         {% include "projects/_form_field.html" with field=form.self_rating_note %}
 
-    {% include "projects/_form_field.html" with field=form.cover_image require=True %}
+    {% include "projects/_form_field.html" with field=form.cover_image %}
+    <p class="muted" style="font-size:.85rem;margin:-.5rem 0 .75rem">
+        Optional. Projects without a cover get a generated one based on
+        the project title.
+    </p>
     <section class="cover-crop-editor" data-cover-crop-editor data-existing-url="{{ form.instance.cover_image_display_url|default_if_none:'' }}">
         <h2>Cover image crop</h2>
         <div class="cover-crop-layout">
@@ -789,14 +793,6 @@
             panels.forEach(function (p) { p.hidden = p.dataset.formPanel !== name; });
         }
         function filled(name) {
-            if (name === 'cover_image') {
-                // Satisfied by a fresh selection or the cover already
-                // saved on the project (surfaced via the crop editor).
-                var ci = form.querySelector('input[type=file][name=cover_image]');
-                if (ci && ci.files && ci.files.length) return true;
-                var editor = form.querySelector('[data-cover-crop-editor]');
-                return !!(editor && editor.dataset.existingUrl);
-            }
             var el = form.elements.namedItem(name);
             if (!el) return false;
             if (el.type === 'checkbox') return true;

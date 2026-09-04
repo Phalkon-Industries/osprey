@@ -15,6 +15,8 @@ project Edit button (kept separate from sub-page `can_edit` flags).
     style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
     <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
 </div>
+{% else %}
+{% include "projects/_cover_placeholder.html" with frame_class="hero-image-frame" %}
 {% endif %}
 {% endwith %}
 {% endif %}

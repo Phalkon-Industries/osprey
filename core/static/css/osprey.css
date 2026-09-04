@@ -773,6 +773,33 @@ button.ghost:hover {
     background: var(--bg-soft);
 }
 
+/* Generated cover for projects without an uploaded one: a stable
+   slug-derived gradient with the title over it. */
+.cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(
+        135deg,
+        hsl(var(--cover-hue, 200) 45% 34%),
+        hsl(calc(var(--cover-hue, 200) + 50) 50% 22%)
+    );
+}
+
+.cover-placeholder-title {
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    padding: 0 1.25rem;
+    font-size: 1.05rem;
+    line-height: 1.3;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.hero-image-frame.cover-placeholder .cover-placeholder-title {
+    font-size: 1.7rem;
+}
+
 .gallery {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));

@@ -70,6 +70,8 @@
             style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
                 class="thumb" src="{{ first_image.image.url }}"
                 alt="{{ first_image.caption|default:project.title }}"></span>
+        {% else %}
+        {% include "projects/_cover_placeholder.html" with frame_class="thumb-frame" %}
         {% endif %}
         {% endwith %}
         {% endif %}
