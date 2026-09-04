@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}How OSPREY works &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section style="max-width:46rem">
+    <h1>How OSPREY works</h1>
+    <p class="muted">
+        A tour of the features that might not explain themselves. For picking
+        a license, see the <a href="{% url 'license_guide' %}">license guide</a>.
+        For project relationships, see the
+        <a href="{% url 'lineage_guide' %}">project lineage guide</a>.
+    </p>
+
+    <h2>Publishing a project</h2>
+    <p>
+        A project starts as a draft. Drafts are private: only you, your
+        contributors, and staff can see them, and you can edit or delete
+        them freely.
+    </p>
+    <p>
+        Publishing is different. When you publish, OSPREY deposits a
+        snapshot of your project with Zenodo, the CERN-operated research
+        archive, and mints a DOI. From that point the project is a
+        permanent part of the public research record. It can't be flipped
+        back to a draft, and published files can't be swapped out. The
+        metadata for the project can still be edited after publishing.
+    </p>
+
+    <h2>Versions</h2>
+    <p>
+        A published project doesn't have to be frozen forever. When
+        you've made updates, publish a new version from the project page.
+        Each version gets its own DOI and keeps its own files.
+    </p>
+    <p>
+        The project DOI always points at the latest version. Cite the
+        project DOI for the work as a whole, and a version DOI when you
+        need to point at one exact snapshot. The full history is on the
+        project's Versions tab.
+    </p>
+
+    <h2>Contributor credit</h2>
+    <p>
+        Every contributor on a published project needs an ORCID iD,
+        attached through the search on the project submission form.
+        Listed contributors can view the project in its draft form. Their
+        name links to their OSPREY profile only after they accept and
+        confirm the credit, which they do from Settings, under
+        Contributor Credits. Until then the row shows as unverified.
+    </p>
+    <p>
+        The Project Owner controls the contributor list and is the only
+        person who can publish. Owners can also grant Project Editor
+        access to accepted contributors, who can then edit everything
+        except the contributor list. Project Owners can transfer
+        ownership entirely to another contributor.
+    </p>
+    <p>
+        If you're managing a project you didn't build yourself, list the
+        real authors and give yourself a role like "Uploaded project".
+    </p>
+
+    <h2>Lineage</h2>
+    <p>
+        Projects can declare what other projects they built on.
+        <strong>Derived From</strong> for work you modified,
+        <strong>Uses</strong> for work sitting inside yours unmodified.
+        Links are pinned to specific versions on both ends, and the other
+        project's team can dispute a link they believe is wrong. More
+        details are in the
+        <a href="{% url 'lineage_guide' %}">project lineage guide</a>.
+    </p>
+
+    <h2>Around a project</h2>
+    <p>Each project page carries more than the README:</p>
+    <ul>
+        <li>
+            <strong>Wiki.</strong> Living documentation. Some wikis are
+            open to direct edits, others review suggestions first based
+            on the project settings.
+        </li>
+        <li>
+            <strong>Discussion.</strong> Questions about the project. The
+            asker can mark a reply as the solution, and maintainers can
+            mark their own pick.
+        </li>
+        <li>
+            <strong>Use reports.</strong> First-hand accounts from people
+            who used the project. Anyone signed in can file one. If you
+            built someone's design, tell them how it went.
+        </li>
+        <li>
+            <strong>Citations.</strong> Works that reference the project.
+            Maintainers can add them directly, and use reports can add
+            them too.
+        </li>
+    </ul>
+
+    <h2>Staying informed</h2>
+    <p>
+        You can follow a person to hear when they publish, and follow a
+        project to hear about new versions, wiki pages, and use reports.
+        Everything lands in your inbox, the bell in the header.
+    </p>
+    <p>
+        Email is optional. Add an address in Settings and you get a daily
+        summary by default, with weekly and immediate options per
+        category. Disabling email removes your email address from the
+        system entirely.
+    </p>
+
+    <h2>Getting help</h2>
+    <p>
+        The Suggestion Box (bottom corner of every page) goes straight to
+        staff: ideas, bug reports, anything. Replies land on your Staff
+        Messages page and in your inbox. Requests about your personal
+        data have their own form, linked from the
+        <a href="{% url 'privacy' %}">Privacy Policy</a>.
+    </p>
+</section>
+{% endblock %}

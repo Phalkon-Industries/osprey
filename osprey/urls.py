@@ -17,6 +17,7 @@ admin.site.index_title = "Site administration"
 urlpatterns = [
     path("", core_views.home, name="home"),
     path("about/", core_views.about, name="about"),
+    path("about/how-it-works/", core_views.how_it_works, name="how_it_works"),
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/lineage/", core_views.lineage_guide, name="lineage_guide"),

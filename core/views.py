@@ -36,6 +36,10 @@ def login(request):
     )
 
 
+def how_it_works(request):
+    return render(request, "core/how_it_works.html")
+
+
 def license_guide(request):
     return render(request, "core/license_guide.html")
 
