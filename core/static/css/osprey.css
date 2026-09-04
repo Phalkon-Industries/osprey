@@ -938,18 +938,37 @@ button.ghost:hover {
     text-decoration: none;
 }
 
-/* Submission-form tab strip: same look as project tabs, but buttons. */
+/* Submission-form tab strip: compact pills rather than underline tabs,
+   so the row still reads as controls when it wraps to a second line. */
+.form-tabs {
+    border-bottom: 0;
+    gap: 0.4rem;
+    margin: 1rem 0 1.25rem;
+}
+
 .form-tabs button.project-tab {
-    border: 0;
-    border-bottom: 3px solid transparent;
-    border-radius: 0;
-    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.85rem;
+    margin-bottom: 0;
+    background: var(--bg-soft);
+    color: var(--fg-muted);
     font-family: inherit;
     cursor: pointer;
 }
 
+.form-tabs button.project-tab:hover {
+    border-color: var(--accent);
+    color: var(--fg);
+    background: var(--bg-soft);
+}
+
 .form-tabs button.project-tab.is-active {
-    border-bottom-color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--fg);
+    font-weight: 700;
 }
 
 .form-tab-state {
@@ -966,6 +985,16 @@ button.ghost:hover {
 
 .form-tab-panel[hidden] {
     display: none !important;
+}
+
+/* "Still needed: ..." note shown when Mark as done finds empty fields */
+.form-missing-note {
+    border: 1px solid #f87171;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: #f87171;
+    max-width: fit-content;
 }
 
 .project-tab:focus-visible {

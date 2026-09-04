@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import uuid
 import zipfile
+from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 from urllib import error
@@ -18,6 +19,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings, tag
 from django.urls import reverse
+from django.utils import timezone
 
 from people.models import Profile
 
@@ -1623,3 +1625,49 @@ class SummaryRequiredTests(ProjectTestCase):
         match = re.search(r"<[^>]*name=\"summary\"[^>]*>", body)
         self.assertIsNotNone(match)
         self.assertIn("required", match.group(0))
+
+
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
+class PruneDraftArchivesTests(ProjectTestCase):
+    def _attachment(self, *, days_old: int, published: bool = False):
+        attachment = ProjectAttachment.objects.create(
+            project=self.private_project,
+            file=SimpleUploadedFile("archive.zip", b"PK\x03\x04zipbytes"),
+            published_to_zenodo=published,
+        )
+        ProjectAttachment.objects.filter(pk=attachment.pk).update(
+            created_at=timezone.now() - timedelta(days=days_old)
+        )
+        return attachment
+
+    def test_prunes_stale_draft_archives_only(self):
+        stale = self._attachment(days_old=31)
+        fresh = self._attachment(days_old=5)
+        published = self._attachment(days_old=90, published=True)
+
+        out = StringIO()
+        call_command("prune_draft_archives", stdout=out)
+
+        remaining = set(
+            ProjectAttachment.objects.values_list("pk", flat=True)
+        )
+        self.assertNotIn(stale.pk, remaining)
+        self.assertIn(fresh.pk, remaining)
+        self.assertIn(published.pk, remaining)
+        self.assertIn("pruned: 1", out.getvalue())
+
+    def test_ignores_rows_without_a_file(self):
+        cleared = ProjectAttachment.objects.create(
+            project=self.private_project,
+            filename="old.zip",
+            published_to_zenodo=False,
+        )
+        ProjectAttachment.objects.filter(pk=cleared.pk).update(
+            created_at=timezone.now() - timedelta(days=90)
+        )
+
+        call_command("prune_draft_archives")
+
+        self.assertTrue(
+            ProjectAttachment.objects.filter(pk=cleared.pk).exists()
+        )

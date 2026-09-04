@@ -11,7 +11,11 @@ from projects.models import Project
 from projects.views import _visible_projects_for
 
 def home(request):
-    qs = _visible_projects_for(request.user)
+    # The homepage is a storefront: public projects only, for everyone.
+    # Drafts stay findable on the projects list and the owner's profile.
+    qs = _visible_projects_for(request.user).filter(
+        visibility=Project.VISIBILITY_PUBLIC, is_staff_hidden=False
+    )
     featured = qs.order_by("-updated_at")[:6]
     recent = qs.order_by("-created_at")[:8]
     return render(request, "core/home.html", {"featured": featured, "recent": recent})

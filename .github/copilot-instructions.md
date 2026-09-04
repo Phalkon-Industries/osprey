@@ -6,7 +6,7 @@ instructions cover both.
 
 ## Project context
 
-- **Working name:** OSPREY — *Open Science Platform for Research and Engineering.* Acronym is OSPRE; the trailing Y keeps the full bird word as the brand.
+- **Working name:** OSPREY — *Open Science Platform for Research and Engineering Yields.* The acronym spells the full bird word.
 - **Founder:** Jonathan A Pfeifer (research engineer, embedded systems and CO₂ sensors, currently at WHOI).
 - **Legal home:** pHalkon Industries LLC, running OSPREY as a public-benefit project.
 - **Starting community:** oceanographic engineering at WHOI.
@@ -55,7 +55,7 @@ These exist because the founder cares about not sounding like an LLM. **Apply th
 ## Document architecture rules
 
 - A source-of-truth document is the single place a fact lives. A composed document references but does not redefine.
-- Naming, branding, expansion: the current expansion is *Open Science Platform for Research and Engineering*. Do not reintroduce "Yields."
+- Naming, branding, expansion: the current expansion is *Open Science Platform for Research and Engineering Yields* (decided 2026-09-03; "Yields" is back in so the acronym spells OSPREY).
 - Numbers (funding scales, milestones, runway): source is [planning/implementation-plan.md](../planning/implementation-plan.md). Pitch deck appendix may restate, never invent.
 - The pump story exists in [planning/vision.md](../planning/vision.md) and the one-pager. If reused elsewhere, vary the phrasing slightly.
 

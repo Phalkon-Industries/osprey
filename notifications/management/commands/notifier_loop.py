@@ -35,6 +35,7 @@ class Command(BaseCommand):
                 if last_digest_date != today:
                     call_command("send_email_digests")
                     call_command("prune_notifications")
+                    call_command("prune_draft_archives")
                     last_digest_date = today
             except Exception as exc:  # noqa: BLE001 - the loop must survive
                 # transient DB/provider outages and try again next tick.

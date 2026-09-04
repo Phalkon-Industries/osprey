@@ -1,10 +1,12 @@
 {% comment %}
 One project-form field: label with required marker, widget, help text,
-errors. Pass `field`. Error spans carry .field-error so the tab strip
-can count them per panel.
+errors. Pass `field`. Pass `require=True` to show the required star on a
+field the server treats as optional (required for publish, not for a
+draft). Error spans carry .field-error so the tab strip can count them
+per panel.
 {% endcomment %}
 <p>
-    <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required %} <span
+    <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong>{% if field.field.required or require %} <span
             class="req" aria-label="required">*</span>{% else %} <span class="muted"
             style="font-weight:normal;font-size:.85rem">(optional)</span>{% endif %}</label><br>
     {{ field }}

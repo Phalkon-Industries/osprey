@@ -1,6 +1,6 @@
 # OSPREY
 
-**Open Science Platform for Research and Engineering.** A public-benefit research
+**Open Science Platform for Research and Engineering Yields.** A public-benefit research
 engineering commons run by [pHalkon Industries LLC](https://phalkon.example).
 
 
