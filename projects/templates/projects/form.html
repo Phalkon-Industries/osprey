@@ -9,7 +9,7 @@
     Everything else is optional.
 </p>
 
-<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave>
+<form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave data-form-mode="{{ mode }}"{% if mode == 'edit' and not project.is_public %} data-bg-save="1"{% endif %}>
     {% csrf_token %}
     {% if form.non_field_errors %}
     <p class="field-error" style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
@@ -108,12 +108,12 @@
         </p>
         {% endif %}
     </section>
-    <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
     <section class="form-tab-panel" data-form-panel="description">
         {% include "projects/_form_field.html" with field=form.readme %}
-        <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+        <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
     <section class="form-tab-panel" data-form-panel="files"
@@ -145,7 +145,7 @@
         <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed">
         <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally. A draft archive is kept for 30 days; if the draft sits longer than that, re-upload the zip when you come back.</span>
     </p>
-    <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
     <section class="form-tab-panel" data-form-panel="contributors">
@@ -355,7 +355,7 @@
             </div>
         </fieldset>
     </template>
-    <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+    <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     {% else %}
     <ul class="contributor-list">
         {% for c in project.contributions.all %}
@@ -368,7 +368,7 @@
     {% endif %}
     </section>
 
-    <section class="form-tab-panel" data-form-panel="details">    <section class="form-tab-panel" data-form-panel="details">
+    <section class="form-tab-panel" data-form-panel="details">
         {% include "projects/_form_field.html" with field=form.field %}
         {% include "projects/_form_field.html" with field=form.canonical_url %}
         {% include "projects/_form_field.html" with field=form.institution %}
@@ -376,7 +376,7 @@
         {% include "projects/_form_field.html" with field=form.publications %}
         {% include "projects/_form_field.html" with field=form.tags_input %}
         {% include "projects/_form_field.html" with field=form.wiki_requires_approval %}
-        <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+        <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
     <section class="form-tab-panel" data-form-panel="related">
@@ -405,7 +405,7 @@
             the other team is notified then.
         </p>
         {% endif %}
-        <p><button type="button" class="ghost" data-mark-done>Mark as done and continue</button></p>
+        <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 </form>
 
@@ -466,6 +466,14 @@
             var publishBtn = form.querySelector('[data-publish-button]');
             if (publishBtn) {
                 publishBtn.addEventListener('click', function (event) {
+                    // The tab script tracks section completion and flags
+                    // readiness on the form; when it says no, block the
+                    // submit and let it render the what's-missing note.
+                    if (form.dataset.publishReady === '0') {
+                        event.preventDefault();
+                        form.dispatchEvent(new CustomEvent('osprey:publish-blocked'));
+                        return;
+                    }
                     var ok = window.confirm(
                         'Publish this project? OSPREY will mint a DOI on Zenodo ' +
                         'and the project will become public. Once published, ' +
@@ -855,8 +863,26 @@
             event.preventDefault();
             var query = (input.value || '').trim();
             if (!query) return;
-            status.textContent = 'Searching ORCID\u2026';
+            var searchBtn = form.querySelector('button[type=submit]');
+            if (searchBtn && searchBtn.disabled) return; // one search at a time
+            // The registry lookup can take a few seconds; make the wait
+            // unmistakable so nobody concludes the search is broken.
+            if (searchBtn) {
+                searchBtn.disabled = true;
+                searchBtn.textContent = 'Searching\u2026';
+            }
+            status.innerHTML = '';
+            var spinner = document.createElement('span');
+            spinner.className = 'inline-spinner';
+            status.appendChild(spinner);
+            status.appendChild(document.createTextNode(' Searching the ORCID registry\u2026 this can take a few seconds.'));
             resultsList.innerHTML = '';
+            var settle = function () {
+                if (searchBtn) {
+                    searchBtn.disabled = false;
+                    searchBtn.textContent = 'Search';
+                }
+            };
             fetch(endpoint + '?q=' + encodeURIComponent(query), {
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json' },
@@ -907,7 +933,8 @@
                     li.appendChild(affLine);
                     resultsList.appendChild(li);
                 });
-            }).catch(function (err) {
+            }).then(settle, function (err) {
+                settle();
                 status.textContent = 'Search failed: ' + err.message;
             });
         });
@@ -938,6 +965,12 @@
         var doneKey = 'osprey-form-done:' + window.location.pathname;
         var done = {};
         try { done = JSON.parse(window.localStorage.getItem(doneKey) || '{}') || {}; } catch (e) { done = {}; }
+        // Sections where the user pressed the button while fields were
+        // still missing; shows the red cross without marking done.
+        var attempted = {};
+        var formMode = form.dataset.formMode || 'edit';
+        var canBgSave = form.dataset.bgSave === '1';
+        var dirty = false;
 
         function tabByName(name) {
             for (var i = 0; i < tabs.length; i++) {
@@ -1056,10 +1089,10 @@
                     state.textContent = '✓';
                     state.className = 'form-tab-state is-complete';
                     state.title = 'Section complete';
-                } else if (done[name] && !met) {
+                } else if ((done[name] || attempted[name]) && !met) {
                     state.textContent = '✗';
                     state.className = 'form-tab-state has-errors';
-                    state.title = 'Marked as done, but required fields in this section are still empty';
+                    state.title = 'Required fields in this section are still empty';
                 } else {
                     state.textContent = '';
                     state.className = 'form-tab-state';
@@ -1067,9 +1100,15 @@
                 }
                 var doneBtn = panel.querySelector('[data-mark-done]');
                 if (doneBtn) {
+                    // Published projects save through "Save changes" (a
+                    // quiet draft save would fight the Zenodo metadata
+                    // sync), so their button only marks the section.
+                    var idleLabel = (formMode === 'edit' && !canBgSave)
+                        ? 'Mark as done and continue'
+                        : 'Save and continue';
                     doneBtn.textContent = (done[name] && met)
                         ? 'Marked as done ✓ (click to undo)'
-                        : 'Mark as done and continue';
+                        : idleLabel;
                 }
                 // The still-needed note updates live and disappears once
                 // everything it listed is filled in.
@@ -1085,18 +1124,113 @@
             });
             var publishBtn = form.querySelector('[data-publish-button]');
             if (publishBtn) {
+                // The button stays clickable when sections are incomplete;
+                // the click is intercepted (see the submit script) and
+                // answered with the what's-missing note instead of a
+                // silently dead disabled button.
                 var ready = allSectionsGreen();
-                publishBtn.disabled = !ready;
+                form.dataset.publishReady = ready ? '1' : '0';
                 publishBtn.title = ready
                     ? ''
                     : 'Publishing needs a green check on every section.';
+                if (ready) {
+                    var blockedNote = form.querySelector('[data-publish-blocked-note]');
+                    if (blockedNote) blockedNote.remove();
+                }
             }
         }
 
+        function sectionLabel(name) {
+            var tab = tabByName(name);
+            if (!tab) return name;
+            // First child is the text node before the state span.
+            return (tab.childNodes[0].textContent || name).trim();
+        }
+        function showPublishBlockedNote() {
+            var parts = [];
+            gatePanels().forEach(function (panel) {
+                var name = panel.dataset.formPanel;
+                var reasons = missingFor(panel);
+                if (!reasons.length && panel.querySelectorAll('.field-error').length) {
+                    reasons = ['fix the highlighted errors'];
+                }
+                if (!reasons.length && !done[name]) {
+                    reasons = ['mark the section as done'];
+                }
+                if (reasons.length) {
+                    parts.push(sectionLabel(name) + ' (' + reasons.join(', ') + ')');
+                }
+            });
+            if (!parts.length) return;
+            var note = form.querySelector('[data-publish-blocked-note]');
+            if (!note) {
+                note = document.createElement('p');
+                note.className = 'form-missing-note';
+                note.setAttribute('data-publish-blocked-note', '');
+                note.setAttribute('role', 'alert');
+                var actions = form.querySelector('.form-actions');
+                actions.insertAdjacentElement('afterend', note);
+            }
+            note.textContent = 'Not ready to publish. Still needed: ' + parts.join('; ') + '.';
+        }
+        form.addEventListener('osprey:publish-blocked', showPublishBlockedNote);
+
         nav.addEventListener('click', function (event) {
             var btn = event.target.closest('[data-form-tab]');
-            if (btn) activate(btn.dataset.formTab);
+            if (!btn) return;
+            if (dirty) backgroundSave();
+            activate(btn.dataset.formTab);
         });
+        function persistDone() {
+            try { window.localStorage.setItem(doneKey, JSON.stringify(done)); } catch (e) { /* storage unavailable */ }
+        }
+        function ensureHidden(fieldName) {
+            var el = form.querySelector('input[type=hidden][name="' + fieldName + '"]');
+            if (!el) {
+                el = document.createElement('input');
+                el.type = 'hidden';
+                el.name = fieldName;
+                form.appendChild(el);
+            }
+            return el;
+        }
+        function saveWarning(show) {
+            var note = form.querySelector('[data-save-warning]');
+            if (!show) {
+                if (note) note.remove();
+                return;
+            }
+            if (!note) {
+                note = document.createElement('p');
+                note.className = 'form-missing-note';
+                note.setAttribute('data-save-warning', '');
+                form.querySelector('.form-actions').insertAdjacentElement('afterend', note);
+            }
+            note.textContent = 'Autosave failed. Your typing is kept in this browser; use Save draft to store it on OSPREY.';
+        }
+        function backgroundSave() {
+            // Quiet draft save so progress persists as sections are
+            // completed and tabs switched. Files are left out: re-sending
+            // a big archive on every section change would hurt, and the
+            // server keeps the copy it already has.
+            if (!canBgSave) return;
+            dirty = false;
+            var fd = new FormData(form);
+            fd.delete('attachment_files');
+            fd.delete('cover_image');
+            fd.set('action', 'draft');
+            fetch(window.location.pathname, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+            }).then(function (response) {
+                if (!response.redirected) throw new Error('rejected');
+                saveWarning(false);
+            }).catch(function () {
+                dirty = true;
+                saveWarning(true);
+            });
+        }
         form.addEventListener('click', function (event) {
             var btn = event.target.closest('[data-mark-done]');
             if (!btn) return;
@@ -1104,24 +1238,47 @@
             if (!panel) return;
             var name = panel.dataset.formPanel;
             if (done[name] && requirementsMet(panel)) {
+                // Explicit unmark of a completed section.
                 done[name] = false;
+                persistDone();
+                refreshState();
+                return;
+            }
+            var met = requirementsMet(panel);
+            if (!met) {
+                // Incomplete: the press still saves progress (below), but
+                // the section stays unmarked with a red cross and the
+                // missing list, so once the fields are filled a single
+                // press marks it done and moves on.
+                attempted[name] = true;
+                var note = noteFor(panel, true);
+                note.textContent = 'Still needed: ' + missingFor(panel).join(', ') + '.';
             } else {
                 done[name] = true;
-            }
-            try { window.localStorage.setItem(doneKey, JSON.stringify(done)); } catch (e) { /* storage unavailable */ }
-            if (done[name] && !requirementsMet(panel)) {
-                var missing = missingFor(panel);
-                var note = noteFor(panel, true);
-                note.textContent = 'Still needed: ' + missing.join(', ') + '.';
+                persistDone();
             }
             refreshState();
-            if (done[name] && requirementsMet(panel)) {
-                var next = order[order.indexOf(name) + 1];
-                if (next) activate(next);
+            var next = order[order.indexOf(name) + 1];
+            if (formMode === 'new' && form.checkValidity()) {
+                // First real save of a brand-new draft: submit and come
+                // back to the form, carrying the marks. An incomplete
+                // section returns to itself so its red cross and missing
+                // list survive the reload.
+                ensureHidden('next_tab').value = met ? (next || name) : name;
+                ensureHidden('marked_section').value = order.filter(function (n) { return done[n]; }).join(',');
+                if (!met) ensureHidden('attempted_section').value = name;
+                var actionInput = form.querySelector('input[type=hidden][name=action]');
+                if (actionInput) actionInput.value = 'save_continue';
+                else ensureHidden('action').value = 'save_continue';
+                form.dataset.activeAction = 'save_continue';
+                form.requestSubmit();
+                return;
             }
+            backgroundSave();
+            if (met && next) activate(next);
         });
-        form.addEventListener('input', refreshState);
-        form.addEventListener('change', refreshState);
+        form.addEventListener('input', function () { dirty = true; refreshState(); });
+        form.addEventListener('change', function () { dirty = true; refreshState(); });
         // A required-but-empty field in a hidden panel would block submit
         // invisibly (the browser can't focus it); reveal its panel first.
         form.addEventListener('invalid', function (event) {
@@ -1136,7 +1293,26 @@
                 break;
             }
         }
-        var requested = new URLSearchParams(window.location.search).get('tab');
+        var query = new URLSearchParams(window.location.search);
+        // Marks made before the first save travel here via the redirect.
+        var markedParam = query.get('marked');
+        if (markedParam) {
+            markedParam.split(',').forEach(function (n) {
+                if (order.indexOf(n) !== -1) done[n] = true;
+            });
+            persistDone();
+        }
+        var attemptedParam = query.get('attempted');
+        if (attemptedParam && order.indexOf(attemptedParam) !== -1) {
+            attempted[attemptedParam] = true;
+            panels.forEach(function (panel) {
+                if (panel.dataset.formPanel !== attemptedParam) return;
+                if (requirementsMet(panel)) return;
+                var note = noteFor(panel, true);
+                note.textContent = 'Still needed: ' + missingFor(panel).join(', ') + '.';
+            });
+        }
+        var requested = query.get('tab');
         if (requested && order.indexOf(requested) === -1) requested = null;
         activate(firstError || requested || order[0]);
         refreshState();

@@ -399,6 +399,75 @@ class ProjectViewTests(ProjectTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Owner Person")
 
+    def test_form_tab_panels_are_siblings(self):
+        # A duplicated <section> opener once nested the Lineage panel
+        # inside "More details": the tab looked empty and publish could
+        # never go all-green. Parse the page the way a browser does and
+        # require every panel at top level, one per tab.
+        from html.parser import HTMLParser
+
+        class PanelNesting(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.depth = 0
+                self.panels = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag != "section":
+                    return
+                a = dict(attrs)
+                if "data-form-panel" in a:
+                    self.panels.append((a["data-form-panel"], self.depth))
+                self.depth += 1
+
+            def handle_endtag(self, tag):
+                if tag == "section":
+                    self.depth = max(0, self.depth - 1)
+
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        parser = PanelNesting()
+        parser.feed(response.content.decode())
+        names = [name for name, _ in parser.panels]
+        self.assertEqual(
+            names,
+            ["basics", "description", "files", "contributors", "details", "related"],
+        )
+        self.assertEqual(
+            [d for _, d in parser.panels], [0] * 6,
+            f"nested form panels: {parser.panels}",
+        )
+
+    def test_save_continue_returns_to_form_on_next_tab(self):
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="save_continue")
+        data["title"] = "Sectioned Pump"
+        data["next_tab"] = "description"
+        data["marked_section"] = "basics"
+
+        response = self.client.post(reverse("projects:new"), data)
+
+        project = Project.objects.get(title="Sectioned Pump")
+        self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
+        self.assertRedirects(
+            response,
+            reverse("projects:edit", args=[project.slug])
+            + "?tab=description&marked=basics",
+        )
+        # Unknown tab names never reach the redirect URL; a valid
+        # attempted section passes through.
+        data["title"] = "Sectioned Pump Two"
+        data["next_tab"] = "evil"
+        data["marked_section"] = "basics,alert(1)"
+        data["attempted_section"] = "files"
+        response = self.client.post(reverse("projects:new"), data)
+        project2 = Project.objects.get(title="Sectioned Pump Two")
+        self.assertRedirects(
+            response,
+            reverse("projects:edit", args=[project2.slug])
+            + "?marked=basics&attempted=files",
+        )
+
     def test_save_draft_creates_private_project_and_renders_detail(self):
         self.client.force_login(self.owner)
         data = self.project_form_post_data(action="draft")

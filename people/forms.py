@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import UploadedFile
 
+from . import avatars
 from .identity import USER_TAG_MAX_LENGTH, clean_user_tag
 from .models import Profile
 
@@ -104,6 +106,24 @@ class ProfileForm(forms.ModelForm):
         if self.instance and self.instance.user_id:
             self.fields["first_name"].initial = self.instance.user.first_name
             self.fields["last_name"].initial = self.instance.user.last_name
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get("avatar")
+        # Only fresh uploads get re-encoded; an unchanged FieldFile (or
+        # the clear-checkbox False) passes through untouched.
+        if not isinstance(avatar, UploadedFile):
+            return avatar
+        if avatar.size > avatars.MAX_UPLOAD_BYTES:
+            raise forms.ValidationError(
+                "Avatar images must be under "
+                f"{avatars.MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+            )
+        try:
+            return avatars.process(avatar, name_hint=avatar.name)
+        except Exception as exc:  # noqa: BLE001 - any decode failure
+            raise forms.ValidationError(
+                "Couldn't read that file as an image."
+            ) from exc
 
     def clean_avatar_focal_x(self):
         v = self.cleaned_data.get("avatar_focal_x")

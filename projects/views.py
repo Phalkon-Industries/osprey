@@ -528,6 +528,43 @@ def _send_return_url(request, slug: str) -> str:
     )
 
 
+_FORM_TAB_NAMES = {
+    "basics",
+    "description",
+    "contributors",
+    "files",
+    "details",
+    "related",
+}
+
+
+def _section_return_url(request, slug: str) -> str | None:
+    """Save-and-continue posts come back to the form on the next tab
+    instead of leaving for the project page. None for every other save."""
+    if request.POST.get("action") != "save_continue":
+        return None
+    url = reverse("projects:edit", args=[slug])
+    params = []
+    tab = request.POST.get("next_tab", "")
+    if tab in _FORM_TAB_NAMES:
+        params.append(f"tab={tab}")
+    # Comma-joined list of sections marked done before the first save;
+    # anything that isn't a known tab name is dropped.
+    marked = [
+        m
+        for m in request.POST.get("marked_section", "").split(",")
+        if m in _FORM_TAB_NAMES
+    ]
+    if marked:
+        params.append("marked=" + ",".join(marked))
+    # A section saved while still incomplete keeps its red cross and
+    # missing-fields note across the reload.
+    attempted = request.POST.get("attempted_section", "")
+    if attempted in _FORM_TAB_NAMES:
+        params.append(f"attempted={attempted}")
+    return url + ("?" + "&".join(params) if params else "")
+
+
 def _process_access(request, project: Project, formset) -> None:
     """Owner-only: apply Project Editor checkboxes, fire invites flagged
     for this save, and handle the transfer-ownership pick.
@@ -762,6 +799,9 @@ def project_new(request):
                 )
             if _send_button_used(request):
                 return redirect(_send_return_url(request, project.slug))
+            section_url = _section_return_url(request, project.slug)
+            if section_url:
+                return redirect(section_url)
             return redirect(project.get_absolute_url())
     else:
         form = ProjectForm()
@@ -887,6 +927,9 @@ def project_edit(request, slug: str):
                 messages.success(request, "Project updated.")
             if _send_button_used(request):
                 return redirect(_send_return_url(request, saved.slug))
+            section_url = _section_return_url(request, saved.slug)
+            if section_url:
+                return redirect(section_url)
             return redirect(saved.get_absolute_url())
     else:
         form = ProjectForm(instance=project)

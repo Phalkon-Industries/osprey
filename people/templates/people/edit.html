@@ -121,16 +121,25 @@
             sync();
         }
 
+        var objectUrl = null;
         fileInput.addEventListener('change', function () {
             var file = fileInput.files && fileInput.files[0];
             if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function (e) {
-                currentSrc = e.target.result;
-                x.value = '50'; y.value = '50'; zoom.value = '1';
-                sync();
-            };
-            reader.readAsDataURL(file);
+            // Mirror the server's upload cap before the preview touches the
+            // file: an oversized image would be rejected on save anyway, and
+            // decoding it here can hang the page.
+            if (file.size > 15 * 1024 * 1024) {
+                fileInput.value = '';
+                window.alert('That image is over 15 MB. Please pick a smaller one.');
+                return;
+            }
+            // Object URL instead of a base64 data URL: the browser decodes
+            // the file directly without holding a giant string in memory.
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
+            currentSrc = objectUrl;
+            x.value = '50'; y.value = '50'; zoom.value = '1';
+            sync();
         });
         zoom.addEventListener('input', sync);
         centerBtn.addEventListener('click', function () {

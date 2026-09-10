@@ -1177,6 +1177,22 @@ summary.lineage-action::-webkit-details-marker {
     max-width: fit-content;
 }
 
+/* Small inline spinner for waiting-on-the-server moments */
+.inline-spinner {
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    vertical-align: -0.15em;
+    animation: inline-spin 0.7s linear infinite;
+}
+
+@keyframes inline-spin {
+    to { transform: rotate(360deg); }
+}
+
 .project-tab:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;

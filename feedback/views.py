@@ -27,35 +27,53 @@ _MAX_MESSAGE_LEN = 4000
 _MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024  # 4 MiB after base64 decode
 
 # Coarse parsers. Good enough for triage; not a UA-parsing library.
+# A capture group, when present, grabs the version. Order matters:
+# Chromium derivatives carry a Chrome/ token, and everything carries
+# Safari/, so the more specific patterns come first.
 _BROWSER_PATTERNS = [
-    ("Edge", r"Edg/"),
-    ("Chrome", r"Chrome/"),
-    ("Firefox", r"Firefox/"),
+    ("Edge", r"Edg/([\d.]+)"),
+    ("Vivaldi", r"Vivaldi/([\d.]+)"),
+    ("Opera", r"OPR/([\d.]+)"),
+    ("Opera", r"Opera/([\d.]+)"),
+    ("Chrome", r"Chrome/([\d.]+)"),
+    ("Firefox", r"Firefox/([\d.]+)"),
+    ("Safari", r"Version/([\d.]+).*Safari/"),
     ("Safari", r"Safari/"),
-    ("Vivaldi", r"Vivaldi/"),
-    ("Opera", r"OPR/|Opera/"),
 ]
+# iOS before macOS: iPad UAs contain "like Mac OS X". The macOS version
+# is frozen at 10_15_7 by modern browsers (it still separates genuinely
+# old systems), and Windows NT 10.0 covers both Windows 10 and 11; the
+# browser version is the reliable number.
 _OS_PATTERNS = [
-    ("Windows", r"Windows NT"),
-    ("macOS", r"Mac OS X|Macintosh"),
+    ("iOS", r"(?:iPhone|iPad|iPod).*? OS ([\d_]+)"),
     ("iOS", r"iPhone|iPad|iPod"),
+    ("macOS", r"Mac OS X ([\d_.]+)"),
+    ("macOS", r"Macintosh"),
+    ("Windows", r"Windows NT ([\d.]+)"),
+    ("Android", r"Android ([\d.]+)"),
     ("Android", r"Android"),
     ("Linux", r"Linux"),
 ]
 
 
+def _label_with_version(ua: str, patterns) -> str:
+    for name, pat in patterns:
+        match = re.search(pat, ua)
+        if not match:
+            continue
+        version = match.group(1) if match.groups() else ""
+        if version:
+            version = ".".join(version.replace("_", ".").split(".")[:2])
+            return f"{name} {version}"
+        return name
+    return ""
+
+
 def _coarse_ua(ua: str) -> tuple[str, str]:
-    browser = ""
-    os_name = ""
-    for name, pat in _BROWSER_PATTERNS:
-        if re.search(pat, ua):
-            browser = name
-            break
-    for name, pat in _OS_PATTERNS:
-        if re.search(pat, ua):
-            os_name = name
-            break
-    return browser, os_name
+    return (
+        _label_with_version(ua, _BROWSER_PATTERNS),
+        _label_with_version(ua, _OS_PATTERNS),
+    )
 
 
 def _decode_data_url(data_url: str) -> bytes | None:

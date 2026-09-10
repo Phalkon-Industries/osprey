@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
+
 from allauth.socialaccount.models import SocialAccount
 from allauth.socialaccount.models import SocialLogin
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from projects.models import Contribution, Project
@@ -163,6 +166,93 @@ class ProfileFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("usertag", form.errors)
+
+
+class AvatarCompressionTests(TestCase):
+    """Uploads are re-encoded as capped WebP; the backfill command gives
+    pre-existing files the same treatment."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="carol")
+        self.profile = self.user.profile
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
+
+    @staticmethod
+    def _png_bytes(width, height):
+        from io import BytesIO
+
+        from PIL import Image
+
+        buffer = BytesIO()
+        Image.new("RGB", (width, height), "steelblue").save(buffer, "PNG")
+        return buffer.getvalue()
+
+    def _form(self, upload):
+        return ProfileForm(
+            data={"display_name": "", "bio": "", "institution": ""},
+            files={"avatar": upload},
+            instance=self.profile,
+        )
+
+    def test_upload_is_reencoded_and_capped(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from PIL import Image
+
+        raw = self._png_bytes(2000, 1500)
+        form = self._form(
+            SimpleUploadedFile("holiday photo.png", raw, "image/png")
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        profile = form.save()
+        self.assertTrue(profile.avatar.name.endswith(".webp"))
+        with profile.avatar.open("rb") as handle:
+            with Image.open(handle) as image:
+                self.assertEqual(image.format, "WEBP")
+                self.assertLessEqual(max(image.size), 512)
+        self.assertLess(profile.avatar.size, len(raw))
+
+    def test_oversized_upload_is_rejected(self):
+        from unittest import mock
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from people import avatars
+
+        upload = SimpleUploadedFile(
+            "big.png", self._png_bytes(64, 64), "image/png"
+        )
+        with mock.patch.object(avatars, "MAX_UPLOAD_BYTES", 10):
+            form = self._form(upload)
+            self.assertFalse(form.is_valid())
+            self.assertIn("avatar", form.errors)
+
+    def test_backfill_command_converts_and_deletes_original(self):
+        from io import StringIO
+
+        from django.core.files.base import ContentFile
+        from django.core.management import call_command
+
+        self.profile.avatar.save(
+            "original.png", ContentFile(self._png_bytes(1200, 900)), save=True
+        )
+        old_name = self.profile.avatar.name
+        storage = self.profile.avatar.storage
+        out = StringIO()
+        call_command("compress_avatars", stdout=out)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.avatar.name.endswith(".webp"))
+        self.assertFalse(storage.exists(old_name))
+        self.assertIn("1 converted", out.getvalue())
+        # Second run: nothing left to do.
+        out = StringIO()
+        call_command("compress_avatars", stdout=out)
+        self.assertIn("1 already fine", out.getvalue())
 
 
 class PeopleViewTests(TestCase):

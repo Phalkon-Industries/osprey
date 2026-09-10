@@ -23,8 +23,35 @@ class FeedbackHelperTests(TestCase):
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
         )
 
-        self.assertEqual(browser, "Chrome")
+        self.assertEqual(browser, "Chrome 120.0")
         self.assertEqual(os_name, "Linux")
+
+    def test_coarse_user_agent_versions(self):
+        safari = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 "
+            "Safari/605.1.15"
+        )
+        self.assertEqual(_coarse_ua(safari), ("Safari 17.4", "macOS 10.15"))
+        ios = (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 "
+            "Mobile/15E148 Safari/604.1"
+        )
+        self.assertEqual(_coarse_ua(ios), ("Safari 17.5", "iOS 17.5"))
+        edge = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 "
+            "Edg/126.0.2592.87"
+        )
+        self.assertEqual(_coarse_ua(edge), ("Edge 126.0", "Windows 10.0"))
+        firefox_android = (
+            "Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 "
+            "Firefox/128.0"
+        )
+        self.assertEqual(
+            _coarse_ua(firefox_android), ("Firefox 128.0", "Android 14")
+        )
 
     def test_data_url_decode_accepts_png_and_ignores_invalid_values(self):
         data_url = "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode("ascii")
@@ -75,7 +102,7 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         feedback = Feedback.objects.get()
         self.assertEqual(len(feedback.message), 4000)
-        self.assertEqual(feedback.browser, "Chrome")
+        self.assertEqual(feedback.browser, "Chrome 120.0")
         self.assertEqual(feedback.os, "Linux")
         self.assertEqual(feedback.viewport_w, 1280)
         self.assertTrue(feedback.screenshot.name.endswith(".png"))
