@@ -140,11 +140,20 @@
         {% endfor %}
     </ul>
     {% endif %}
+    {% if mode == 'edit' and project.is_public %}
+    <p class="muted" style="font-size:.9rem">
+        Published files are archived on Zenodo and can't be swapped out.
+        To ship updated files, release a new version: it gets its own
+        DOI and the project DOI keeps pointing at the latest one.
+    </p>
+    <p><a class="button ghost" href="{% url 'projects:zenodo_new_version' project.slug %}">Release a new version</a></p>
+    {% else %}
     <p>
         <label for="id_attachment_files"><strong>Attach project archive</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(.zip only)</span></label><br>
         <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed">
         <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally. A draft archive is kept for 30 days; if the draft sits longer than that, re-upload the zip when you come back.</span>
     </p>
+    {% endif %}
     <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 

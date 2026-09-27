@@ -143,6 +143,14 @@
             useCORS: true,
             logging: false,
             scale: 1,
+            // Cross-origin images (the Zenodo DOI badge) can't be read into
+            // a canvas and only produce a CORS error in the console; leave
+            // them out of the shot rather than fail noisily.
+            ignoreElements: function (el) {
+                if (el.tagName !== "IMG" || !el.src) return false;
+                try { return new URL(el.src, window.location.href).origin !== window.location.origin; }
+                catch (e) { return false; }
+            },
             // Capture only the visible viewport, not the entire scrollable page.
             x: window.scrollX,
             y: window.scrollY,
