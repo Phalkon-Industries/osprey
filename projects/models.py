@@ -495,6 +495,72 @@ class ProjectDeposit(models.Model):
         return (last.version_index if last else 0) + 1
 
 
+class ZenodoJob(models.Model):
+    """One unit of Zenodo work run outside the request by the notifier loop.
+
+    Publishing, publishing a new version, and syncing edited metadata all
+    used to run inside the user's request, so a Zenodo outage meant error
+    screens and stuck saves. Now the request records a job and returns;
+    `projects.zenodo_jobs` runs it with retries and tells the owner how it
+    ended. All state is here so the loop can restart at any moment.
+    """
+
+    KIND_PUBLISH = "publish"
+    KIND_NEW_VERSION = "new_version"
+    KIND_METADATA_SYNC = "metadata_sync"
+    KIND_CHOICES = [
+        (KIND_PUBLISH, "Publish"),
+        (KIND_NEW_VERSION, "Publish new version"),
+        (KIND_METADATA_SYNC, "Sync metadata"),
+    ]
+    STATUS_QUEUED = "queued"
+    STATUS_RUNNING = "running"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_DONE, "Done"),
+        (STATUS_FAILED, "Failed"),
+    ]
+    PENDING_STATUSES = (STATUS_QUEUED, STATUS_RUNNING)
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="zenodo_jobs"
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_QUEUED
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="zenodo_jobs",
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"], name="projects_zjob_due_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} for {self.project} ({self.status})"
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status in self.PENDING_STATUSES
+
+
 class ProjectDepositVersion(models.Model):
     """A published version of a `ProjectDeposit`.
 

@@ -33,6 +33,7 @@ urlpatterns = [
         name="privacy_request",
     ),
     path("settings/", core_views.settings_home, name="settings"),
+    path("staff/zenodo/", project_views.zenodo_jobs_staff, name="zenodo_jobs"),
     path(
         "settings/claims/",
         project_views.contributor_claims,

@@ -218,7 +218,11 @@ ZENODO_API_BASE_URL = os.environ.get(
 ).rstrip("/")
 ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
 # Socket timeout per Zenodo call. Tests lower it to exercise hangs quickly.
-ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "30"))
+ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "20"))
+# Zenodo work (publish, new version, metadata sync) is queued and run by
+# the notifier loop. Inline mode runs each job immediately in the request
+# instead; for tests and the smoke seed only.
+ZENODO_JOBS_INLINE = _env_bool("ZENODO_JOBS_INLINE", default=False)
 
 # Marks the process as a test run so startup guards (projects/checks.py)
 # can allow the in-process fake Zenodo. Nothing else sets that flag.

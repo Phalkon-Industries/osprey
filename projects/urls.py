@@ -33,4 +33,9 @@ urlpatterns = [
         views.project_zenodo_new_version,
         name="zenodo_new_version",
     ),
+    path(
+        "<slug:slug>/zenodo/retry/",
+        views.zenodo_job_retry,
+        name="zenodo_retry",
+    ),
 ]

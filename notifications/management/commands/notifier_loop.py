@@ -1,6 +1,6 @@
 """Long-running loop for the notifier sidecar container.
 
-Processes the email outbox every INTERVAL seconds and runs the digest
+Runs due Zenodo jobs and processes the email outbox every INTERVAL seconds and runs the digest
 pass when a day has rolled over since the last one. Deliberately boring:
 no broker, no scheduler dependency, restartable at any moment because
 all state lives in the database.
@@ -30,6 +30,7 @@ class Command(BaseCommand):
         last_digest_date = None
         while True:
             try:
+                call_command("run_zenodo_jobs")
                 call_command("send_queued_email")
                 today = timezone.localdate()
                 if last_digest_date != today:

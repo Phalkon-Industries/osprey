@@ -20,6 +20,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.test import Client, override_settings, tag
 from django.urls import reverse
 
@@ -30,6 +31,7 @@ from projects.models import (
     ProjectAttachment,
     ProjectDeposit,
     ProjectDepositVersion,
+    ZenodoJob,
 )
 from projects.testing.fake_zenodo import FakeZenodoServer
 from projects.tests import add_orcid_account
@@ -201,8 +203,12 @@ class NewVersionJourneyTests(JourneyTestCase):
         self.page.click("button[name=action][value=publish]")
         self.page.wait_for_url(f"**{reverse('projects:detail', args=[project.slug])}", timeout=20000)
 
-        # Landed on the project page, not a 404.
+        # Landed on the project page, not a 404, with the queued notice.
         self.assertIn("Journey Pump", self.page.content())
+        self.assertIn("Publishing the new version", self.page.content())
+        call_command("run_zenodo_jobs")
+        self.assertEqual(ZenodoJob.objects.filter(status=ZenodoJob.STATUS_DONE).count(), 1)
+        self.page.reload()
         self.assertIn("v2", self.page.content())
         deposit = ProjectDeposit.objects.get(project=project)
         self.assertEqual(deposit.state, ProjectDeposit.STATE_PUBLISHED)
@@ -298,6 +304,11 @@ class SubmissionJourneyTests(JourneyTestCase):
 
         self.page.click("[data-publish-button]")  # confirm dialog auto-accepted
         self.page.wait_for_url(f"**{reverse('projects:detail', args=[project.slug])}", timeout=30000)
+        self.assertIn("OSPREY will mint the DOI", self.page.content())
+        project.refresh_from_db()
+        self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)  # until the job runs
+        call_command("run_zenodo_jobs")
+        self.page.reload()
         project.refresh_from_db()
         self.assertEqual(project.visibility, Project.VISIBILITY_PUBLIC)
         self.assertTrue(project.doi)
@@ -336,6 +347,8 @@ class EditPublishedJourneyTests(JourneyTestCase):
         self.page.click("button[name=action][value=save]")
         self.page.wait_for_url(f"**{reverse('projects:detail', args=[project.slug])}", timeout=20000)
         self.assertIn("Journey Pump, renamed", self.page.content())
+        self.assertIn("Zenodo metadata sync pending", self.page.content())
+        call_command("run_zenodo_jobs")
         fake_dep = self.fz.deposition(ProjectDeposit.objects.get(project=project).deposition_id)
         self.assertEqual(fake_dep.metadata["title"], "Journey Pump, renamed")
         self.assertEqual(fake_dep.state, "done")

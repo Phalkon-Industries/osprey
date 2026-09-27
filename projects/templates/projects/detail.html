@@ -5,6 +5,7 @@
 {% block content %}
 <article>
     {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching can_new_version=can_new_version %}
+{% include "projects/_zenodo_status.html" %}
 
     {% if user.is_authenticated and project.pending_owner_id == user.id %}
     <div class="callout">

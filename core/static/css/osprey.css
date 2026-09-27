@@ -2033,3 +2033,37 @@ button.ghost:hover,
 .settings-muted {
     opacity: .5;
 }
+
+/* Queued Zenodo work, shown to people who can edit the project */
+.zenodo-status {
+    border-radius: 6px;
+    padding: 0.6rem 0.9rem;
+    margin: 0.75rem 0;
+    font-size: 0.95rem;
+}
+
+.zenodo-status.is-pending {
+    border: 1px solid var(--accent, #6cb6ff);
+}
+
+.zenodo-status.is-failed {
+    border: 1px solid #f87171;
+}
+
+.zenodo-jobs {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.zenodo-jobs th,
+.zenodo-jobs td {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--border, #333);
+    vertical-align: top;
+}
+
+.zenodo-jobs tr.status-failed td {
+    background: rgba(248, 113, 113, 0.08);
+}

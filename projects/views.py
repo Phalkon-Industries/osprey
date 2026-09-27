@@ -4,6 +4,7 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Q
@@ -32,7 +33,8 @@ from .models import (
 )
 from . import claiming
 from . import lineage as lineage_claims
-from .models import LineageEdge, ProjectDepositVersion
+from . import zenodo_jobs
+from .models import LineageEdge, ProjectDepositVersion, ZenodoJob
 from .zenodo import (
     ZenodoError,
     publish_new_version_now,
@@ -56,14 +58,10 @@ PUBLISH_CRASH_MESSAGE = (
 )
 
 
-def _notify_project_published(project: Project) -> None:
-    """Tell staff a project went public; never let it break the publish."""
-    try:
-        from notifications import events
-
-        events.project_published(project)
-    except Exception:
-        logger.exception("project_published notification failed")
+# Publish side effects live with the job runner so they fire when the
+# queued job succeeds, not when the request returns.
+_notify_project_published = zenodo_jobs.notify_project_published
+_activate_lineage = zenodo_jobs.activate_lineage
 
 
 def _process_lineage(request, project: Project, defer: bool = False) -> None:
@@ -126,19 +124,6 @@ def _process_lineage(request, project: Project, defer: bool = False) -> None:
                     request,
                     f"Linked: this project {phrase} “{edge.parent.title}”.",
                 )
-
-
-def _activate_lineage(project: Project) -> None:
-    """Bring dormant lineage claims live after publish; never let it
-    break the publish."""
-    try:
-        lineage_claims.activate_pending(project)
-    except Exception:
-        logger.exception("lineage activation failed for %s", project.slug)
-    try:
-        claiming.sweep_on_publish(project)
-    except Exception:
-        logger.exception("contributor invite sweep failed for %s", project.slug)
 
 
 def _looks_like_zip(upload) -> bool:
@@ -325,6 +310,14 @@ def project_detail(request, slug: str):
     is_watching = request.user.is_authenticated and Watch.objects.filter(
         user=request.user, project=project
     ).exists()
+    zenodo_job = None
+    zenodo_sync_pending = False
+    if project.editable_by(request.user):
+        candidate = zenodo_jobs.latest_job(project)
+        if candidate is not None and candidate.kind == ZenodoJob.KIND_METADATA_SYNC:
+            zenodo_sync_pending = candidate.is_pending
+        else:
+            zenodo_job = candidate
     return render(
         request,
         "projects/detail.html",
@@ -338,10 +331,13 @@ def project_detail(request, slug: str):
             "recent_citations": recent_citations,
             "citations_count": citations_count,
             "is_watching": is_watching,
+            "zenodo_job": zenodo_job,
+            "zenodo_sync_pending": zenodo_sync_pending,
             "can_new_version": bool(
                 project.publishable_by(request.user)
                 and deposit
                 and deposit.state == ProjectDeposit.STATE_PUBLISHED
+                and not (zenodo_job and zenodo_job.is_pending)
             ),
         },
     )
@@ -407,20 +403,15 @@ def _build_citation_text(project: Project, deposit) -> str:
 
 
 def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
-    """Pick the project's visibility based on which submit button was clicked.
+    """Visibility to store on save.
 
-    Once a project is public, the form will not flip it back to private. A
-    staff user can still adjust through the Django admin.
+    Publishing does not flip a project public here any more: the queued
+    Zenodo job does that once the DOI exists, so a project is never public
+    without its record. A public project never goes back to private
+    through the form; staff can adjust in the admin.
     """
     if is_new:
-        return (
-            Project.VISIBILITY_PUBLIC
-            if action == "publish"
-            else Project.VISIBILITY_PRIVATE
-        )
-    # Existing project. Allow draft -> public, never public -> draft.
-    if project.visibility != Project.VISIBILITY_PUBLIC and action == "publish":
-        return Project.VISIBILITY_PUBLIC
+        return Project.VISIBILITY_PRIVATE
     return project.visibility
 
 
@@ -768,30 +759,13 @@ def project_new(request):
             _process_attachments(request, project)
             _process_lineage(request, project)
             if action == "publish":
-                try:
-                    publish_project_now(project, request.user)
-                except ZenodoError as exc:
-                    project.visibility = Project.VISIBILITY_PRIVATE
-                    project.save(update_fields=["visibility"])
-                    messages.error(
-                        request,
-                        f"Could not publish on Zenodo: {exc}. Saved as a draft.",
-                    )
-                except Exception:  # noqa: BLE001 - the draft is already saved;
-                    # a publish crash must never become a 500 that eats it.
-                    logger.exception(
-                        "Unexpected error publishing new project %s", project.slug
-                    )
-                    project.visibility = Project.VISIBILITY_PRIVATE
-                    project.save(update_fields=["visibility"])
-                    messages.error(request, PUBLISH_CRASH_MESSAGE)
-                else:
-                    _activate_lineage(project)
-                    _notify_project_published(project)
-                    messages.success(
-                        request,
-                        f"Project published on {zenodo_mode_label()}.",
-                    )
+                zenodo_jobs.enqueue_publish(project, request.user)
+                messages.success(
+                    request,
+                    f"Publishing \u201c{project.title}.\u201d OSPREY will mint the DOI as "
+                    "soon as Zenodo accepts the deposit, usually within a minute. "
+                    "You'll get a notification when it's live.",
+                )
             else:
                 messages.success(
                     request,
@@ -875,54 +849,24 @@ def project_edit(request, slug: str):
             _process_attachments(request, saved)
             _process_lineage(request, saved)
             if action == "publish" and not was_public:
-                try:
-                    publish_project_now(saved, request.user)
-                except ZenodoError as exc:
-                    saved.visibility = Project.VISIBILITY_PRIVATE
-                    saved.save(update_fields=["visibility"])
-                    messages.error(
-                        request,
-                        f"Could not publish on Zenodo: {exc}. Saved as a draft.",
-                    )
-                except Exception:  # noqa: BLE001 - edits are already saved;
-                    # a publish crash must never become a 500 that eats them.
-                    logger.exception(
-                        "Unexpected error publishing project %s", saved.slug
-                    )
-                    saved.visibility = Project.VISIBILITY_PRIVATE
-                    saved.save(update_fields=["visibility"])
-                    messages.error(request, PUBLISH_CRASH_MESSAGE)
-                else:
-                    _activate_lineage(saved)
-                    _notify_project_published(saved)
-                    messages.success(
-                        request,
-                        f"Project published on {zenodo_mode_label()}.",
-                    )
+                project = saved
+                zenodo_jobs.enqueue_publish(saved, request.user)
+                messages.success(
+                    request,
+                    f"Publishing \u201c{project.title}.\u201d OSPREY will mint the DOI as "
+                    "soon as Zenodo accepts the deposit, usually within a minute. "
+                    "You'll get a notification when it's live.",
+                )
             elif was_public and zenodo_configured():
-                # Existing public project: push metadata edits back to the
-                # published Zenodo record so the two stay in sync.
-                try:
-                    update_published_metadata(saved)
-                except ZenodoError as exc:
-                    messages.warning(
-                        request,
-                        f"Saved on OSPREY, but could not update Zenodo metadata: {exc}",
-                    )
-                except Exception:  # noqa: BLE001 - same rule: never 500 after save.
-                    logger.exception(
-                        "Unexpected error syncing metadata for %s", saved.slug
-                    )
-                    messages.warning(
-                        request,
-                        "Saved on OSPREY, but the Zenodo metadata sync failed "
-                        "unexpectedly. Edit and save again to retry the sync.",
-                    )
-                else:
-                    messages.success(
-                        request,
-                        f"Project updated. Metadata synced to {zenodo_mode_label()}.",
-                    )
+                # Existing public project: the metadata edit is pushed to
+                # the Zenodo record by a queued job, so a Zenodo outage
+                # can't stall the save.
+                zenodo_jobs.enqueue_metadata_sync(saved, request.user)
+                messages.success(
+                    request,
+                    f"Project updated. The {zenodo_mode_label()} record will "
+                    "sync within a minute or so.",
+                )
             else:
                 messages.success(request, "Project updated.")
             if _send_button_used(request):
@@ -944,6 +888,7 @@ def project_edit(request, slug: str):
             "project": project,
             "role_suggestions": ROLE_SUGGESTIONS,
             "can_publish_project": project.publishable_by(request.user),
+            "zenodo_job_pending": zenodo_jobs.pending_job(project) is not None,
             "known_orcids": set(
                 SocialAccount.objects.filter(
                     provider="orcid",
@@ -1040,69 +985,30 @@ def project_zenodo_new_version(request, slug: str):
             # stay dormant and go live pinned to it when it publishes.
             _process_lineage(request, project, defer=True)
             if action == "publish":
-                try:
-                    publish_new_version_now(
-                        deposit,
-                        changelog=form.cleaned_data["changelog"],
-                        repo_link=form.cleaned_data.get("repo_link", ""),
-                        user=request.user,
-                    )
-                except ZenodoError as exc:
-                    messages.error(request, f"Could not publish new version: {exc}")
-                except Exception:  # noqa: BLE001 - changelog and archive are
-                    # already stored; re-render instead of a data-eating 500.
-                    logger.exception(
-                        "Unexpected error publishing new version of %s", project.slug
-                    )
-                    messages.error(
-                        request,
-                        "Something unexpected went wrong while publishing the new "
-                        "version. Your changelog and archive are saved; try again.",
-                    )
-                else:
-                    _activate_lineage(project)
-                    try:
-                        from notifications import events
-
-                        events.new_version_published(project, actor=request.user)
-                    except Exception:
-                        logger.exception(
-                            "new_version_published notification failed"
-                        )
-                    messages.success(
-                        request,
-                        f"New version published on {zenodo_mode_label()}.",
-                    )
-                    return redirect(project.get_absolute_url())
-            else:
-                # Save draft: open a Zenodo new-version draft, push the
-                # archive + sidecars, then leave it unpublished so the
-                # user can review on Zenodo and come back to publish.
-                try:
-                    start_new_version_for_deposit(
-                        deposit,
-                        changelog=form.cleaned_data["changelog"],
-                        repo_link=form.cleaned_data.get("repo_link", ""),
-                        user=request.user,
-                    )
-                except ZenodoError as exc:
-                    messages.error(request, f"Could not save new version draft: {exc}")
-                except Exception:  # noqa: BLE001 - same rule as the publish branch.
-                    logger.exception(
-                        "Unexpected error saving new version draft of %s", project.slug
-                    )
-                    messages.error(
-                        request,
-                        "Something unexpected went wrong while saving the version "
-                        "draft. Your changelog and archive are saved; try again.",
-                    )
-                else:
-                    messages.success(
-                        request,
-                        f"New version saved as a {zenodo_mode_label()} draft. "
-                        "Review on Zenodo, then come back and publish.",
-                    )
-                    return redirect(project.get_absolute_url())
+                zenodo_jobs.enqueue_new_version(
+                    project,
+                    request.user,
+                    changelog=form.cleaned_data["changelog"],
+                    repo_link=form.cleaned_data.get("repo_link", ""),
+                )
+                messages.success(
+                    request,
+                    "Publishing the new version. OSPREY will mint its DOI as "
+                    "soon as Zenodo accepts the deposit, usually within a "
+                    "minute. You'll get a notification when it's live.",
+                )
+                return redirect(project.get_absolute_url())
+            # Save draft keeps everything on OSPREY: changelog, repo link,
+            # and archive wait here until Publish. Zenodo is not involved
+            # until then.
+            deposit.pending_changelog = form.cleaned_data["changelog"]
+            deposit.repo_link = form.cleaned_data.get("repo_link", "") or ""
+            deposit.save(update_fields=["pending_changelog", "repo_link", "updated_at"])
+            messages.success(
+                request,
+                "New version draft saved. Come back to this page to publish it.",
+            )
+            return redirect(project.get_absolute_url())
     else:
         initial = {}
         if deposit.pending_changelog:
@@ -1610,3 +1516,39 @@ def watch_toggle(request, slug: str):
     else:
         Watch.objects.create(user=request.user, project=project)
     return redirect("projects:detail", slug=project.slug)
+
+
+@login_required
+def zenodo_job_retry(request, slug: str):
+    """Owner's Try again on a failed publish or new-version job."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.publishable_by(request.user):
+        raise Http404
+    if request.method != "POST":
+        return redirect(project.get_absolute_url())
+    job = project.zenodo_jobs.filter(status=ZenodoJob.STATUS_FAILED).order_by("-created_at").first()
+    if job is None:
+        messages.info(request, "Nothing to retry.")
+    else:
+        zenodo_jobs.retry(job)
+        messages.success(request, "Queued again. You'll get a notification when it goes through.")
+    return redirect(project.get_absolute_url())
+
+
+@staff_member_required
+def zenodo_jobs_staff(request):
+    """Staff view of the Zenodo queue with retry."""
+    if request.method == "POST":
+        job = get_object_or_404(ZenodoJob, pk=request.POST.get("job_id"))
+        if job.status == ZenodoJob.STATUS_FAILED:
+            zenodo_jobs.retry(job)
+            messages.success(request, f"Retrying {job}.")
+        return redirect("zenodo_jobs")
+    jobs = ZenodoJob.objects.select_related("project", "requested_by").order_by(
+        "-created_at"
+    )[:100]
+    return render(
+        request,
+        "projects/zenodo_jobs.html",
+        {"jobs": jobs, "health": zenodo_jobs.health()},
+    )

@@ -56,6 +56,8 @@ EVENTS = {
     "followed_creator_published": GROUP_FOLLOWS,
     "new_project_published": GROUP_NEW_PROJECTS,
     "watched_version_published": GROUP_FOLLOWS,
+    "deposit_published": GROUP_PROJECTS,
+    "deposit_failed": GROUP_ACCOUNT,
     "watched_activity": GROUP_FOLLOWS,
     "lineage_claimed": GROUP_PROJECTS,
     "lineage_responded": GROUP_PROJECTS,
@@ -663,3 +665,49 @@ def watched_use_report_created(report):
             dedup_key=f"watched-report:{report.pk}",
             project_slug=project.slug,
         )
+
+
+# --- Zenodo jobs -----------------------------------------------------------
+
+
+def deposit_published(project, deposit=None, *, new_version: bool = False):
+    """Tell the owner their publish (or new version) went through on Zenodo."""
+    owner = project.created_by
+    if owner is None:
+        return
+    doi = (deposit.doi if deposit is not None else "") or project.doi or ""
+    if new_version:
+        title = f"New version of {project.title} is live"
+    else:
+        title = f"{project.title} is published"
+    body = f"DOI {doi}" if doi else "Zenodo accepted the deposit."
+    _emit(
+        owner,
+        kind="deposit_published",
+        title=title,
+        body=body,
+        url=project.get_absolute_url(),
+        dedup_key=f"deposit-published:{project.pk}:{doi}",
+        project_slug=project.slug,
+    )
+
+
+def deposit_failed(project, job):
+    """Tell the owner a queued Zenodo job gave up, and where to retry."""
+    owner = project.created_by
+    if owner is None:
+        return
+    what = "New version of " + project.title if job.kind == "new_version" else project.title
+    _emit(
+        owner,
+        kind="deposit_failed",
+        title=f"{what} could not be published",
+        body=(
+            f"Zenodo did not accept the deposit after {job.attempts} "
+            f"attempt{'s' if job.attempts != 1 else ''}: {job.last_error[:200]} "
+            "Your draft is safe. Retry from the project page."
+        ),
+        url=project.get_absolute_url(),
+        dedup_key=f"deposit-failed:{job.pk}",
+        project_slug=project.slug,
+    )

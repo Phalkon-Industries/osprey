@@ -22,7 +22,11 @@
         {% else %}
         <button type="submit" name="action" value="draft" class="ghost" data-submit-button>Save draft</button>
         {% if can_publish_project %}
+        {% if zenodo_job_pending %}
+        <span class="muted small" title="A publish is already queued for this project">Publishing in progress&hellip;</span>
+        {% else %}
         <button type="submit" name="action" value="publish" data-publish-button data-submit-button>Publish</button>
+        {% endif %}
         {% endif %}
         {% if mode == 'edit' %}
         <a class="button ghost" href="{{ project.get_absolute_url }}">Cancel</a>

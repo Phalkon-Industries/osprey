@@ -499,7 +499,8 @@ class ProjectViewTests(ProjectTestCase):
             ).exists()
         )
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_verified_user_can_publish_and_gets_verified_submitter_row(
         self, _publish_mock
     ):
@@ -517,7 +518,8 @@ class ProjectViewTests(ProjectTestCase):
         contribution = project.contributions.get(user=self.owner)
         self.assertEqual(contribution.orcid_id, "0000-0001-2345-6789")
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_edit_can_publish_draft_with_verified_orcid(self, _publish_mock):
         add_orcid_account(self.owner, "0000-0001-2345-6789")
         self.client.force_login(self.owner)
@@ -556,7 +558,8 @@ class ProjectViewTests(ProjectTestCase):
         self.assertEqual(self.public_project.visibility, Project.VISIBILITY_PUBLIC)
         self.assertEqual(self.public_project.title, "Still Public")
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_publish_action_on_new_form_calls_publish(self, publish_mock):
         add_orcid_account(self.owner)
         self.client.force_login(self.owner)
@@ -1106,7 +1109,8 @@ class ProjectVersionsTests(ProjectTestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    @patch("projects.views.publish_new_version_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_new_version_now")
     def test_new_version_view_post_calls_service(self, service_mock):
         deposit = self._published_deposit()
         service_mock.return_value = deposit
@@ -1134,7 +1138,8 @@ class ProjectVersionsTests(ProjectTestCase):
             "https://github.com/example/public-pump/releases/tag/v0.2",
         )
 
-    @patch("projects.views.publish_new_version_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_new_version_now")
     def test_new_version_view_requires_changelog(self, service_mock):
         self._published_deposit()
         add_orcid_account(self.owner)
@@ -1159,7 +1164,8 @@ class ProjectVersionsTests(ProjectTestCase):
 class NewProjectFieldsTests(ProjectTestCase):
     """Smoke tests for the new project fields and the contributor ORCID input."""
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_form_round_trip_persists_funding_publications_self_rating_and_orcid(
         self, _publish_mock
     ):
@@ -1416,7 +1422,8 @@ class DraftDataLossRegressionTests(ProjectTestCase):
         with attachment.file.open("rb") as fh:
             self.assertEqual(fh.read(2), b"PK")
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_unexpected_publish_crash_on_new_keeps_draft(self, publish_mock):
         publish_mock.side_effect = RuntimeError("simulated crash mid-upload")
         add_orcid_account(self.owner)
@@ -1431,7 +1438,8 @@ class DraftDataLossRegressionTests(ProjectTestCase):
         project = Project.objects.get(title="Crash Survivor")
         self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
 
-    @patch("projects.views.publish_project_now")
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
     def test_unexpected_publish_crash_on_edit_keeps_changes(self, publish_mock):
         publish_mock.side_effect = RuntimeError("simulated crash mid-upload")
         add_orcid_account(self.owner)

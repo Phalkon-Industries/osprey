@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Zenodo queue &middot; OSPREY{% endblock %}
+{% block content %}
+<h1>Zenodo queue</h1>
+<p class="muted">
+    Publishing, new versions, and metadata syncs run here, outside the
+    user's request, with retries when Zenodo is down.
+</p>
+<ul class="zenodo-health">
+    <li>Last success: {% if health.last_success_at %}{{ health.last_success_at|timesince }} ago{% else %}none recorded{% endif %}</li>
+    <li>Failures since then: {{ health.recent_failures }}</li>
+    <li>Queued: {{ health.queued }} &middot; Running: {{ health.running }} &middot; Failed: {{ health.failed }}</li>
+</ul>
+<table class="zenodo-jobs">
+    <thead>
+        <tr><th>When</th><th>Project</th><th>Job</th><th>Status</th><th>Attempts</th><th>Next try</th><th>Last error</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr class="status-{{ job.status }}">
+            <td>{{ job.created_at|date:"Y-m-d H:i" }}</td>
+            <td><a href="{{ job.project.get_absolute_url }}">{{ job.project.title }}</a><br><span class="muted small">by @{{ job.requested_by.get_username|default:"system" }}</span></td>
+            <td>{{ job.get_kind_display }}</td>
+            <td>{{ job.get_status_display }}</td>
+            <td>{{ job.attempts }}</td>
+            <td>{% if job.status == "queued" %}{{ job.next_attempt_at|timeuntil }}{% else %}&ndash;{% endif %}</td>
+            <td class="muted small">{{ job.last_error|truncatechars:160 }}</td>
+            <td>
+                {% if job.status == "failed" %}
+                <form method="post" style="margin:0">
+                    {% csrf_token %}
+                    <input type="hidden" name="job_id" value="{{ job.pk }}">
+                    <button type="submit" class="ghost small">Retry</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="muted">No Zenodo jobs yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

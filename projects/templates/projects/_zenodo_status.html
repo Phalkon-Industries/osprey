@@ -1,0 +1,26 @@
+{# Owner-facing state of queued Zenodo work; nothing renders for visitors. #}
+{% if zenodo_job %}
+{% if zenodo_job.is_pending %}
+<div class="zenodo-status is-pending" role="status">
+    <strong>{% if zenodo_job.kind == "new_version" %}Publishing the new version.{% else %}Publishing.{% endif %}</strong>
+    OSPREY will mint the DOI as soon as Zenodo accepts the deposit,
+    usually within a minute. You'll get a notification when it's live.
+    {% if zenodo_job.attempts > 1 %}
+    <span class="muted">Zenodo hasn't responded yet (attempt {{ zenodo_job.attempts }}; next try {{ zenodo_job.next_attempt_at|timeuntil }} from now).</span>
+    {% endif %}
+</div>
+{% elif zenodo_job.status == "failed" %}
+<div class="zenodo-status is-failed" role="alert">
+    <strong>{% if zenodo_job.kind == "new_version" %}The new version could not be published.{% else %}Publishing did not go through.{% endif %}</strong>
+    Zenodo did not accept the deposit after {{ zenodo_job.attempts }} attempt{{ zenodo_job.attempts|pluralize }}:
+    <span class="muted">{{ zenodo_job.last_error|truncatechars:200 }}</span>
+    Your draft is safe.
+    <form method="post" action="{% url 'projects:zenodo_retry' project.slug %}" style="display:inline;margin-left:.5rem">
+        {% csrf_token %}
+        <button type="submit" class="ghost small">Try again</button>
+    </form>
+</div>
+{% endif %}
+{% elif zenodo_sync_pending %}
+<p class="muted small zenodo-status is-sync">Zenodo metadata sync pending.</p>
+{% endif %}
