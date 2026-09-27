@@ -145,7 +145,10 @@
             event.preventDefault();
             var fd = new FormData(form);
             var xhr = new XMLHttpRequest();
-            xhr.open(form.method || 'POST', form.action || window.location.href, true);
+            // getAttribute, not form.action: the two submit buttons are named
+            // "action", so form.action is a RadioNodeList and used to become
+            // the literal URL "/new-version/[object RadioNodeList]".
+            xhr.open(form.method || 'POST', form.getAttribute('action') || window.location.href, true);
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.upload.addEventListener('progress', function (e) {
                 if (!e.lengthComputable || !progressWrap) return;
