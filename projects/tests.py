@@ -837,10 +837,16 @@ class ZenodoSmokeCommandTests(TestCase):
 @override_settings(
     ZENODO_USE_SANDBOX=True, ZENODO_API_BASE_URL="https://sandbox.zenodo.org"
 )
+@tag("live-zenodo")
 class LiveZenodoSandboxTests(TestCase):
+    """Hits the real Zenodo sandbox. Opt-in only:
+    RUN_LIVE_ZENODO=1 manage.py test --tag=live-zenodo
+    (a token alone used to be enough, which made the default suite
+    create sandbox deposits on every run in dev)."""
+
     def setUp(self):
-        if not os.environ.get("ZENODO_ACCESS_TOKEN"):
-            self.skipTest("ZENODO_ACCESS_TOKEN is required for live Zenodo tests")
+        if os.environ.get("RUN_LIVE_ZENODO") != "1" or not os.environ.get("ZENODO_ACCESS_TOKEN"):
+            self.skipTest("set RUN_LIVE_ZENODO=1 and ZENODO_ACCESS_TOKEN for live Zenodo tests")
         User = get_user_model()
         self.user = User.objects.create_user(username="live-zenodo-user")
         self.project = Project.objects.create(

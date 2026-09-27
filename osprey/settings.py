@@ -217,6 +217,12 @@ ZENODO_API_BASE_URL = os.environ.get(
     "https://sandbox.zenodo.org" if ZENODO_USE_SANDBOX else "https://zenodo.org",
 ).rstrip("/")
 ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
+# Socket timeout per Zenodo call. Tests lower it to exercise hangs quickly.
+ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "30"))
+
+# Marks the process as a test run so startup guards (projects/checks.py)
+# can allow the in-process fake Zenodo. Nothing else sets that flag.
+TEST_RUNNER = "osprey.test_runner.OspreyTestRunner"
 
 # Canonical absolute base URL used in outbound metadata (e.g. Zenodo
 # `related_identifiers`). Falls back to the production hostname so the

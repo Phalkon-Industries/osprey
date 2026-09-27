@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import io
+import http.client
 import json
 import zipfile
 from dataclasses import dataclass
@@ -39,7 +40,11 @@ class ZenodoClient:
 
     @classmethod
     def from_settings(cls) -> "ZenodoClient":
-        return cls(settings.ZENODO_API_BASE_URL, settings.ZENODO_ACCESS_TOKEN)
+        return cls(
+            settings.ZENODO_API_BASE_URL,
+            settings.ZENODO_ACCESS_TOKEN,
+            timeout=getattr(settings, "ZENODO_TIMEOUT_SECONDS", 30),
+        )
 
     def _request(
         self,
@@ -74,8 +79,13 @@ class ZenodoClient:
         except error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ZenodoError(f"Zenodo returned HTTP {exc.code}: {body[:800]}") from exc
-        except error.URLError as exc:
-            raise ZenodoError(f"Could not reach Zenodo: {exc.reason}") from exc
+        except (error.URLError, OSError, http.client.HTTPException) as exc:
+            # urllib wraps connect/send failures in URLError but lets read
+            # failures (a hang past the timeout, a dropped connection) escape
+            # as raw TimeoutError / RemoteDisconnected. Fold them all into
+            # ZenodoError so callers have one thing to catch.
+            reason = getattr(exc, "reason", None) or exc
+            raise ZenodoError(f"Could not reach Zenodo: {reason}") from exc
         if not body:
             return {}
         try:
@@ -139,8 +149,13 @@ class ZenodoClient:
         except error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ZenodoError(f"Zenodo returned HTTP {exc.code}: {body[:800]}") from exc
-        except error.URLError as exc:
-            raise ZenodoError(f"Could not reach Zenodo: {exc.reason}") from exc
+        except (error.URLError, OSError, http.client.HTTPException) as exc:
+            # urllib wraps connect/send failures in URLError but lets read
+            # failures (a hang past the timeout, a dropped connection) escape
+            # as raw TimeoutError / RemoteDisconnected. Fold them all into
+            # ZenodoError so callers have one thing to catch.
+            reason = getattr(exc, "reason", None) or exc
+            raise ZenodoError(f"Could not reach Zenodo: {reason}") from exc
         if not body:
             return {}
         try:
