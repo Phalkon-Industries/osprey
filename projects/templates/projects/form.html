@@ -154,7 +154,7 @@
     {% else %}
     <p>
         <label for="id_attachment_files"><strong>Attach project archive</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(.zip only)</span></label><br>
-        <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed">
+        <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed" data-dropzone data-dropzone-hint="Drop your .zip archive here, or choose it below.">
         <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally. A draft archive is kept for 30 days; if the draft sits longer than that, re-upload the zip when you come back.</span>
     </p>
     {% endif %}
@@ -451,6 +451,7 @@
 </div>
 
 <script src="{% static 'projects/form_autosave.js' %}" defer></script>
+<script src="{% static 'projects/dropzone.js' %}" defer></script>
 <script>
     (function () {
         // Prevent Enter from implicitly submitting the form except when focus
@@ -978,9 +979,6 @@
         var doneKey = 'osprey-form-done:' + window.location.pathname;
         var done = {};
         try { done = JSON.parse(window.localStorage.getItem(doneKey) || '{}') || {}; } catch (e) { done = {}; }
-        // Sections where the user pressed the button while fields were
-        // still missing; shows the red cross without marking done.
-        var attempted = {};
         var formMode = form.dataset.formMode || 'edit';
         var canBgSave = form.dataset.bgSave === '1';
         var dirty = false;
@@ -1102,7 +1100,7 @@
                     state.textContent = '✓';
                     state.className = 'form-tab-state is-complete';
                     state.title = 'Section complete';
-                } else if ((done[name] || attempted[name]) && !met) {
+                } else if (done[name] && !met) {
                     state.textContent = '✗';
                     state.className = 'form-tab-state has-errors';
                     state.title = 'Required fields in this section are still empty';
@@ -1115,13 +1113,12 @@
                 if (doneBtn) {
                     // Published projects save through "Save changes" (a
                     // quiet draft save would fight the Zenodo metadata
-                    // sync), so their button only marks the section.
-                    var idleLabel = (formMode === 'edit' && !canBgSave)
-                        ? 'Mark as done and continue'
+                    // sync), so their button only moves on. There is no
+                    // manual done state: the mark is derived from the
+                    // section's content at its last save.
+                    doneBtn.textContent = (formMode === 'edit' && !canBgSave)
+                        ? 'Continue'
                         : 'Save and continue';
-                    doneBtn.textContent = (done[name] && met)
-                        ? 'Marked as done ✓ (click to undo)'
-                        : idleLabel;
                 }
                 // The still-needed note updates live and disappears once
                 // everything it listed is filled in.
@@ -1168,7 +1165,7 @@
                     reasons = ['fix the highlighted errors'];
                 }
                 if (!reasons.length && !done[name]) {
-                    reasons = ['mark the section as done'];
+                    reasons = ['save it with Save and continue'];
                 }
                 if (reasons.length) {
                     parts.push(sectionLabel(name) + ' (' + reasons.join(', ') + ')');
@@ -1250,25 +1247,16 @@
             var panel = btn.closest('[data-form-panel]');
             if (!panel) return;
             var name = panel.dataset.formPanel;
-            if (done[name] && requirementsMet(panel)) {
-                // Explicit unmark of a completed section.
-                done[name] = false;
-                persistDone();
-                refreshState();
-                return;
-            }
+            // Pressing the button saves the section and records that it
+            // was saved; the tab mark is derived from that plus whether
+            // the section's requirements are met. No manual done state,
+            // nothing to undo: fix the fields and press again.
             var met = requirementsMet(panel);
+            done[name] = true;
+            persistDone();
             if (!met) {
-                // Incomplete: the press still saves progress (below), but
-                // the section stays unmarked with a red cross and the
-                // missing list, so once the fields are filled a single
-                // press marks it done and moves on.
-                attempted[name] = true;
                 var note = noteFor(panel, true);
                 note.textContent = 'Still needed: ' + missingFor(panel).join(', ') + '.';
-            } else {
-                done[name] = true;
-                persistDone();
             }
             refreshState();
             var next = order[order.indexOf(name) + 1];
@@ -1276,10 +1264,9 @@
                 // First real save of a brand-new draft: submit and come
                 // back to the form, carrying the marks. An incomplete
                 // section returns to itself so its red cross and missing
-                // list survive the reload.
+                // list are what the user sees after the reload.
                 ensureHidden('next_tab').value = met ? (next || name) : name;
                 ensureHidden('marked_section').value = order.filter(function (n) { return done[n]; }).join(',');
-                if (!met) ensureHidden('attempted_section').value = name;
                 var actionInput = form.querySelector('input[type=hidden][name=action]');
                 if (actionInput) actionInput.value = 'save_continue';
                 else ensureHidden('action').value = 'save_continue';
@@ -1315,16 +1302,15 @@
             });
             persistDone();
         }
-        var attemptedParam = query.get('attempted');
-        if (attemptedParam && order.indexOf(attemptedParam) !== -1) {
-            attempted[attemptedParam] = true;
-            panels.forEach(function (panel) {
-                if (panel.dataset.formPanel !== attemptedParam) return;
-                if (requirementsMet(panel)) return;
+        // A saved-but-incomplete section shows its missing list on load,
+        // not just its red cross.
+        panels.forEach(function (panel) {
+            var name = panel.dataset.formPanel;
+            if (done[name] && !requirementsMet(panel) && panel.querySelector('[data-mark-done]')) {
                 var note = noteFor(panel, true);
                 note.textContent = 'Still needed: ' + missingFor(panel).join(', ') + '.';
-            });
-        }
+            }
+        });
         var requested = query.get('tab');
         if (requested && order.indexOf(requested) === -1) requested = null;
         activate(firstError || requested || order[0]);

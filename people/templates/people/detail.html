@@ -46,32 +46,12 @@
     </section>
     {% endif %}
 
-    {% if is_self and own_projects %}
-    <section>
-        <h2>Your projects</h2>
-        <div class="grid">
-            {% for project in own_projects %}
-            <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-                <h3>
-                    <span>{{ project.title }}</span>
-                    {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
-                </h3>
-                <p class="summary">{{ project.summary|truncatewords:18 }}</p>
-                <div class="meta">
-                    {% if project.field %}<span>{{ project.field }}</span>{% endif %}
-                    {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-    </section>
-    {% else %}
     <section>
         <h2>Project credits</h2>
         {% if contributions %}
         <ul>
             {% for c in contributions %}
-            {% if c.project.is_public or is_self %}
+            {% if c.project.is_public %}
             <li>
                 <a href="{{ c.project.get_absolute_url }}">{{ c.project.title }}</a>
                 <span class="muted">— {{ c.role }}</span>
@@ -83,6 +63,5 @@
         <p class="muted">No project contributions recorded.</p>
         {% endif %}
     </section>
-    {% endif %}
 </article>
 {% endblock %}

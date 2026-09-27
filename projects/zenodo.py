@@ -240,16 +240,17 @@ def _project_upload_type(project: Project) -> str:
     """Map an OSPREY artifact type to Zenodo's `upload_type` vocabulary.
 
     Zenodo accepts: publication, poster, presentation, dataset, image,
-    video, software, lesson, physicalobject, other. Hardware projects
-    (PCBs, mechanical assemblies, sensors) fit `physicalobject` better
-    than `software`; freeform descriptions still go in the `description`
-    field, which is set from the project summary/readme.
+    video, software, lesson, physicalobject, other. Hardware design
+    files are deposited as `other`: `physicalobject` describes the
+    built object, not its design files, and Zenodo's citation formatter
+    renders it as "[Graphic]". OSPREY's own citation carries the honest
+    descriptor ("Hardware design") instead.
     """
     artifact_type = (project.artifact_type or "").lower()
     if not artifact_type:
         return "other"
     if "hardware" in artifact_type or "pcb" in artifact_type or "mechanical" in artifact_type:
-        return "physicalobject"
+        return "other"
     if any(word in artifact_type for word in ["software", "firmware", "library", "analysis", "pipeline"]):
         return "software"
     if "data" in artifact_type:
@@ -355,6 +356,14 @@ def metadata_for_project(project: Project, deposit: ProjectDeposit | None = None
         "creators": _creator_rows(project),
         "access_right": "open",
         "publication_date": date.today().isoformat(),
+        # OSPREY's role in the record, in DataCite's own vocabulary:
+        # the platform that hosts and distributes it. Zenodo stays the
+        # publisher of record; this is how "OSPREY; Zenodo" in the
+        # citation is backed by the metadata.
+        "contributors": [
+            {"name": "OSPREY", "type": "HostingInstitution"},
+            {"name": "OSPREY", "type": "Distributor"},
+        ],
         "keywords": sorted(
             {
                 value

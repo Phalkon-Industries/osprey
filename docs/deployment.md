@@ -446,6 +446,23 @@ ORCID_SIGNIN_ALLOWLIST=0000-0001-2345-6789,0000-0002-3456-7890
 If the verification lookup fails (network error, ORCID 5xx) the gate fails
 closed and the user sees a "couldn't verify your ORCID record" message.
 
+### Staff Messages export
+
+```env
+STAFF_EXPORT_TOKEN=<long random string>
+```
+
+Optional. Lets a dev machine pull the Staff Messages queue as Markdown or
+JSON without a browser session:
+
+```bash
+curl -sS -H "Authorization: Bearer $STAFF_EXPORT_TOKEN" \
+    https://osprey.phalkon.io/staff-messages/export/
+```
+
+Leave it empty to allow staff sessions only. Rotate by editing the env file
+and recreating the web container.
+
 ### Moderation and rate limits
 
 ```env
@@ -455,6 +472,7 @@ RATELIMIT_WIKI_EDIT=30/h
 RATELIMIT_CONVERSATION_POST=20/h
 RATELIMIT_REPORT_SUBMIT=10/h
 RATELIMIT_LOGIN_PER_IP=20/h
+RATELIMIT_STAFF_EXPORT=60/h
 ```
 
 Rate limiting is off by default so local tests don't trip it. Turn it on in

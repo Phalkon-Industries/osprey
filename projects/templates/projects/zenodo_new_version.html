@@ -44,7 +44,7 @@
         </div>
         <div class="form-row">
             <label for="id_archive"><strong>New project archive</strong>{% if not pending_attachment %} <span class="req" aria-label="required">*</span>{% endif %}</label>
-            <input type="file" id="id_archive" name="archive" accept=".zip,application/zip,application/x-zip-compressed"{% if not pending_attachment %} required{% endif %}>
+            <input type="file" id="id_archive" name="archive" accept=".zip,application/zip,application/x-zip-compressed" data-dropzone data-dropzone-hint="Drop the new .zip archive here, or choose it below."{% if not pending_attachment %} required{% endif %}>
             <p class="muted small">
                 {% if pending_attachment %}Optional. Upload a new <code>.zip</code> to replace the saved draft archive ({{ pending_attachment.filename }}).{% else %}A new <code>.zip</code> archive is required for each new version.{% endif %}
                 Up to 500 MiB.
@@ -87,6 +87,7 @@
 </article>
 
 <script src="{% static 'projects/form_autosave.js' %}" defer></script>
+<script src="{% static 'projects/dropzone.js' %}" defer></script>
 <script>
     (function () {
         var form = document.querySelector('[data-new-version-form]');

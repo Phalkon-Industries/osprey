@@ -286,7 +286,7 @@ class PeopleViewTests(TestCase):
 
         self.user.refresh_from_db()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["Location"], reverse("people:detail", args=[self.user.pk]))
+        self.assertEqual(response.headers["Location"], reverse("profile", args=[self.user.username]))
         self.assertTrue(self.user.profile.usertag_locked)
 
     def test_locked_onboarding_redirects_to_edit_and_edit_post_updates_profile(self):
@@ -336,11 +336,20 @@ class PeopleViewTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("people:me"))
         self.assertEqual(response.status_code, 302)
-        response = self.client.get(reverse("people:detail", args=[self.user.pk]))
-        self.assertContains(response, "Own Draft")
+        # The owner sees the same page as everyone else, plus Edit profile.
+        # Drafts live on the projects list, not on the profile.
+        response = self.client.get(reverse("profile", args=[self.user.username]))
+        self.assertNotContains(response, "Own Draft")
+        self.assertContains(response, "Edit profile")
 
-        response = self.client.get(reverse("people:detail", args=[self.other.pk]))
+        response = self.client.get(reverse("profile", args=[self.other.username]))
         self.assertContains(response, "Public Credit")
+        self.assertNotContains(response, "Edit profile")
+
+        # The old numeric URL keeps working as a permanent redirect.
+        response = self.client.get(reverse("people:detail", args=[self.other.pk]))
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.headers["Location"], reverse("profile", args=[self.other.username]))
 
     def test_deactivation_marks_user_inactive_and_keeps_profile(self):
         self.user.profile.usertag_locked = True

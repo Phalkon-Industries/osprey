@@ -26,37 +26,34 @@ def _verified_orcid_for(user) -> str:
 
 
 def person_detail(request, pk: int):
-    """Public profile page. The list of /people/ is no longer exposed.
+    """Old numeric profile URL: permanent redirect to the @handle URL so
+    links already shared keep working."""
+    User = get_user_model()
+    person = get_object_or_404(User, pk=pk)
+    return redirect("profile", handle=person.get_username(), permanent=True)
 
-    A profile is reachable by direct link (e.g. from a project's contributor
-    list, or from the user's own "Your profile" link in the header).
+
+def person_by_handle(request, handle: str):
+    """Public profile page at /@handle/.
+
+    Everyone sees the same page, the owner included; the only difference
+    for the owner is the Edit profile button. Drafts are found on the
+    projects list, not here.
     """
     User = get_user_model()
     person = get_object_or_404(
-        User.objects.select_related("profile"),
-        pk=pk,
+        User.objects.select_related("profile"), username__iexact=handle
     )
+    if person.get_username() != handle:
+        return redirect("profile", handle=person.get_username(), permanent=True)
     Profile.objects.get_or_create(user=person)
     person.refresh_from_db()
 
     is_self = request.user.is_authenticated and request.user.pk == person.pk
     verified_orcid = _verified_orcid_for(person)
-
     contributions = person.contributions.select_related("project").order_by(
         "project__title"
     )
-
-    # On a person's own profile, surface their drafts. On someone else's
-    # profile, only show projects the viewer is allowed to see.
-    if is_self:
-        own_projects = (
-            Project.objects.filter(Q(created_by=person) | Q(contributions__user=person))
-            .distinct()
-            .order_by("-updated_at")
-        )
-    else:
-        own_projects = None
-
     is_following = (
         request.user.is_authenticated
         and not is_self
@@ -69,7 +66,6 @@ def person_detail(request, pk: int):
             "person": person,
             "contributions": contributions,
             "is_self": is_self,
-            "own_projects": own_projects,
             "verified_orcid": verified_orcid,
             "is_following": is_following,
         },
@@ -79,7 +75,7 @@ def person_detail(request, pk: int):
 @login_required
 def my_profile(request):
     """Shortcut to the signed-in user's own profile page."""
-    return redirect("people:detail", pk=request.user.pk)
+    return redirect("profile", handle=request.user.get_username())
 
 
 @login_required
@@ -91,9 +87,9 @@ def profile_edit(request):
     if request.method == "POST":
         form = ProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
-            form.save()
+            saved = form.save()
             messages.success(request, "Profile updated.")
-            return redirect("people:detail", pk=request.user.pk)
+            return redirect("profile", handle=saved.user.get_username())
     else:
         form = ProfileForm(instance=profile)
     return render(
@@ -115,9 +111,10 @@ def profile_onboarding(request):
             request.POST, request.FILES, instance=profile, allow_usertag=True
         )
         if form.is_valid():
-            form.save()
+            saved = form.save()
             messages.success(request, "Welcome to OSPREY. Your profile is set.")
-            return redirect("people:detail", pk=request.user.pk)
+            # The form may have just set the user tag; use the saved user.
+            return redirect("profile", handle=saved.user.get_username())
     else:
         form = ProfileForm(instance=profile, allow_usertag=True)
     return render(
@@ -191,4 +188,4 @@ def follow_toggle(request, pk: int):
         existing.delete()
     else:
         Follow.objects.create(follower=request.user, creator=creator)
-    return redirect("people:detail", pk=creator.pk)
+    return redirect("profile", handle=creator.get_username())

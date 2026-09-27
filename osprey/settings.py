@@ -200,6 +200,7 @@ ORCID_SIGNIN_ALLOWLIST = [
 # var to an empty string disables the limit (useful for tests).
 RATELIMIT_ENABLE = _env_bool("RATELIMIT_ENABLE", default=False)
 RATELIMIT_PROJECT_CREATE = os.environ.get("RATELIMIT_PROJECT_CREATE", "5/h")
+RATELIMIT_STAFF_EXPORT = os.environ.get("RATELIMIT_STAFF_EXPORT", "60/h")
 RATELIMIT_WIKI_EDIT = os.environ.get("RATELIMIT_WIKI_EDIT", "30/h")
 RATELIMIT_CONVERSATION_POST = os.environ.get("RATELIMIT_CONVERSATION_POST", "20/h")
 RATELIMIT_REPORT_SUBMIT = os.environ.get("RATELIMIT_REPORT_SUBMIT", "10/h")
@@ -217,6 +218,11 @@ ZENODO_API_BASE_URL = os.environ.get(
     "https://sandbox.zenodo.org" if ZENODO_USE_SANDBOX else "https://zenodo.org",
 ).rstrip("/")
 ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
+# Bearer token for pulling the Staff Messages export from outside a
+# browser session (a dev machine). Empty disables token access; staff
+# sessions always work. Env only, never the database.
+STAFF_EXPORT_TOKEN = os.environ.get("STAFF_EXPORT_TOKEN", "")
+
 # Socket timeout per Zenodo call. Tests lower it to exercise hangs quickly.
 ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "20"))
 # Zenodo work (publish, new version, metadata sync) is queued and run by

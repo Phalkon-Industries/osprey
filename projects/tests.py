@@ -454,19 +454,54 @@ class ProjectViewTests(ProjectTestCase):
             reverse("projects:edit", args=[project.slug])
             + "?tab=description&marked=basics",
         )
-        # Unknown tab names never reach the redirect URL; a valid
-        # attempted section passes through.
+        # Unknown tab names never reach the redirect URL.
         data["title"] = "Sectioned Pump Two"
         data["next_tab"] = "evil"
         data["marked_section"] = "basics,alert(1)"
-        data["attempted_section"] = "files"
         response = self.client.post(reverse("projects:new"), data)
         project2 = Project.objects.get(title="Sectioned Pump Two")
         self.assertRedirects(
             response,
-            reverse("projects:edit", args=[project2.slug])
-            + "?marked=basics&attempted=files",
+            reverse("projects:edit", args=[project2.slug]) + "?marked=basics",
         )
+
+    def test_edit_and_new_version_buttons_show_on_every_project_tab(self):
+        from projects.models import ProjectDeposit
+
+        ProjectDeposit.objects.create(
+            project=self.public_project,
+            deposition_id="42",
+            state=ProjectDeposit.STATE_PUBLISHED,
+        )
+        edit_url = reverse("projects:edit", args=[self.public_project.slug])
+        nv_url = reverse("projects:zenodo_new_version", args=[self.public_project.slug])
+        tab_urls = [
+            reverse("projects:detail", args=[self.public_project.slug]),
+            reverse("wiki:index", args=[self.public_project.slug]),
+            reverse("conversations:index", args=[self.public_project.slug]),
+            reverse("use_reports:index", args=[self.public_project.slug]),
+            reverse("projects:lineage", args=[self.public_project.slug]),
+            reverse("projects:versions", args=[self.public_project.slug]),
+            reverse("projects:citations", args=[self.public_project.slug]),
+        ]
+        self.client.force_login(self.owner)
+        for url in tab_urls:
+            with self.subTest(url=url, who="owner"):
+                response = self.client.get(url)
+                self.assertContains(response, f'href="{edit_url}"')
+                self.assertContains(response, f'href="{nv_url}"')
+        self.client.force_login(self.unrelated)
+        for url in tab_urls:
+            with self.subTest(url=url, who="stranger"):
+                response = self.client.get(url)
+                self.assertNotContains(response, f'href="{edit_url}"')
+                self.assertNotContains(response, f'href="{nv_url}"')
+
+    def test_cover_image_input_states_accepted_types(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        self.assertContains(response, 'accept="image/png,image/jpeg,image/webp,image/gif"')
+        self.assertContains(response, "SVG isn&#x27;t accepted")
 
     def test_save_draft_creates_private_project_and_renders_detail(self):
         self.client.force_login(self.owner)
@@ -597,7 +632,7 @@ class ZenodoServiceTests(ProjectTestCase):
         metadata = metadata_for_project(self.public_project)
 
         self.assertEqual(metadata["title"], "Public Pump")
-        self.assertEqual(metadata["upload_type"], "physicalobject")
+        self.assertEqual(metadata["upload_type"], "other")
         self.assertEqual(metadata["access_right"], "open")
         self.assertEqual(metadata["license"], "mit-license")
         self.assertIn({"name": "Alice Researcher"}, metadata["creators"])
@@ -2340,6 +2375,54 @@ class ContributorClaimingTests(ProjectTestCase):
         public_row.refresh_from_db()
         self.assertEqual(public_row.claim_status, Contribution.CLAIM_DISPUTED)
         self.assertTrue(Report.objects.filter(reporter=self.collab).exists())
+
+    def test_manage_listings_page_acts_on_a_selection(self):
+        from moderation.models import Report
+
+        draft_row = Contribution.objects.create(
+            project=self.private_project,
+            display_name="Collab Person",
+            role="Firmware",
+            orcid_id="0000-0002-1111-2222",
+            user=self.collab,
+            claim_status=Contribution.CLAIM_VERIFIED,
+            order=1,
+        )
+        public_row = Contribution.objects.create(
+            project=self.public_project,
+            display_name="Collab Person 2",
+            role="Docs",
+            orcid_id="0000-0002-1111-2233",
+            user=self.collab,
+            claim_status=Contribution.CLAIM_VERIFIED,
+            order=4,
+        )
+        self.client.force_login(self.collab)
+        # The credits page lists quietly and points at the manage page.
+        response = self.client.get(reverse("contributor_claims"))
+        self.assertContains(response, "Manage my listings")
+        self.assertNotContains(response, "Ask staff to remove me")
+        response = self.client.get(reverse("contributor_claims_manage"))
+        self.assertContains(response, f'value="{draft_row.pk}"')
+        self.assertContains(response, f'value="{public_row.pk}"')
+
+        # One request for both: the draft is simply left, the published
+        # one becomes a staff-mediated dispute with the reason attached.
+        response = self.client.post(
+            reverse("contributor_claims_manage"),
+            {
+                "action": "request_removal",
+                "contribution_ids": [str(draft_row.pk), str(public_row.pk)],
+                "reason": "Not my work.",
+            },
+            follow=True,
+        )
+        self.assertContains(response, "Removal requested for 2 projects")
+        draft_row.refresh_from_db()
+        public_row.refresh_from_db()
+        self.assertIsNone(draft_row.user)
+        self.assertEqual(public_row.claim_status, Contribution.CLAIM_DISPUTED)
+        self.assertTrue(Report.objects.filter(reporter=self.collab, reason__icontains="Not my work").exists())
 
     def test_listed_person_can_quietly_view_draft(self):
         draft_row = Contribution.objects.create(

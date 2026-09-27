@@ -5,10 +5,11 @@ import shutil
 import tempfile
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import Feedback
+from .models import Feedback, FeedbackReply
 from .views import _coarse_ua, _decode_data_url
 
 
@@ -95,6 +96,7 @@ class FeedbackViewTests(TestCase):
                 "viewport_w": "1280",
                 "viewport_h": "800",
                 "screenshot": screenshot,
+                "client_errors": "12:00:01 TypeError: x is undefined @ widget.js:12",
             },
             HTTP_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0 Safari/537.36",
         )
@@ -103,6 +105,11 @@ class FeedbackViewTests(TestCase):
         feedback = Feedback.objects.get()
         self.assertEqual(len(feedback.message), 4000)
         self.assertEqual(feedback.browser, "Chrome 120.0")
+        self.assertIn("TypeError: x is undefined", feedback.client_errors)
+        self.client.force_login(self.staff)
+        review = self.client.get(reverse("feedback:review"))
+        self.assertContains(review, "JS errors on the page")
+        self.assertContains(review, "TypeError: x is undefined")
         self.assertEqual(feedback.os, "Linux")
         self.assertEqual(feedback.viewport_w, 1280)
         self.assertTrue(feedback.screenshot.name.endswith(".png"))
@@ -408,3 +415,109 @@ class StaffThreadInteractionTests(TestCase):
             response, reverse("feedback:reopen_request", args=[closed_fb.pk])
         )
         self.assertContains(response, ">closed<")
+
+
+
+class BulkTriageTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="bulk-reporter")
+        self.staff = User.objects.create_user(username="bulk-staff", is_staff=True)
+        self.a = Feedback.objects.create(user=self.user, message="first")
+        self.b = Feedback.objects.create(user=self.user, message="second", reopen_requested=True, status=Feedback.STATUS_RESOLVED)
+        self.c = Feedback.objects.create(user=self.user, message="third")
+
+    def test_one_save_updates_every_changed_row_only(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("feedback:review"),
+            {
+                "action": "bulk_status",
+                f"bulk_status_{self.a.pk}": Feedback.STATUS_TRIAGED,
+                f"bulk_status_{self.b.pk}": Feedback.STATUS_TRIAGED,  # reopened: clears the request
+                f"bulk_status_{self.c.pk}": Feedback.STATUS_NEW,  # unchanged
+                "bulk_status_999999": Feedback.STATUS_TRIAGED,  # unknown id ignored
+            },
+            follow=True,
+        )
+        self.assertContains(response, "Updated 2 threads")
+        self.a.refresh_from_db(); self.b.refresh_from_db(); self.c.refresh_from_db()
+        self.assertEqual(self.a.status, Feedback.STATUS_TRIAGED)
+        self.assertEqual(self.b.status, Feedback.STATUS_TRIAGED)
+        self.assertFalse(self.b.reopen_requested)
+        self.assertEqual(self.c.status, Feedback.STATUS_NEW)
+
+    def test_review_page_carries_bulk_controls(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("feedback:review"))
+        self.assertContains(response, 'id="bulk-form"')
+        self.assertContains(response, f'name="bulk_status_{self.a.pk}" form="bulk-form"')
+        self.assertContains(response, "Export (Markdown)")
+
+
+@override_settings(STAFF_EXPORT_TOKEN="s3cret-export-token")
+class StaffExportTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.mkdtemp()
+        self._media = override_settings(MEDIA_ROOT=self.media_dir)
+        self._media.enable()
+        self.addCleanup(self._media.disable)
+        self.addCleanup(lambda: shutil.rmtree(self.media_dir, ignore_errors=True))
+        User = get_user_model()
+        self.user = User.objects.create_user(username="exporter")
+        self.staff = User.objects.create_user(username="export-staff", is_staff=True)
+        self.fb = Feedback.objects.create(
+            user=self.user,
+            message="The lineage tab is empty for me.",
+            page_url="https://osprey.example/projects/x/",
+            browser="Firefox 153.0",
+            os="Linux",
+            viewport_w=1765,
+            viewport_h=1258,
+            client_errors="12:00:01 TypeError: boom @ form.js:3",
+            admin_notes="Reproduced.",
+        )
+        self.fb.screenshot.save("shot.png", ContentFile(PNG_BYTES), save=True)
+        FeedbackReply.objects.create(feedback=self.fb, author=self.staff, body="Looking into it.")
+        Feedback.objects.create(user=self.user, message="archived one", status=Feedback.STATUS_RESOLVED)
+
+    def test_staff_session_gets_markdown(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("feedback:export"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/markdown; charset=utf-8")
+        body = response.content.decode()
+        self.assertIn("1 thread", body)  # open only by default
+        self.assertIn(f"## #{self.fb.pk} · suggestion · new · @exporter", body)
+        self.assertIn("Environment: Firefox 153.0 on Linux, 1765x1258", body)
+        self.assertIn("The lineage tab is empty for me.", body)
+        self.assertIn("@export-staff: Looking into it.", body)
+        self.assertIn("### Admin notes\nReproduced.", body)
+        self.assertIn("TypeError: boom", body)
+        self.assertIn(reverse("feedback:export_screenshot", args=[self.fb.pk]), body)
+        self.assertNotIn("archived one", body)
+
+    def test_status_filter_and_json(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("feedback:export") + "?status=archived&format=json")
+        data = response.json()
+        self.assertEqual([t["message"] for t in data["threads"]], ["archived one"])
+
+    def test_bearer_token_works_without_a_session(self):
+        response = self.client.get(reverse("feedback:export"), HTTP_AUTHORIZATION="Bearer s3cret-export-token")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("The lineage tab is empty", response.content.decode())
+        shot = self.client.get(reverse("feedback:export_screenshot", args=[self.fb.pk]), HTTP_AUTHORIZATION="Bearer s3cret-export-token")
+        self.assertEqual(shot.status_code, 200)
+        self.assertEqual(shot["Content-Type"], "image/png")
+
+    def test_wrong_or_missing_token_is_refused(self):
+        self.assertEqual(self.client.get(reverse("feedback:export")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("feedback:export"), HTTP_AUTHORIZATION="Bearer nope").status_code, 403)
+        self.client.force_login(self.user)  # signed in but not staff
+        self.assertEqual(self.client.get(reverse("feedback:export")).status_code, 403)
+
+    @override_settings(STAFF_EXPORT_TOKEN="")
+    def test_empty_token_setting_disables_token_access(self):
+        response = self.client.get(reverse("feedback:export"), HTTP_AUTHORIZATION="Bearer ")
+        self.assertEqual(response.status_code, 403)

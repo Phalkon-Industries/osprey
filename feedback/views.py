@@ -8,6 +8,7 @@ inbox, with the Django admin kept as the lower-level back office.
 from __future__ import annotations
 
 import base64
+import hmac
 import logging
 import re
 
@@ -15,8 +16,12 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.files.base import ContentFile
-from django.http import JsonResponse
+from django.conf import settings
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.urls import reverse
+from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
+from django_ratelimit.decorators import ratelimit
 from django.views.decorators.http import require_POST
 
 from .models import Feedback, FeedbackReply
@@ -127,6 +132,7 @@ def submit(request):
         os=os_name,
         viewport_w=_to_int("viewport_w"),
         viewport_h=_to_int("viewport_h"),
+        client_errors=(request.POST.get("client_errors") or "")[:2000],
     )
 
     screenshot_data = request.POST.get("screenshot") or ""
@@ -294,6 +300,30 @@ ARCHIVED_STATUSES = [Feedback.STATUS_RESOLVED, Feedback.STATUS_WONTFIX]
 
 @user_passes_test(_staff_required, login_url="/login/")
 def review(request):
+    if request.method == "POST" and request.POST.get("action") == "bulk_status":
+        # One save for a whole pass through the queue: every row carries a
+        # status select bound to the bulk form; only changed ones write.
+        valid = dict(Feedback.STATUS_CHOICES)
+        changed = 0
+        for key, value in request.POST.items():
+            if not key.startswith("bulk_status_") or value not in valid:
+                continue
+            try:
+                fb_id = int(key[len("bulk_status_"):])
+            except ValueError:
+                continue
+            fb = Feedback.objects.filter(pk=fb_id).first()
+            if fb is None or fb.status == value:
+                continue
+            fb.status = value
+            update_fields = ["status", "updated_at"]
+            if fb.status in OPEN_STATUSES and fb.reopen_requested:
+                fb.reopen_requested = False
+                update_fields.append("reopen_requested")
+            fb.save(update_fields=update_fields)
+            changed += 1
+        messages.success(request, f"Updated {changed} thread{'s' if changed != 1 else ''}.")
+        return redirect(request.get_full_path())
     if request.method == "POST":
         fb = get_object_or_404(Feedback, pk=request.POST.get("feedback_id"))
         if request.POST.get("action") == "dismiss_reopen":
@@ -416,3 +446,121 @@ def mine(request):
         .order_by("-created_at")
     )
     return render(request, "feedback/mine.html", {"feedback_items": items})
+
+
+# --- export ------------------------------------------------------------------
+# Read-only export of the queue for triage in a dev session. Staff sessions
+# always work; a bearer token from the env lets a dev machine curl it.
+
+
+def _export_authorized(request) -> bool:
+    if request.user.is_authenticated and request.user.is_staff:
+        return True
+    token = getattr(settings, "STAFF_EXPORT_TOKEN", "")
+    header = request.META.get("HTTP_AUTHORIZATION", "")
+    if not token or not header.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header[len("Bearer "):].strip(), token)
+
+
+def _export_queryset(request):
+    status = request.GET.get("status", "open")
+    qs = Feedback.objects.select_related("user", "opened_by").prefetch_related("replies__author")
+    if status == "open":
+        qs = qs.filter(status__in=OPEN_STATUSES)
+    elif status == "archived":
+        qs = qs.filter(status__in=ARCHIVED_STATUSES)
+    elif status in dict(Feedback.STATUS_CHOICES):
+        qs = qs.filter(status=status)
+    category = request.GET.get("category", "")
+    if category in dict(Feedback.CATEGORY_CHOICES):
+        qs = qs.filter(category=category)
+    return qs.order_by("created_at")
+
+
+def _export_row(request, fb) -> dict:
+    return {
+        "id": fb.pk,
+        "category": fb.category,
+        "status": fb.status,
+        "user": fb.user.get_username() if fb.user_id else "",
+        "opened_by": fb.opened_by.get_username() if fb.opened_by_id else "",
+        "created_at": fb.created_at.isoformat(),
+        "updated_at": fb.updated_at.isoformat(),
+        "page_url": fb.page_url,
+        "page_title": fb.page_title,
+        "browser": fb.browser,
+        "os": fb.os,
+        "viewport": f"{fb.viewport_w}x{fb.viewport_h}" if fb.viewport_w and fb.viewport_h else "",
+        "reopen_requested": fb.reopen_requested,
+        "client_errors": fb.client_errors,
+        "message": fb.message,
+        "admin_notes": fb.admin_notes,
+        "screenshot_url": (
+            request.build_absolute_uri(reverse("feedback:export_screenshot", args=[fb.pk]))
+            if fb.screenshot
+            else ""
+        ),
+        "replies": [
+            {
+                "author": r.author.get_username() if r.author_id else "staff",
+                "created_at": r.created_at.isoformat(),
+                "body": r.body,
+            }
+            for r in fb.replies.all()
+        ],
+    }
+
+
+def _export_markdown(rows, status_label: str) -> str:
+    stamp = timezone.now().strftime("%Y-%m-%d %H:%M UTC")
+    out = [f"# Staff Messages export, {stamp}, status: {status_label}, {len(rows)} thread{'s' if len(rows) != 1 else ''}", ""]
+    for row in rows:
+        who = f"@{row['user']}" if row["user"] else "unknown user"
+        out.append(f"## #{row['id']} · {row['category']} · {row['status']} · {who} · {row['created_at'][:16].replace('T', ' ')}")
+        if row["page_url"]:
+            out.append(f"- Page: {row['page_url']}")
+        env = " on ".join(x for x in (row["browser"], row["os"]) if x)
+        if env or row["viewport"]:
+            out.append(f"- Environment: {env}{', ' + row['viewport'] if row['viewport'] else ''}")
+        if row["screenshot_url"]:
+            out.append(f"- Screenshot: {row['screenshot_url']}")
+        if row["reopen_requested"]:
+            out.append("- Reopen requested: yes")
+        if row["client_errors"]:
+            out.append("- JS errors on the page:")
+            out.extend(f"    {line}" for line in row["client_errors"].splitlines())
+        out.append("")
+        out.append(row["message"].strip())
+        out.append("")
+        if row["replies"]:
+            out.append("### Replies")
+            for r in row["replies"]:
+                out.append(f"- {r['created_at'][:16].replace('T', ' ')} @{r['author']}: {r['body'].strip()}")
+            out.append("")
+        if row["admin_notes"].strip():
+            out.append("### Admin notes")
+            out.append(row["admin_notes"].strip())
+            out.append("")
+    return "\n".join(out).rstrip() + "\n"
+
+
+@ratelimit(key="ip", rate=settings.RATELIMIT_STAFF_EXPORT, method="GET", block=True)
+def export(request):
+    if not _export_authorized(request):
+        return HttpResponseForbidden("Staff session or export token required.")
+    rows = [_export_row(request, fb) for fb in _export_queryset(request)]
+    if request.GET.get("format") == "json":
+        return JsonResponse({"generated_at": timezone.now().isoformat(), "threads": rows})
+    body = _export_markdown(rows, request.GET.get("status", "open"))
+    return HttpResponse(body, content_type="text/markdown; charset=utf-8")
+
+
+@ratelimit(key="ip", rate=settings.RATELIMIT_STAFF_EXPORT, method="GET", block=True)
+def export_screenshot(request, feedback_id: int):
+    if not _export_authorized(request):
+        return HttpResponseForbidden("Staff session or export token required.")
+    fb = get_object_or_404(Feedback, pk=feedback_id)
+    if not fb.screenshot:
+        raise Http404
+    return FileResponse(fb.screenshot.open("rb"), content_type="image/png")

@@ -36,6 +36,34 @@
 </form>
 
 <div class="feedback-list">
+<form id="bulk-form" method="post" class="feedback-bulk">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="bulk_status">
+    <button type="submit">Save all status changes <span data-bulk-count hidden>(0)</span></button>
+    <span class="muted small">Change the status dropdown on any row, then save once here.</span>
+    <span class="spacer"></span>
+    <a class="muted small" href="{% url 'feedback:export' %}?status={{ active_tab }}">Export (Markdown)</a>
+    <a class="muted small" href="{% url 'feedback:export' %}?status={{ active_tab }}&amp;format=json">JSON</a>
+</form>
+<script>
+    (function () {
+        var form = document.getElementById('bulk-form');
+        var count = form && form.querySelector('[data-bulk-count]');
+        if (!form || !count) return;
+        function refresh() {
+            var n = 0;
+            document.querySelectorAll('select.bulk-status').forEach(function (sel) {
+                if (sel.value !== sel.dataset.initial) n += 1;
+            });
+            count.textContent = '(' + n + ')';
+            count.hidden = n === 0;
+        }
+        document.addEventListener('change', function (e) {
+            if (e.target.matches('select.bulk-status')) refresh();
+        });
+        refresh();
+    })();
+</script>
     {% for item in feedback_items %}
     <article class="feedback-item">
         <header>
@@ -55,6 +83,9 @@
                 </form>
                 {% endif %}
                 <span class="badge">{{ item.get_status_display }}</span>
+                <select name="bulk_status_{{ item.id }}" form="bulk-form" class="bulk-status" data-initial="{{ item.status }}" title="Set the status; save all at once with the button at the top">
+                    {% for value, label in status_choices %}<option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
                 {% if item.status == "new" or item.status == "triaged" %}
                 <form method="post" style="display:inline;margin:0">
                     {% csrf_token %}
@@ -71,6 +102,10 @@
             <dd>{% if item.page_url %}<a href="{{ item.page_url }}" rel="noopener">{{ item.page_url }}</a>{% else %}<span class="muted">Unknown</span>{% endif %}</dd>
             <dt>Environment</dt>
             <dd>{{ item.browser|default:"unknown browser" }} on {{ item.os|default:"unknown OS" }}{% if item.viewport_w and item.viewport_h %}, {{ item.viewport_w }}×{{ item.viewport_h }}{% endif %}</dd>
+            {% if item.client_errors %}
+            <dt>JS errors on the page</dt>
+            <dd><pre class="small" style="white-space:pre-wrap;margin:0">{{ item.client_errors }}</pre></dd>
+            {% endif %}
         </dl>
         {% if item.screenshot %}
         <a class="feedback-shot" href="{{ item.screenshot.url }}" target="_blank" rel="noopener">

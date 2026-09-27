@@ -55,7 +55,7 @@
                 {% for c in project.contributions.all %}
                 <li>
                     {% if c.user_id %}
-                    <a href="{% url 'people:detail' c.user.id %}">{{ c.display_name }}</a>
+                    <a href="{% url 'profile' c.user.get_username %}">{{ c.display_name }}</a>
                     {% else %}
                     <span>{{ c.display_name }}</span>
                     {% endif %}
@@ -170,6 +170,15 @@
             </div>
             <span class="muted small" data-cite-status></span>
         </div>
+        <p class="muted small" style="margin:.4rem 0 0">Record on OSPREY: <a href="{{ osprey_permalink }}">{{ osprey_permalink }}</a></p>
+        <details class="cite-as" data-cite-as style="margin-top:.5rem">
+            <summary class="muted small" style="cursor:pointer">BibTeX</summary>
+            <div class="cite-as-row">
+                <textarea id="cite-bibtex-text" rows="9" readonly>{{ citation_bibtex }}</textarea>
+                <button type="button" class="ghost" data-cite-copy>Copy</button>
+            </div>
+            <span class="muted small" data-cite-status></span>
+        </details>
         {% endif %}
         <p class="muted small">
             Cite the project DOI for the work as a whole. Cite a version DOI when

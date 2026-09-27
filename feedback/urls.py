@@ -15,4 +15,6 @@ urlpatterns = [
         name="reopen_request",
     ),
     path("compose/", views.compose, name="compose"),
+    path("export/", views.export, name="export"),
+    path("export/screenshot/<int:feedback_id>/", views.export_screenshot, name="export_screenshot"),
 ]

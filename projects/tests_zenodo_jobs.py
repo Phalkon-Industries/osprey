@@ -362,3 +362,46 @@ class ZenodoQueueViewTests(ZenodoJobBase):
         self._run()
         deposit = ProjectDeposit.objects.get(project=self.project)
         self.assertEqual(self.fz.deposition(deposit.deposition_id).metadata["title"], "Queued Pump, edited")
+
+
+
+class RecordShapeTests(ZenodoJobBase):
+    def test_metadata_carries_osprey_roles_and_honest_upload_type(self):
+        from projects.zenodo import metadata_for_project
+
+        metadata = metadata_for_project(self.project)
+        self.assertEqual(metadata["upload_type"], "other")  # hardware design files
+        self.assertEqual(
+            metadata["contributors"],
+            [
+                {"name": "OSPREY", "type": "HostingInstitution"},
+                {"name": "OSPREY", "type": "Distributor"},
+            ],
+        )
+
+    def test_citation_names_both_publishers(self):
+        from projects.views import _build_bibtex, _build_citation_text
+
+        zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self.project.refresh_from_db()
+        deposit = ProjectDeposit.objects.get(project=self.project)
+        text = _build_citation_text(self.project, deposit)
+        self.assertIn("Queued Pump (Version v1). OSPREY; Zenodo.", text)
+        self.assertNotIn("[", text)
+        self.assertIn(" OSPREY; Zenodo. https://doi.org/10.5072/zenodo.", text)
+        self.assertNotIn("\u00b7", text)
+        bib = _build_bibtex(self.project, deposit)
+        self.assertIn("publisher = {OSPREY; Zenodo}", bib)
+        self.assertIn("Record on OSPREY:", bib)
+
+    def test_resync_command_queues_one_sync_per_published_project(self):
+        zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self._draft("still-a-draft")  # unpublished: not queued
+        call_command("resync_zenodo_metadata")
+        self.assertEqual(ZenodoJob.objects.filter(kind=ZenodoJob.KIND_METADATA_SYNC).count(), 1)
+        self._run()
+        deposit = ProjectDeposit.objects.get(project=self.project)
+        fake_dep = self.fz.deposition(deposit.deposition_id)
+        self.assertEqual(fake_dep.metadata["contributors"][0]["type"], "HostingInstitution")

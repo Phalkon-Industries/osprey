@@ -8,6 +8,7 @@ from django.views.generic import RedirectView
 from api.urls import api
 from core import views as core_views
 from feedback import views as feedback_views
+from people import views as people_views
 from projects import views as project_views
 
 admin.site.site_header = "OSPREY admin"
@@ -34,10 +35,16 @@ urlpatterns = [
     ),
     path("settings/", core_views.settings_home, name="settings"),
     path("staff/zenodo/", project_views.zenodo_jobs_staff, name="zenodo_jobs"),
+    path("@<str:handle>/", people_views.person_by_handle, name="profile"),
     path(
         "settings/claims/",
         project_views.contributor_claims,
         name="contributor_claims",
+    ),
+    path(
+        "settings/claims/manage/",
+        project_views.contributor_claims_manage,
+        name="contributor_claims_manage",
     ),
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),

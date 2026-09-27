@@ -77,6 +77,10 @@ class Feedback(models.Model):
     os = models.CharField(max_length=80, blank=True)
     viewport_w = models.PositiveIntegerField(null=True, blank=True)
     viewport_h = models.PositiveIntegerField(null=True, blank=True)
+    client_errors = models.TextField(
+        blank=True,
+        help_text="Recent uncaught JS errors on the page, captured by the widget.",
+    )
     screenshot = models.ImageField(
         upload_to=_screenshot_upload_to,
         blank=True,

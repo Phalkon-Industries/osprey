@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from django.conf import settings
 from django.contrib import messages
@@ -328,6 +329,8 @@ def project_detail(request, slug: str):
             "zenodo_mode_label": zenodo_mode_label(),
             "zenodo_deposit": deposit,
             "citation_text": _build_citation_text(project, deposit),
+            "citation_bibtex": _build_bibtex(project, deposit),
+            "osprey_permalink": _osprey_permalink_for(project),
             "recent_citations": recent_citations,
             "citations_count": citations_count,
             "is_watching": is_watching,
@@ -396,10 +399,56 @@ def _build_citation_text(project: Project, deposit) -> str:
     else:
         head = f"{authors}."
     title_part = f"{title} (Version {version_label})." if version_label else f"{title}."
-    parts = [head, title_part, "OSPREY \u00b7 Zenodo."]
+    # APA lists joint publishers separated by semicolons: OSPREY publishes
+    # the record, Zenodo archives it and issues the DOI. No bracketed
+    # work-type descriptor: an OSPREY project is usually hardware plus
+    # firmware plus docs, no single label fits, and the DOI identifies it.
+    parts = [head, title_part, "OSPREY; Zenodo."]
     if doi:
         parts.append(f"https://doi.org/{doi}")
     return " ".join(p for p in parts if p)
+
+
+def _build_bibtex(project: Project, deposit) -> str:
+    """BibTeX for the same record the plain citation describes."""
+    contributors = [
+        (c.display_name or "").strip()
+        for c in project.contributions.all()[:5]
+        if (c.display_name or "").strip()
+    ]
+    authors = " and ".join(contributors) or "OSPREY contributors"
+    when = deposit.published_at if deposit and deposit.published_at else project.updated_at
+    year = when.year if when else ""
+    doi = ""
+    version = ""
+    if deposit is not None:
+        latest = deposit.latest_version
+        if latest is not None:
+            doi = getattr(latest, "doi", "") or ""
+            if getattr(latest, "version_index", None):
+                version = f"v{latest.version_index}"
+        doi = doi or deposit.doi or deposit.concept_doi or ""
+    if not doi and project.doi:
+        doi = project.normalized_doi
+    key_base = re.sub(r"[^a-z0-9]", "", (contributors[0].split()[-1] if contributors else "osprey").lower()) or "osprey"
+    key = f"{key_base}{year}{re.sub(r'[^a-z0-9]', '', project.slug)[:12]}"
+    fields = [
+        ("author", authors),
+        ("title", project.title),
+        ("year", str(year) if year else ""),
+        ("publisher", "OSPREY; Zenodo"),
+        ("version", version),
+        ("doi", doi),
+        ("url", f"https://doi.org/{doi}" if doi else ""),
+        ("note", f"Record on OSPREY: {_osprey_permalink_for(project)}"),
+    ]
+    body = ",\n".join(f"  {name} = {{{value}}}" for name, value in fields if value)
+    return f"@misc{{{key},\n{body}\n}}"
+
+
+def _osprey_permalink_for(project: Project) -> str:
+    base = getattr(settings, "OSPREY_PUBLIC_BASE_URL", "").rstrip("/")
+    return f"{base}{project.get_permalink()}"
 
 
 def _resolve_visibility(project: Project, action: str, is_new: bool) -> str:
@@ -548,11 +597,6 @@ def _section_return_url(request, slug: str) -> str | None:
     ]
     if marked:
         params.append("marked=" + ",".join(marked))
-    # A section saved while still incomplete keeps its red cross and
-    # missing-fields note across the reload.
-    attempted = request.POST.get("attempted_section", "")
-    if attempted in _FORM_TAB_NAMES:
-        params.append(f"attempted={attempted}")
     return url + ("?" + "&".join(params) if params else "")
 
 
@@ -1551,4 +1595,52 @@ def zenodo_jobs_staff(request):
         request,
         "projects/zenodo_jobs.html",
         {"jobs": jobs, "health": zenodo_jobs.health()},
+    )
+
+
+@login_required
+def contributor_claims_manage(request):
+    """One page for leaving drafts and asking staff for removal, acting on
+    a selection instead of one row at a time."""
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        reason = (request.POST.get("reason") or "").strip()[:500]
+        ids = [i for i in request.POST.getlist("contribution_ids") if str(i).isdigit()]
+        rows = list(
+            Contribution.objects.filter(pk__in=ids, user=request.user).select_related("project")
+        )
+        done, errors = 0, []
+        for row in rows:
+            if action == "leave":
+                if row.project.is_public:
+                    continue  # published rows go through staff
+                error = claiming.leave_draft(row, request.user)
+            elif action == "request_removal":
+                if not row.project.is_public:
+                    error = claiming.leave_draft(row, request.user)  # drafts need no staff
+                else:
+                    error = claiming.request_removal(row, request.user, reason)
+            else:
+                error = "Unknown action."
+            if error:
+                errors.append(f"{row.project.title}: {error}")
+            else:
+                done += 1
+        if not rows:
+            messages.info(request, "Select at least one project.")
+        elif action == "leave":
+            messages.success(request, f"Left {done} draft{'s' if done != 1 else ''}.")
+        else:
+            messages.success(
+                request,
+                f"Removal requested for {done} project{'s' if done != 1 else ''}. "
+                "Staff will work with the project team and let you know.",
+            )
+        for error in errors:
+            messages.error(request, error)
+        return redirect("contributor_claims")
+    return render(
+        request,
+        "projects/contributor_claims_manage.html",
+        {"accepted": list(claiming.verified_for(request.user))},
     )

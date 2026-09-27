@@ -286,10 +286,14 @@ class SubmissionJourneyTests(JourneyTestCase):
         self.assertEqual(self.page.input_value("input[name=contributions-0-role]"), "Project lead")
         self.save_and_continue("contributors")
         self.page.wait_for_selector("[data-form-panel=files]:not([hidden])")
+        # The archive input is wrapped in a drop target; picking a file
+        # shows its name there.
+        self.assertEqual(self.page.locator("[data-form-panel=files] .dropzone input[name=attachment_files]").count(), 1)
         self.page.set_input_files(
             "input[name=attachment_files]",
             {"name": "tide-logger.zip", "mimeType": "application/zip", "buffer": zip_bytes()},
         )
+        self.page.wait_for_function("() => document.querySelector('.dropzone-name').textContent.includes('tide-logger.zip')")
         self.save_and_continue("files")
         self.page.wait_for_selector("[data-form-panel=details]:not([hidden])")
         self.save_and_continue("details")
@@ -473,6 +477,9 @@ class SuggestionBoxJourneyTests(JourneyTestCase):
             "() => document.querySelector('.fb-status').textContent.includes('Thanks')",
             timeout=20000,
         )
+        # The panel closes and a thank-you toast takes its place.
+        self.page.wait_for_selector(".fb-toast.is-in", timeout=5000)
+        self.assertIn("Thank you", self.page.locator(".fb-toast").inner_text())
         fb = Feedback.objects.get()
         self.assertEqual(fb.user, owner)
         self.assertIn("cropped", fb.message)

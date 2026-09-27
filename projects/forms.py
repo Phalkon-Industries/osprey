@@ -211,6 +211,9 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "One per line. Include a DOI or URL where you can.",
                 }
             ),
+            "cover_image": forms.ClearableFileInput(
+                attrs={"accept": "image/png,image/jpeg,image/webp,image/gif"}
+            ),
             "cover_image_focal_x": forms.HiddenInput(),
             "cover_image_focal_y": forms.HiddenInput(),
             "cover_image_zoom": forms.NumberInput(
@@ -241,8 +244,8 @@ class ProjectForm(forms.ModelForm):
             ),
             "canonical_url": "Public source repository (GitHub, Codeberg, GitLab). The link shown on the project page.",
             "cover_image": (
-                "Optional. Upload a PNG/JPG/WebP. Max 10 MiB. OSPREY downscales "
-                "the image and re-encodes it as WebP without quality loss."
+                "Optional. PNG, JPEG, WebP or GIF, up to 10 MiB; SVG isn't "
+                "accepted. OSPREY downscales and re-encodes it to WebP."
             ),
             "cover_image_focal_x": "Saved horizontal crop position.",
             "cover_image_focal_y": "Saved vertical crop position.",

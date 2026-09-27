@@ -1549,12 +1549,12 @@ class FollowAndWatchTests(TestCase):
     def test_profile_shows_follow_button_but_never_a_count(self):
         self._follow()
         self.client.force_login(self.watcher)
-        response = self.client.get(reverse("people:detail", args=[self.creator.pk]))
+        response = self.client.get(reverse("profile", args=[self.creator.username]))
         self.assertContains(response, ">Follow<")
         self.assertNotContains(response, "follower")
         # Own profile: no button, and no count for the owner either.
         self.client.force_login(self.creator)
-        response = self.client.get(reverse("people:detail", args=[self.creator.pk]))
+        response = self.client.get(reverse("profile", args=[self.creator.username]))
         self.assertNotContains(response, ">Follow<")
         self.assertNotContains(response, "follower")
 

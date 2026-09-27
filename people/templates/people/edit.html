@@ -63,7 +63,7 @@
     {% endif %}
     {% endfor %}
     <button type="submit">Save profile</button>
-    <a class="button ghost" href="{% url 'people:detail' user.pk %}" style="margin-left:.5rem">Cancel</a>
+    <a class="button ghost" href="{% url 'profile' user.get_username %}" style="margin-left:.5rem">Cancel</a>
 </form>
 
 <script>

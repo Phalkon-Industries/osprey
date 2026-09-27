@@ -46,32 +46,14 @@
     <h3>Your accepted listings</h3>
     <ul>
         {% for row in accepted %}
-        <li style="margin-bottom:.5rem">
+        <li style="margin-bottom:.35rem">
             <a href="{{ row.project.get_absolute_url }}">{{ row.project.title }}</a>
-            <span class="muted small">&middot; {{ row.role }}{% if row.editor %} &middot; Project Editor{% endif %}</span>
-            {% if row.claim_status == "disputed" %}
-            <span class="badge">removal requested</span>
-            {% elif not row.project.is_public %}
-            <form method="post" style="display:inline;margin:0 0 0 .4rem">
-                {% csrf_token %}
-                <input type="hidden" name="contribution_id" value="{{ row.pk }}">
-                <button type="submit" name="action" value="leave" class="ghost" style="padding:.15rem .5rem;font-size:.8rem">Leave draft</button>
-            </form>
-            {% else %}
-            <details style="display:inline-block;vertical-align:middle;margin-left:.4rem">
-                <summary class="muted small" style="cursor:pointer;display:inline">Request removal</summary>
-                <form method="post" style="display:flex;gap:.5rem;margin:.35rem 0">
-                    {% csrf_token %}
-                    <input type="hidden" name="contribution_id" value="{{ row.pk }}">
-                    <input type="hidden" name="action" value="request_removal">
-                    <input type="text" name="reason" maxlength="500" placeholder="Why? (goes to staff)" style="flex:1">
-                    <button type="submit" class="ghost">Ask staff to remove me</button>
-                </form>
-            </details>
-            {% endif %}
+            <span class="muted small">&middot; {{ row.role }}{% if row.editor %} &middot; Project Editor{% endif %}{% if not row.project.is_public %} &middot; draft{% endif %}</span>
+            {% if row.claim_status == "disputed" %}<span class="badge">removal requested</span>{% endif %}
         </li>
         {% endfor %}
     </ul>
+    <p><a class="button ghost" href="{% url 'contributor_claims_manage' %}">Manage my listings</a></p>
     {% endif %}
 </section>
 {% endblock %}

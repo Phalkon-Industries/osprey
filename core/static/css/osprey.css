@@ -512,6 +512,19 @@ header.site .auth a {
 
 .notifications-list>li.notification-unread {
     border-left: 3px solid var(--accent, #6cb6ff);
+    background: color-mix(in srgb, var(--accent, #6cb6ff) 10%, transparent);
+}
+
+.notifications-list>li.notification-unread>div>a>strong::before,
+.notifications-list>li.notification-unread>div>strong::before {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    border-radius: 50%;
+    background: var(--accent, #6cb6ff);
+    margin-right: 0.45em;
+    vertical-align: middle;
 }
 
 /* ---- Theme toggle ---- */
@@ -1996,8 +2009,23 @@ button.ghost:hover,
     background: var(--bg-soft);
 }
 
+.bell-menu-item.unread {
+    background: color-mix(in srgb, var(--accent, #6cb6ff) 10%, transparent);
+}
+
 .bell-menu-item.unread .bell-menu-title {
     font-weight: 600;
+}
+
+.bell-menu-item.unread .bell-menu-title::before {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    border-radius: 50%;
+    background: var(--accent, #6cb6ff);
+    margin-right: 0.45em;
+    vertical-align: middle;
 }
 
 .bell-menu-title,
@@ -2066,4 +2094,46 @@ button.ghost:hover,
 
 .zenodo-jobs tr.status-failed td {
     background: rgba(248, 113, 113, 0.08);
+}
+
+/* Drag-and-drop file target (projects/static/projects/dropzone.js) */
+.dropzone {
+    border: 1.5px dashed var(--border, #555);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    margin: 0.25rem 0 0.5rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone.is-dragover {
+    border-color: var(--accent, #6cb6ff);
+    background: color-mix(in srgb, var(--accent, #6cb6ff) 12%, transparent);
+}
+
+.dropzone .dropzone-hint {
+    margin: 0 0 0.5rem;
+}
+
+.dropzone .dropzone-name {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+}
+
+/* Staff review queue: bulk status bar and per-row select */
+.feedback-bulk {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0.75rem 0 1rem;
+}
+
+.feedback-bulk .spacer {
+    flex: 1;
+}
+
+select.bulk-status {
+    font-size: 0.85rem;
+    padding: 0.15rem 0.3rem;
+    margin-left: 0.4rem;
 }

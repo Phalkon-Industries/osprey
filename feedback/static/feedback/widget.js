@@ -7,6 +7,21 @@
 
     var mount = document.getElementById("feedback-widget");
     if (!mount) return;
+
+    // Breadcrumb of uncaught errors on this page, sent with the report so
+    // "the widget vanished" style bugs arrive with their cause attached.
+    var clientErrors = [];
+    function noteError(text) {
+        var stamp = new Date().toISOString().slice(11, 19);
+        clientErrors.push(stamp + " " + String(text).slice(0, 300));
+        if (clientErrors.length > 5) clientErrors.shift();
+    }
+    window.addEventListener("error", function (e) {
+        noteError((e.message || "error") + (e.filename ? " @ " + e.filename.split("/").pop() + ":" + e.lineno : ""));
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+        noteError("unhandled promise rejection: " + (e.reason && e.reason.message || e.reason));
+    });
     var endpoint = mount.dataset.endpoint;
     var csrfToken = mount.dataset.csrf || "";
     if (!endpoint) return;
@@ -95,6 +110,19 @@
         statusEl.textContent = "";
         if (includeShot.checked) capture();
     }
+    function toast(text) {
+        var el = document.createElement("div");
+        el.className = "fb-toast";
+        el.setAttribute("role", "status");
+        el.textContent = text;
+        document.body.appendChild(el);
+        requestAnimationFrame(function () { el.classList.add("is-in"); });
+        setTimeout(function () {
+            el.classList.remove("is-in");
+            setTimeout(function () { el.remove(); }, 300);
+        }, 3200);
+    }
+
     function close() {
         panel.hidden = true;
         btn.hidden = false;
@@ -146,6 +174,18 @@
             // Cross-origin images (the Zenodo DOI badge) can't be read into
             // a canvas and only produce a CORS error in the console; leave
             // them out of the shot rather than fail noisily.
+            // html2canvas draws the children of a closed <details> as if it
+            // were open (the account menu, the per-row popovers). Strip
+            // them from the clone so the shot matches the screen.
+            onclone: function (doc) {
+                var closed = doc.querySelectorAll("details:not([open])");
+                for (var i = 0; i < closed.length; i++) {
+                    var kids = closed[i].children;
+                    for (var k = kids.length - 1; k >= 0; k--) {
+                        if (kids[k].tagName !== "SUMMARY") closed[i].removeChild(kids[k]);
+                    }
+                }
+            },
             ignoreElements: function (el) {
                 if (el.tagName !== "IMG" || !el.src) return false;
                 try { return new URL(el.src, window.location.href).origin !== window.location.origin; }
@@ -273,6 +313,7 @@
         fd.append("page_title", document.title || "");
         fd.append("viewport_w", String(window.innerWidth));
         fd.append("viewport_h", String(window.innerHeight));
+        if (clientErrors.length) fd.append("client_errors", clientErrors.join("\n"));
         if (includeShot.checked && baseImage) {
             try {
                 fd.append("screenshot", displayCanvas.toDataURL("image/png"));
@@ -291,7 +332,10 @@
             return r.json();
         }).then(function () {
             statusEl.textContent = "Thanks. Got it.";
-            setTimeout(close, 1200);
+            setTimeout(function () {
+                close();
+                toast("Thank you! We read every one. \u2665");
+            }, 600);
         }).catch(function (err) {
             statusEl.textContent = "Send failed: " + err.message;
         }).finally(function () {

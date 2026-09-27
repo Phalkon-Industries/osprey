@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Manage my listings &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:46rem">
+    <h1>Settings</h1>
+    {% include "core/_settings_tabs.html" %}
+
+    <h2>Manage my listings</h2>
+    <p class="muted">
+        Tick the projects you want to act on. Leaving a draft takes effect
+        right away. Removal from a published project goes to staff, who
+        will work it out with the project team; the credit stays visible
+        until then.
+    </p>
+
+    {% if accepted %}
+    <form method="post" class="claims-manage">
+        {% csrf_token %}
+        <ul class="claims-manage-list">
+            {% for row in accepted %}
+            <li>
+                <label>
+                    <input type="checkbox" name="contribution_ids" value="{{ row.pk }}"{% if row.claim_status == "disputed" %} disabled{% endif %}>
+                    <a href="{{ row.project.get_absolute_url }}">{{ row.project.title }}</a>
+                    <span class="muted small">
+                        &middot; {{ row.role }}{% if row.editor %} &middot; Project Editor{% endif %}
+                        {% if not row.project.is_public %}&middot; draft{% endif %}
+                        {% if row.claim_status == "disputed" %}&middot; removal already requested{% endif %}
+                    </span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+        <p>
+            <label for="claims-reason"><strong>Reason</strong> <span class="muted small">(optional, goes to staff with a removal request)</span></label><br>
+            <textarea id="claims-reason" name="reason" rows="2" maxlength="500" style="width:100%"></textarea>
+        </p>
+        <p style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button type="submit" name="action" value="request_removal">Ask staff to remove me from the selected projects</button>
+            <button type="submit" name="action" value="leave" class="ghost">Leave the selected drafts</button>
+            <a class="button ghost" href="{% url 'contributor_claims' %}">Back</a>
+        </p>
+    </form>
+    {% else %}
+    <p class="muted">You have no accepted listings.</p>
+    <p><a class="button ghost" href="{% url 'contributor_claims' %}">Back</a></p>
+    {% endif %}
+</section>
+{% endblock %}

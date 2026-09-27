@@ -53,4 +53,6 @@ ORCID_CLIENT_SECRET=<orcid production client secret>
 ZENODO_USE_SANDBOX=${ZENODO_SANDBOX}
 ZENODO_ACCESS_TOKEN=<zenodo personal access token>
 ZENODO_DEFAULT_COMMUNITY=
+# Optional: token for the Staff Messages export (curl from a dev machine).
+STAFF_EXPORT_TOKEN=
 ENV

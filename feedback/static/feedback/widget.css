@@ -265,3 +265,25 @@ body.fb-editor-open {
     color: var(--fg-muted, #666);
     min-height: 1em;
 }
+/* Thank-you toast after a report is sent */
+.fb-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translate(-50%, 1rem);
+    opacity: 0;
+    transition: opacity 0.25s, transform 0.25s;
+    background: var(--bg-soft, #1f2937);
+    color: var(--fg, #e5e7eb);
+    border: 1px solid var(--border, #374151);
+    border-radius: 999px;
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+.fb-toast.is-in {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
