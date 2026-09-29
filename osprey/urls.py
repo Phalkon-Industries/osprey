@@ -22,7 +22,8 @@ urlpatterns = [
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/lineage/", core_views.lineage_guide, name="lineage_guide"),
-    path("about/linked-projects/", core_views.linked_projects_guide, name="linked_projects_guide"),
+    path("about/registered-projects/", core_views.registered_projects_guide, name="registered_projects_guide"),
+    path("about/contributors/", core_views.contributor_guidelines, name="contributor_guidelines"),
     # The guide lived at /about/derivatives/ before the lineage rename.
     path(
         "about/derivatives/",
@@ -36,6 +37,8 @@ urlpatterns = [
     ),
     path("settings/", core_views.settings_home, name="settings"),
     path("staff/zenodo/", project_views.zenodo_jobs_staff, name="zenodo_jobs"),
+    # Browsers ask for this regardless of the <link>; point it at the mark.
+    path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "img/osprey-mark.svg", permanent=True)),
     path("@<str:handle>/", people_views.person_by_handle, name="profile"),
     path(
         "settings/claims/",

@@ -135,7 +135,7 @@ def _project_detail(p: Project) -> dict:
                     "credit_statement": c.credit_statement,
                     "order": c.order,
                 }
-                for c in p.contributions.select_related("user").all()
+                for c in p.credited_contributions.select_related("user").all()
             ],
             "artifact_links": [
                 {"kind": a.kind, "url": a.url, "label": a.label}

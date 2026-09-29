@@ -3,8 +3,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Before the <slug> routes, or "link" is taken for a project slug.
-    path("link/", views.project_link, name="link"),
+    # Before the <slug> routes, or "register" is taken for a project slug.
+    path("register/", views.project_register, name="register"),
     path("", views.project_list, name="list"),
     path("orcid-search/", views.orcid_search_json, name="orcid_search"),
     path("lineage-lookup/", views.lineage_lookup, name="lineage_lookup"),

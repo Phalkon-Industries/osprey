@@ -497,6 +497,43 @@ class ProjectViewTests(ProjectTestCase):
                 self.assertNotContains(response, f'href="{edit_url}"')
                 self.assertNotContains(response, f'href="{nv_url}"')
 
+    def test_owner_row_cannot_be_removed_or_have_its_orcid_detached(self):
+        add_orcid_account(self.owner, "0000-0001-2345-6789")
+        self.client.force_login(self.owner)
+        # New form: the pre-filled first row is the owner's.
+        response = self.client.get(reverse("projects:new"))
+        html = response.content.decode()
+        owner_row = html[html.index('id="contrib-0"'):]
+        owner_row = owner_row[:owner_row.index("</fieldset>")]
+        self.assertIn("data-owner-row", owner_row)
+        self.assertIn("The Project Owner must be listed as a contributor.", owner_row)
+        self.assertNotIn("data-contributor-remove", owner_row)
+        self.assertNotIn("data-contributor-orcid-remove", owner_row)
+        # Edit form: the owner's saved row, next to a removable collaborator.
+        Contribution.objects.create(
+            project=self.private_project, display_name="Owner Person", role="Lead",
+            orcid_id="0000-0001-2345-6789", user=self.owner, order=0,
+        )
+        Contribution.objects.create(
+            project=self.private_project, display_name="Collab", role="Firmware", order=1,
+        )
+        response = self.client.get(reverse("projects:edit", args=[self.private_project.slug]))
+        html = response.content.decode()
+        rows = html.split('<fieldset class="contributor-row"')[1:]
+        by_name = {("Owner Person" if "Owner Person" in r else "Collab"): r for r in rows if "Owner Person" in r or "Collab" in r}
+        self.assertIn("data-owner-row", by_name["Owner Person"])
+        self.assertNotIn("data-contributor-remove", by_name["Owner Person"])
+        self.assertNotIn("data-owner-row", by_name["Collab"])
+        self.assertIn("data-contributor-remove", by_name["Collab"])
+
+    def test_contributors_tab_links_the_guidelines_page(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:new"))
+        self.assertContains(response, "OSPREY Contributor Guidelines")
+        self.assertContains(response, reverse("contributor_guidelines"))
+        page = self.client.get(reverse("contributor_guidelines"))
+        self.assertContains(page, "Who to list")
+
     def test_cover_image_input_states_accepted_types(self):
         self.client.force_login(self.owner)
         response = self.client.get(reverse("projects:new"))
@@ -2423,6 +2460,32 @@ class ContributorClaimingTests(ProjectTestCase):
         self.assertIsNone(draft_row.user)
         self.assertEqual(public_row.claim_status, Contribution.CLAIM_DISPUTED)
         self.assertTrue(Report.objects.filter(reporter=self.collab, reason__icontains="Not my work").exists())
+
+    def test_declined_credit_disappears_from_public_credit_everywhere(self):
+        from projects import claiming
+        from projects.zenodo import metadata_for_project
+        from projects.views import _build_citation_text
+
+        row = Contribution.objects.create(
+            project=self.public_project, display_name="Declining Person", role="Docs",
+            orcid_id="0000-0002-1111-2233", order=5,
+        )
+        decliner = get_user_model().objects.create_user(username="decliner")
+        add_orcid_account(decliner, "0000-0002-1111-2233")
+        self.assertIsNone(claiming.request_confirmation(row, self.owner))
+        self.assertIsNone(claiming.decline(row, decliner))
+
+        response = self.client.get(reverse("projects:detail", args=[self.public_project.slug]))
+        self.assertNotContains(response, "Declining Person")
+        for url in (reverse("projects:list"), reverse("home"), "/api/v1/projects/"):
+            self.assertNotContains(self.client.get(url), "Declining Person", msg_prefix=url)
+        creators = [c["name"] for c in metadata_for_project(self.public_project)["creators"]]
+        self.assertNotIn("Declining Person", creators)
+        self.assertNotIn("Declining Person", _build_citation_text(self.public_project, None))
+        # The owner still sees the row (and its status) on the form.
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:edit", args=[self.public_project.slug]))
+        self.assertContains(response, "Declining Person")
 
     def test_listed_person_can_quietly_view_draft(self):
         draft_row = Contribution.objects.create(

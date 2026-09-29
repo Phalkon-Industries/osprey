@@ -4,13 +4,13 @@ loop. Requests for unknown records are left for staff on Zenodo."""
 
 from django.core.management.base import BaseCommand
 
-from projects import zenodo_link
+from projects import zenodo_register
 
 
 class Command(BaseCommand):
     help = "Accept OSPREY-community inclusion requests for known records."
 
     def handle(self, *args, **options):
-        accepted = zenodo_link.accept_community_requests()
+        accepted = zenodo_register.accept_community_requests()
         if accepted:
             self.stdout.write(f"accepted {accepted} community request{'s' if accepted != 1 else ''}")

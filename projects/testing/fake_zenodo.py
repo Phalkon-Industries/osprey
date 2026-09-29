@@ -83,7 +83,7 @@ class Deposition:
     version_index: int = 1
     published_metadata: dict[str, Any] | None = None
     # "osprey" is the platform token's own account; anything else is a
-    # record somebody else owns (a linked project's source). Edit access
+    # record somebody else owns (a registered project's source). Edit access
     # for the platform token then depends on an explicit grant.
     owner: str = "osprey"
     edit_granted: bool = False
@@ -122,9 +122,9 @@ class FakeZenodoServer(ThreadingHTTPServer):
         self.requests: list[tuple[str, str]] = []
         self.community_requests: dict[str, CommunityRequest] = {}
         self.community = "osprey"
-        # Largest page the versions listing will serve; tests lower it to
-        # force the reader through `links.next`.
-        self.max_page_size = 100
+        # Largest page the versions listing will serve (Zenodo's own cap is
+        # 25); tests lower it to force the reader through `links.next`.
+        self.max_page_size = 25
         self._next_id = FIRST_RECORD_ID
         self._thread: threading.Thread | None = None
 
@@ -180,7 +180,7 @@ class FakeZenodoServer(ThreadingHTTPServer):
         concept: int | None = None,
     ) -> Deposition:
         """A published record OSPREY did not create: the source of a
-        linked project. `files` is a list of (filename, size)."""
+        registered project. `files` is a list of (filename, size)."""
         with self.lock:
             dep = self.new_deposition(concept=concept, copy_from=None)
             dep.owner = owner
@@ -218,7 +218,7 @@ class FakeZenodoServer(ThreadingHTTPServer):
         return max(published, key=lambda d: d.version_index) if published else None
 
     def record_representation(self, dep: Deposition) -> dict[str, Any]:
-        """The public /api/records shape: what a linked project reads."""
+        """The public /api/records shape: what a registered project reads."""
         rep = self.representation(dep)
         rep["files"] = [
             {
@@ -600,7 +600,12 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
             self._error(404, "PID does not exist.")
             return
         params = parse_qs(urlparse(self.path).query)
-        size = max(1, min(int(params.get("size", ["10"])[0] or 10), self.server.max_page_size))
+        requested = int(params.get("size", ["10"])[0] or 10)
+        if requested > 25:
+            # Zenodo's real limit; asking for more is a validation error.
+            self._error(400, "A validation error occurred.")
+            return
+        size = max(1, min(requested, self.server.max_page_size))
         page = max(1, int(params.get("page", ["1"])[0] or 1))
         hits = sorted(
             (d for d in self.server.depositions.values() if d.conceptrecid == dep.conceptrecid and d.state != STATE_UNSUBMITTED),

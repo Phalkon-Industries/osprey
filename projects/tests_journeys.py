@@ -524,25 +524,25 @@ class NotificationSettingsJourneyTests(JourneyTestCase):
         self.assertNoBrowserErrors()
 
 
-class LinkJourneyTests(JourneyTestCase):
-    def test_link_a_zenodo_record_from_the_browser(self):
-        from projects.tests_linked import RECORD, OWNER_ORCID
+class RegisterJourneyTests(JourneyTestCase):
+    def test_register_a_zenodo_record_from_the_browser(self):
+        from projects.tests_registered import RECORD, OWNER_ORCID
 
-        owner = get_user_model().objects.create_user(username="journey-linker")
+        owner = get_user_model().objects.create_user(username="journey-registrant")
         add_orcid_account(owner, OWNER_ORCID)
         record = self.fz.seed_published(RECORD, files=[("pump-v1.zip", 4096)])
         self.sign_in(owner)
         self.page.goto(self.url("projects:new"))
-        self.page.click("text=Link your Zenodo record")
-        self.page.wait_for_url("**/projects/link/")
+        self.page.click("text=Register your Zenodo record")
+        self.page.wait_for_url("**/projects/register/")
         self.page.fill("input[name=doi]", f"https://doi.org/{record.doi}")
-        self.page.click("button:has-text('Link this record')")
+        self.page.click("button:has-text('Register this record')")
         self.page.wait_for_url("**/edit/?tab=basics", timeout=20000)
         self.assertIn("Your Zenodo record", self.page.content())
         self.assertIn("OSPREY community on Zenodo", self.page.content())
         self.assertEqual(self.page.locator("[data-form-tab=files]").count(), 0)
         self.assertEqual(self.page.input_value("input[name=title]"), "Deep Sea Peristaltic Pump")
-        project = Project.objects.get(origin=Project.ORIGIN_LINKED)
+        project = Project.objects.get(origin=Project.ORIGIN_REGISTERED)
         self.assertEqual(project.created_by, owner)
         # Refresh from the page: nothing changed yet.
         with self.page.expect_navigation():

@@ -80,7 +80,7 @@
             {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
         </h3>
         <p class="summary">{{ project.summary|truncatewords:22 }}</p>
-        {% with authors=project.contributions.all|slice:":3" total=project.contributions.count %}
+        {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
         {% if authors %}
         <p class="byline">
             by

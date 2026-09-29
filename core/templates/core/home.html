@@ -42,7 +42,7 @@
             {% endif %}
             <h3>{{ project.title }}</h3>
             <p class="summary">{{ project.summary|truncatewords:18 }}</p>
-            {% with authors=project.contributions.all|slice:":3" total=project.contributions.count %}
+            {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
             {% if authors %}
             <p class="byline">
                 by

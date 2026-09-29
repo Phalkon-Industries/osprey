@@ -1,12 +1,12 @@
-"""Linked projects: OSPREY projects backed by the authors' own Zenodo record.
+"""Registered projects: OSPREY projects backed by the authors' own Zenodo record.
 
 Everything here reads Zenodo's public records API without a token. The
 platform token is used for one optional thing the record owner can do on
 Zenodo: submit the record to the OSPREY community, which OSPREY accepts.
-OSPREY never writes to a linked record. (Letting OSPREY manage a linked
+OSPREY never writes to a registered record. (Letting OSPREY manage a registered
 record was designed and set aside; see the feature doc.)
 
-See planning/features/linked-projects.md.
+See planning/features/registered-projects.md.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from .zenodo import ZenodoClient, ZenodoError, zenodo_configured
 logger = logging.getLogger(__name__)
 
 
-class LinkError(Exception):
+class RegistrationError(Exception):
     """A reason the link cannot be made, phrased for the user."""
 
 
@@ -47,21 +47,21 @@ class ZenodoRecordReader:
         url = path_or_url if path_or_url.startswith("http") else f"{self.base_url}{path_or_url}"
         req = request.Request(
             url,
-            headers={"Accept": "application/json", "User-Agent": "OSPREY linked records (https://osprey.phalkon.io/)"},
+            headers={"Accept": "application/json", "User-Agent": "OSPREY registered records (https://osprey.phalkon.io/)"},
         )
         try:
             with request.urlopen(req, timeout=self.timeout) as response:
                 body = response.read().decode("utf-8")
         except error.HTTPError as exc:
             if exc.code == 404:
-                raise LinkError("Zenodo has no record with that DOI.") from exc
-            raise LinkError(f"Zenodo returned an error (HTTP {exc.code}). Try again in a bit.") from exc
+                raise RegistrationError("Zenodo has no record with that DOI.") from exc
+            raise RegistrationError(f"Zenodo returned an error (HTTP {exc.code}). Try again in a bit.") from exc
         except (error.URLError, OSError) as exc:
-            raise LinkError("Couldn't reach Zenodo. Try again in a bit.") from exc
+            raise RegistrationError("Couldn't reach Zenodo. Try again in a bit.") from exc
         try:
             return json.loads(body)
         except json.JSONDecodeError as exc:
-            raise LinkError("That DOI isn't a Zenodo record.") from exc
+            raise RegistrationError("That DOI isn't a Zenodo record.") from exc
 
     def record(self, recid: str | int) -> dict:
         return self._get(f"/api/records/{recid}")
@@ -70,9 +70,10 @@ class ZenodoRecordReader:
         """Every version of the concept, oldest first.
 
         Zenodo lists versions newest first and paginates (ten per page by
-        default), so this follows `links.next` and sorts by the version
-        index Zenodo records under `metadata.relations`."""
-        url = f"/api/records/{recid}/versions?size=100"
+        default, 25 at most; a larger size is a 400), so this follows
+        `links.next` and sorts by the version index Zenodo records under
+        `metadata.relations`."""
+        url = f"/api/records/{recid}/versions?size=25"
         hits: list[dict] = []
         for _ in range(50):  # a hard stop, not a real limit
             data = self._get(url)
@@ -112,6 +113,31 @@ def normalize_orcid(value: str) -> str:
     return value.strip("/").upper()
 
 
+PRODUCTION_HOST = "https://zenodo.org"
+SANDBOX_HOST = "https://sandbox.zenodo.org"
+SANDBOX_DOI_PREFIX = "10.5072/"
+PRODUCTION_DOI_PREFIX = "10.5281/"
+
+
+def is_sandbox_doi(doi: str) -> bool:
+    return parse_doi(doi).lower().startswith(SANDBOX_DOI_PREFIX)
+
+
+def host_for_doi(doi: str) -> str:
+    """The Zenodo a DOI belongs to. The prefix says which; anything else
+    falls back to the configured endpoint (which is what tests use)."""
+    clean = parse_doi(doi).lower()
+    if clean.startswith(SANDBOX_DOI_PREFIX):
+        return SANDBOX_HOST if settings.ZENODO_API_BASE_URL.rstrip("/") in (PRODUCTION_HOST, SANDBOX_HOST) else settings.ZENODO_API_BASE_URL
+    if clean.startswith(PRODUCTION_DOI_PREFIX):
+        return PRODUCTION_HOST
+    return settings.ZENODO_API_BASE_URL
+
+
+def reader_for_doi(doi: str) -> "ZenodoRecordReader":
+    return ZenodoRecordReader(base_url=host_for_doi(doi))
+
+
 def parse_doi(text: str) -> str:
     doi = (text or "").strip()
     for prefix in ("https://doi.org/", "http://doi.org/", "doi.org/", "doi:", "DOI:"):
@@ -122,19 +148,26 @@ def parse_doi(text: str) -> str:
 
 def resolve_record(doi: str, reader: ZenodoRecordReader | None = None) -> dict:
     """The latest published record for a Zenodo DOI (concept or version)."""
-    reader = reader or ZenodoRecordReader()
     doi = parse_doi(doi)
     if not doi:
-        raise LinkError("Paste the DOI of your Zenodo record.")
+        raise RegistrationError("Paste the DOI of your Zenodo record.")
+    if is_sandbox_doi(doi) and not settings.ZENODO_USE_SANDBOX:
+        raise RegistrationError(
+            "That's a Zenodo sandbox DOI. Sandbox records are test data and "
+            "can't be registered here; publish the record on zenodo.org first."
+        )
+    # Public reads go to whichever Zenodo the DOI belongs to, so a
+    # production record can be registered from a sandbox or dev server.
+    reader = reader or reader_for_doi(doi)
     match = re.search(r"zenodo\.(\d+)$", doi, re.I)
     if match:
         record = reader.record(match.group(1))
     else:
         record = reader.by_doi(doi)
         if record is None:
-            raise LinkError("That DOI isn't a Zenodo record.")
+            raise RegistrationError("That DOI isn't a Zenodo record.")
     if not record.get("id"):
-        raise LinkError("That DOI isn't a Zenodo record.")
+        raise RegistrationError("That DOI isn't a Zenodo record.")
     # A version DOI resolves to that version; the project follows the
     # concept, so hop to its latest version (Zenodo answers a concept id
     # with the newest record).
@@ -230,23 +263,24 @@ def find_existing(record: dict) -> Project | None:
     return deposit.project if deposit else None
 
 
-def link_project(doi: str, user, reader: ZenodoRecordReader | None = None) -> Project:
-    """Create a linked project from a Zenodo DOI the user is a creator of."""
+def register_record(doi: str, user, reader: ZenodoRecordReader | None = None) -> Project:
+    """Create a registered project from a Zenodo DOI the user is a creator of."""
     from .forms import _generate_slug
     from .zenodo_jobs import notify_project_published
 
     orcid = normalize_orcid(claiming.orcid_for(user))
     if not orcid:
-        raise LinkError("Sign in with ORCID first. The link is checked against your ORCID iD.")
-    reader = reader or ZenodoRecordReader()
+        raise RegistrationError("Sign in with ORCID first. We check the record against your ORCID iD.")
+    # The DOI decides which Zenodo to read (production or sandbox).
+    reader = reader or reader_for_doi(doi)
     record = resolve_record(doi, reader)
     metadata = record.get("metadata") or {}
     access = metadata.get("access_right") or ((record.get("access") or {}).get("record")) or "open"
     if access not in ("open", "public"):
-        raise LinkError("Only open-access Zenodo records can be linked.")
+        raise RegistrationError("Only open-access Zenodo records can be registered.")
     creators = creators_of(record)
     if not any(c["orcid"] == orcid for c in creators):
-        raise LinkError(
+        raise RegistrationError(
             "Your ORCID iD isn't listed on that record as a creator. If it's your "
             "record, add your ORCID iD on Zenodo and publish the change, then try "
             "again. If it isn't yours, you can index the project instead."
@@ -260,14 +294,14 @@ def link_project(doi: str, user, reader: ZenodoRecordReader | None = None) -> Pr
     accepted = {key for key, _label in COMMON_LICENSES}
     if license_name not in accepted:
         shown = license_name or "no license"
-        raise LinkError(
+        raise RegistrationError(
             f"The record's license ({shown}) isn't one OSPREY accepts. OSPREY "
             "lists open-licensed work only. If you think this license should be "
             "supported, ask in the Suggestion Box and staff will review it."
         )
     existing = find_existing(record)
     if existing is not None:
-        raise LinkError(f"That record is already on OSPREY as “{existing.title}”.")
+        raise RegistrationError(f"That record is already on OSPREY as “{existing.title}”.")
 
     versions = reader.versions(record["id"]) or [record]
     description = metadata.get("description") or ""
@@ -280,7 +314,7 @@ def link_project(doi: str, user, reader: ZenodoRecordReader | None = None) -> Pr
             readme=description if "<" not in description else _strip_html(description),
             license=license_of(record),
             doi=record.get("conceptdoi") or record.get("doi") or "",
-            origin=Project.ORIGIN_LINKED,
+            origin=Project.ORIGIN_REGISTERED,
             visibility=Project.VISIBILITY_PUBLIC,
             created_by=user,
         )
@@ -303,7 +337,7 @@ def link_project(doi: str, user, reader: ZenodoRecordReader | None = None) -> Pr
             owner_row.save(update_fields=["user", "claim_status"])
         deposit = ProjectDeposit.objects.create(
             project=project,
-            sandbox=settings.ZENODO_USE_SANDBOX,
+            sandbox=is_sandbox_doi(record.get("doi") or doi),
             managed=False,
             deposition_id=str(record["id"]),
             record_id=str(record["id"]),
@@ -355,15 +389,15 @@ def _sync_versions(deposit: ProjectDeposit, versions: list[dict]) -> int:
 # --- refresh -----------------------------------------------------------------------
 
 
-def refresh_linked(project: Project, reader: ZenodoRecordReader | None = None) -> dict:
+def refresh_registered(project: Project, reader: ZenodoRecordReader | None = None) -> dict:
     """Re-read the Zenodo record: title, license, DOIs, new versions, new
     creators. Never removes a credit row on its own."""
-    if not project.is_linked:
-        raise LinkError("Only linked projects are refreshed from Zenodo.")
+    if not project.is_registered:
+        raise RegistrationError("Only registered projects are refreshed from Zenodo.")
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
     if deposit is None:
-        raise LinkError("This project has no Zenodo record to refresh.")
-    reader = reader or ZenodoRecordReader()
+        raise RegistrationError("This project has no Zenodo record to refresh.")
+    reader = reader or reader_for_doi(deposit.concept_doi or deposit.doi)
     record = reader.record(deposit.concept_id or deposit.record_id)
     metadata = record.get("metadata") or {}
     changes: dict = {"versions_added": 0, "creators_added": 0, "fields": []}

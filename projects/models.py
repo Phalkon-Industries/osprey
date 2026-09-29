@@ -113,14 +113,14 @@ class Project(models.Model):
         ),
     )
     canonical_url = models.URLField(blank=True)
-    # Where the record lives and who answers for it. `native` and `linked`
+    # Where the record lives and who answers for it. `native` and `registered`
     # are both "OSPREY projects" to the public; `indexed` entries are not.
     ORIGIN_NATIVE = "native"
-    ORIGIN_LINKED = "linked"
+    ORIGIN_REGISTERED = "registered"
     ORIGIN_INDEXED = "indexed"
     ORIGIN_CHOICES = [
         (ORIGIN_NATIVE, "Native (published through OSPREY)"),
-        (ORIGIN_LINKED, "Linked (the authors' own Zenodo record)"),
+        (ORIGIN_REGISTERED, "Registered (the authors' own Zenodo record)"),
         (ORIGIN_INDEXED, "Indexed entry (ownerless reference)"),
     ]
     origin = models.CharField(
@@ -362,12 +362,20 @@ class Project(models.Model):
         return user.is_staff or self.created_by_id == user.id
 
     @property
-    def is_linked(self) -> bool:
-        return self.origin == self.ORIGIN_LINKED
+    def credited_contributions(self):
+        """Contributor rows that count as credit: everything except rows
+        whose person declined. Declined rows stay for the owner's form and
+        for staff, but never render publicly, never reach Zenodo, and
+        never enter the citation."""
+        return self.contributions.exclude(claim_status="declined")
+
+    @property
+    def is_registered(self) -> bool:
+        return self.origin == self.ORIGIN_REGISTERED
 
     @property
     def accepts_publish(self) -> bool:
-        """Whether OSPREY publishes this project's record. A linked project
+        """Whether OSPREY publishes this project's record. A registered project
         is published and versioned on Zenodo by its authors."""
         return self.origin == self.ORIGIN_NATIVE
 
@@ -471,7 +479,7 @@ class ProjectDeposit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     published_at = models.DateTimeField(null=True, blank=True)
-    # False for a linked project: the record belongs to its authors and
+    # False for a registered project: the record belongs to its authors and
     # OSPREY only reads it.
     managed = models.BooleanField(default=True)
     zenodo_synced_at = models.DateTimeField(null=True, blank=True)
@@ -756,7 +764,7 @@ class Contribution(models.Model):
             return self.orcid_id
         return ""
 
-    # Note: rows are never auto-linked to users anymore. Linking happens
+    # Note: rows are never auto-registered to users anymore. Registering happens
     # only through the claim flow (invite -> the person accepts), so a
     # listing can't attach to someone's profile without their consent.
 

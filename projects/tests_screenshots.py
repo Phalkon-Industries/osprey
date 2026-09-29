@@ -86,15 +86,15 @@ class ScreenshotBaselineTests(JourneyTestCase):
             created_by=owner,
         )
         Contribution.objects.create(project=draft, display_name="Shots Owner", role="Project lead")
-        # A linked project, for the link page and its edit form.
-        from projects import zenodo_link
-        from projects.tests_linked import RECORD
+        # A registered project, for the link page and its edit form.
+        from projects import zenodo_register
+        from projects.tests_registered import RECORD
         record = self.fz.seed_published({**RECORD, "creators": [{"name": "Owner, Shots", "orcid": owner.socialaccount_set.get().uid}]})
-        self.linked = zenodo_link.link_project(record.doi, owner)
-        # Linked slugs carry a random suffix and the placeholder cover's hue
+        self.registered = zenodo_register.register_record(record.doi, owner)
+        # Registered slugs carry a random suffix and the placeholder cover's hue
         # comes from the slug; pin it so the baseline is stable.
-        Project.objects.filter(pk=self.linked.pk).update(slug="shots-linked-pump")
-        self.linked.refresh_from_db()
+        Project.objects.filter(pk=self.registered.pk).update(slug="shots-registered-pump")
+        self.registered.refresh_from_db()
         self.sign_in(owner)
         return owner, published, draft
 
@@ -110,8 +110,8 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-edit-contributors", self.url("projects:edit", draft.slug) + "?tab=contributors"),
             ("project-edit-lineage", self.url("projects:edit", draft.slug) + "?tab=related"),
             ("new-version", self.url("projects:zenodo_new_version", published.slug)),
-            ("link-page", self.url("projects:link")),
-            ("project-edit-linked", self.url("projects:edit", self.linked.slug)),
+            ("register-page", self.url("projects:register")),
+            ("project-edit-registered", self.url("projects:edit", self.registered.slug)),
             ("contributor-credits", self.url("contributor_claims")),
             ("notification-settings", self.url("notifications:settings")),
             ("inbox", self.url("notifications:inbox")),

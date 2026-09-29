@@ -6,7 +6,7 @@
 <h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
 {% if mode == 'new' %}
 <p class="muted" style="font-size:.9rem">
-    Already archived on Zenodo? <a href="{% url 'projects:link' %}">Link your Zenodo record</a> instead.
+    Already archived on Zenodo? <a href="{% url 'projects:register' %}">Register your Zenodo record</a> instead.
 </p>
 {% endif %}
 <p class="muted" style="font-size:.9rem">
@@ -14,9 +14,9 @@
     Everything else is optional.
 </p>
 
-{% if linked_deposit %}
+{% if registered_deposit %}
 {# Outside the project form: this block carries its own (Refresh) form. #}
-<div style="max-width:46rem">{% include "projects/_linked_record.html" %}</div>
+<div style="max-width:46rem">{% include "projects/_registered_record.html" %}</div>
 {% endif %}
 
 <form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave data-form-mode="{{ mode }}"{% if mode == 'edit' and not project.is_public %} data-bg-save="1"{% endif %}>
@@ -47,7 +47,7 @@
     <p class="muted" style="font-size:.85rem;text-align:right;margin:0">
         Drafts are private and only visible to you. Publish needs a green
         check on every section.<br>
-        It makes the project public and mints a DOI on Zenodo, and can't
+        Publishing makes the project public, mints a DOI on Zenodo, and can't
         be undone.
     </p>
     {% endif %}
@@ -56,14 +56,14 @@
         <button type="button" class="project-tab is-active" data-form-tab="basics">Basics <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="description">Description <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="contributors">Contributors <span class="form-tab-state" data-tab-state></span></button>
-        {% if not project.is_linked %}<button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>{% endif %}
+        {% if not project.is_registered %}<button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>{% endif %}
         <button type="button" class="project-tab" data-form-tab="details">More details <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="related">Lineage <span class="form-tab-state" data-tab-state></span></button>
     </nav>
 
     <section class="form-tab-panel" data-form-panel="basics"
         data-check-fields="title,summary,license_choice,artifact_type,self_rating">
-        {% if project.is_linked %}
+        {% if project.is_registered %}
         <p>
             <label for="{{ form.title.id_for_label }}"><strong>Title</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(from your Zenodo record)</span></label><br>
             <input type="text" id="{{ form.title.id_for_label }}" name="{{ form.title.html_name }}" value="{{ form.title.value|default:project.title }}" readonly>
@@ -76,7 +76,7 @@
         <p>
             <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong> <span class="req"
                     aria-label="required">*</span></label><br>
-            {% if project.is_linked %}
+            {% if project.is_registered %}
             <input type="text" value="{{ project.license|default:'(none on the record)' }}" readonly>
             <input type="hidden" name="{{ form.license_choice.html_name }}" value="{{ form.license_choice.value|default:project.license }}">
             <br><span class="muted" style="font-size:.85rem">From your Zenodo record.</span>
@@ -143,17 +143,13 @@
         <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
-    {% if not project.is_linked %}
+    {% if not project.is_registered %}
     <section class="form-tab-panel" data-form-panel="files"
         data-has-archive="{% if form.instance.pk and form.instance.attachments.all %}1{% endif %}">
     <h2 style="margin-top:1.5rem">Project files</h2>
     <p class="muted" style="font-size:.9rem">
         Attach a single <code>.zip</code> archive of the project
-        (firmware, gerbers, datasets, source). On publish OSPREY uploads
-        it to your Zenodo deposit, injects an OSPREY metadata sidecar
-        (<code>osprey-project.json</code> and <code>CITATION.cff</code>)
-        into the archive, and Zenodo hosts the file. OSPREY does not
-        serve project downloads itself.
+        (firmware, gerbers, datasets, source).
     </p>
     {% if form.instance.pk and form.instance.attachments.all %}
     <ul class="attachment-list">
@@ -179,7 +175,7 @@
     <p>
         <label for="id_attachment_files"><strong>Attach project archive</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(.zip only)</span></label><br>
         <input type="file" id="id_attachment_files" name="attachment_files" accept=".zip,application/zip,application/x-zip-compressed" data-dropzone data-dropzone-hint="Drop your .zip archive here, or choose it below.">
-        <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. The archive is held on OSPREY only until you publish, then pushed to Zenodo and removed locally. A draft archive is kept for 30 days; if the draft sits longer than that, re-upload the zip when you come back.</span>
+        <br><span class="muted" style="font-size:.85rem">One <code>.zip</code> archive, up to 500 MiB. Draft files only kept for 30 days. If the draft sits longer than that, re-upload the zip when you come back.</span>
     </p>
     {% endif %}
     <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
@@ -189,11 +185,14 @@
     <section class="form-tab-panel" data-form-panel="contributors">
     <h2 style="margin-top:1.5rem">Contributors</h2>
     <p class="muted" style="font-size:.9rem">
-        Everyone who worked on the project belongs here. The first row is you;
-        OSPREY pre-fills your name, ORCID iD, and primary institution when you're
-        signed in with ORCID. For each collaborator, search ORCID by name to
-        attach a verified iD. The display name and affiliation pre-fill from
-        the ORCID record; you can edit either after.
+        Everyone who worked on the project belongs here. For each collaborator,
+        search ORCID by name to attach a verified iD. The display name and
+        affiliation pre-fill from the ORCID record and you can edit either after.
+        For more information look at the
+        <a href="{% url 'contributor_guidelines' %}">OSPREY Contributor Guidelines</a>.
+    </p>
+    <p class="muted" style="font-size:.9rem">
+        Granting someone Project Editor access takes effect once they accept their credit.
     </p>
     <p class="muted" style="font-size:.85rem">
         Listing someone is quiet: they can view the project but aren't
@@ -213,7 +212,7 @@
 
     <div class="contributor-formset" data-contributor-formset>
         {% for cform in formset %}
-        <fieldset class="contributor-row" data-contributor-row id="contrib-{{ forloop.counter0 }}">
+        <fieldset class="contributor-row" data-contributor-row id="contrib-{{ forloop.counter0 }}"{% if forloop.counter0 in owner_row_indexes %} data-owner-row{% endif %}>
             <div class="contributor-controls" aria-label="Contributor row controls">
                 <button type="button" class="ghost" data-contributor-up>Up</button>
                 <button type="button" class="ghost" data-contributor-down>Down</button>
@@ -226,11 +225,11 @@
                     <div data-contributor-orcid-status>
                         <span class="contributor-orcid-attached" data-contributor-orcid-attached hidden>
                             <a href="" target="_blank" rel="noopener" data-contributor-orcid-link></a>
-                            <button type="button" class="ghost" data-contributor-orcid-remove>Remove</button>
+                            {% if forloop.counter0 not in owner_row_indexes %}<button type="button" class="ghost" data-contributor-orcid-remove>Remove</button>{% endif %}
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Required to publish. Attach a verified iD by searching ORCID&apos;s public registry; it also fills the name and affiliation.</span>
+                            <span class="muted small">An ORCiD is required. Attach a verified iD by searching ORCID&apos;s public registry.</span>
                         </span>
                     </div>
                 </div>
@@ -296,7 +295,11 @@
                     {% endif %}
                 </div>
                 {% endif %}
-                {% if not cform.instance.pk or not cform.instance.user_id or cform.instance.user_id != project.created_by_id %}
+                {% if forloop.counter0 in owner_row_indexes %}
+                <p class="muted" style="font-size:.85rem;margin:.4rem 0 0" data-owner-row-note>
+                    The Project Owner must be listed as a contributor.
+                </p>
+                {% elif not cform.instance.pk or not cform.instance.user_id or cform.instance.user_id != project.created_by_id %}
                 <button type="button" class="ghost delete-row" data-contributor-remove>Remove contributor</button>
                 {% endif %}
             </div>
@@ -358,7 +361,7 @@
                         </span>
                         <span class="contributor-orcid-empty" data-contributor-orcid-empty hidden>
                             <button type="button" class="primary" data-contributor-orcid-search>Find person by ORCID</button>
-                            <span class="muted small">Required to publish. Attach a verified iD by searching ORCID&apos;s public registry; it also fills the name and affiliation.</span>
+                            <span class="muted small">An ORCiD is required. Attach a verified iD by searching ORCID&apos;s public registry.</span>
                         </span>
                     </div>
                 </div>
@@ -396,12 +399,12 @@
     <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     {% else %}
     <ul class="contributor-list">
-        {% for c in project.contributions.all %}
+        {% for c in project.credited_contributions.all %}
         <li>{{ c.display_name }} <span class="muted">— {{ c.role }}</span></li>
         {% endfor %}
     </ul>
     <p class="muted" style="font-size:.85rem">
-        {% if project.is_linked %}Authors come from your Zenodo record. Change them there, then hit Refresh from Zenodo.{% else %}Only the Project Owner can edit the contributor list.{% endif %}
+        {% if project.is_registered %}Authors come from your Zenodo record. Change them there, then hit Refresh from Zenodo.{% else %}Only the Project Owner can edit the contributor list.{% endif %}
     </p>
     {% endif %}
     </section>
@@ -1321,6 +1324,12 @@
         var query = new URLSearchParams(window.location.search);
         // Marks made before the first save travel here via the redirect.
         var markedParam = query.get('marked');
+        if (formMode === 'new' && !markedParam) {
+            // A brand-new form starts blank. The stored marks are keyed by
+            // path, so without this the last project's marks would show.
+            done = {};
+            persistDone();
+        }
         if (markedParam) {
             markedParam.split(',').forEach(function (n) {
                 if (order.indexOf(n) !== -1) done[n] = true;

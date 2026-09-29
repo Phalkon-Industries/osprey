@@ -584,7 +584,7 @@ footer.site {
     overflow: hidden;
 }
 
-.card.linked:hover {
+.card.registered:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
     border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
@@ -600,7 +600,7 @@ footer.site {
     text-decoration: none;
 }
 
-.card.linked:hover h3 a {
+.card.registered:hover h3 a {
     color: var(--accent-strong);
 }
 
@@ -2138,25 +2138,25 @@ select.bulk-status {
     margin-left: 0.4rem;
 }
 
-/* Linked project: the Zenodo record block on the edit form */
-.linked-record {
+/* Registered project: the Zenodo record block on the edit form */
+.registered-record {
     border: 1px solid var(--border, #444);
     border-radius: 8px;
     padding: 0.9rem 1rem;
     margin: 0.75rem 0 1rem;
 }
 
-.linked-record h3 {
+.registered-record h3 {
     margin: 1rem 0 0.4rem;
     font-size: 1rem;
 }
 
-.linked-connect {
+.registered-connect {
     margin: 0;
     padding-left: 1.2rem;
     font-size: 0.9rem;
 }
 
-.linked-connect li {
+.registered-connect li {
     margin-bottom: 0.4rem;
 }

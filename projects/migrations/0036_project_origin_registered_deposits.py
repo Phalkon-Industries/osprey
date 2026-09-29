@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='project',
             name='origin',
-            field=models.CharField(choices=[('native', 'Native (published through OSPREY)'), ('linked', "Linked (the authors' own Zenodo record)"), ('indexed', 'Indexed entry (ownerless reference)')], db_index=True, default='native', max_length=16),
+            field=models.CharField(choices=[('native', 'Native (published through OSPREY)'), ('registered', "Registered (the authors' own Zenodo record)"), ('indexed', 'Indexed entry (ownerless reference)')], db_index=True, default='native', max_length=16),
         ),
         migrations.AddField(
             model_name='projectdeposit',

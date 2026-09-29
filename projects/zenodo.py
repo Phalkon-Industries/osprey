@@ -297,7 +297,7 @@ def _zenodo_license(project: Project) -> str:
 
 def _creator_rows(project: Project) -> list[dict[str, str]]:
     creators: list[dict[str, str]] = []
-    for contribution in project.contributions.select_related("user").all():
+    for contribution in project.credited_contributions.select_related("user").all():
         name = (contribution.display_name or "").strip()
         if not name:
             continue
@@ -403,7 +403,7 @@ def _osprey_metadata_payload(project: Project) -> dict[str, Any]:
             "credit_statement": c.credit_statement,
             "orcid_id": c.verified_orcid_id,
         }
-        for c in project.contributions.select_related("user").all()
+        for c in project.credited_contributions.select_related("user").all()
     ]
     return {
         "title": project.title,
@@ -541,7 +541,7 @@ def build_project_archive(project: Project) -> ProjectArchive:
             "credit_statement": c.credit_statement,
             "orcid_id": c.verified_orcid_id,
         }
-        for c in project.contributions.select_related("user").all()
+        for c in project.credited_contributions.select_related("user").all()
     ]
     project_json = {
         "title": project.title,

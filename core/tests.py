@@ -31,6 +31,14 @@ class CoreViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], reverse("home"))
 
+    def test_favicon_is_linked_and_served(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, 'rel="icon" type="image/svg+xml"')
+        self.assertContains(response, "img/osprey-mark.svg")
+        response = self.client.get("/favicon.ico")
+        self.assertEqual(response.status_code, 301)
+        self.assertIn("osprey-mark.svg", response["Location"])
+
     def test_roadmap_page_is_retired(self):
         # The roadmap moved to the README; the old page must 404, not crash.
         response = self.client.get("/roadmap/")
