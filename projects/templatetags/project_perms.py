@@ -21,7 +21,7 @@ def can_edit_project(project, user) -> bool:
 
 @register.simple_tag
 def can_publish_new_version(project, user) -> bool:
-    if not project or not project.publishable_by(user):
+    if not project or not project.publishable_by(user) or not project.accepts_publish:
         return False
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
     if deposit is None or deposit.state != ProjectDeposit.STATE_PUBLISHED:

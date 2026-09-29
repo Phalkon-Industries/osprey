@@ -82,10 +82,28 @@ class Deposition:
     conceptdoi: str = ""
     version_index: int = 1
     published_metadata: dict[str, Any] | None = None
+    # "osprey" is the platform token's own account; anything else is a
+    # record somebody else owns (a linked project's source). Edit access
+    # for the platform token then depends on an explicit grant.
+    owner: str = "osprey"
+    edit_granted: bool = False
+    communities: list[str] = field(default_factory=list)
 
     @property
     def editable(self) -> bool:
         return self.state in (STATE_UNSUBMITTED, STATE_INPROGRESS)
+
+    @property
+    def platform_can_edit(self) -> bool:
+        return self.owner == "osprey" or self.edit_granted
+
+
+@dataclass
+class CommunityRequest:
+    id: str
+    record_id: int
+    community: str
+    status: str = "submitted"  # submitted | accepted | declined
 
 
 class FakeZenodoServer(ThreadingHTTPServer):
@@ -102,6 +120,11 @@ class FakeZenodoServer(ThreadingHTTPServer):
         self.buckets: dict[str, int] = {}
         self.rules: list[Rule] = []
         self.requests: list[tuple[str, str]] = []
+        self.community_requests: dict[str, CommunityRequest] = {}
+        self.community = "osprey"
+        # Largest page the versions listing will serve; tests lower it to
+        # force the reader through `links.next`.
+        self.max_page_size = 100
         self._next_id = FIRST_RECORD_ID
         self._thread: threading.Thread | None = None
 
@@ -129,6 +152,7 @@ class FakeZenodoServer(ThreadingHTTPServer):
             self.buckets.clear()
             self.rules.clear()
             self.requests.clear()
+            self.community_requests.clear()
             self._next_id = FIRST_RECORD_ID
 
     # -- test-facing helpers ----------------------------------------------
@@ -145,14 +169,98 @@ class FakeZenodoServer(ThreadingHTTPServer):
     def paths(self, method: str | None = None) -> list[str]:
         return [p for m, p in self.requests if method is None or m == method]
 
+    # -- seeding records that belong to other people ------------------------
+
+    def seed_published(
+        self,
+        metadata: dict[str, Any],
+        *,
+        files: list[tuple[str, int]] | None = None,
+        owner: str = "someone-else",
+        concept: int | None = None,
+    ) -> Deposition:
+        """A published record OSPREY did not create: the source of a
+        linked project. `files` is a list of (filename, size)."""
+        with self.lock:
+            dep = self.new_deposition(concept=concept, copy_from=None)
+            dep.owner = owner
+            dep.metadata = json.loads(json.dumps(metadata))
+            dep.files = [
+                {"id": uuid.uuid4().hex, "filename": name, "filesize": size, "checksum": "md5:seeded"}
+                for name, size in (files or [("archive.zip", 1234)])
+            ]
+            siblings = [d for d in self.depositions.values() if d.conceptrecid == dep.conceptrecid and d is not dep]
+            if siblings:
+                dep.version_index = max(d.version_index for d in siblings) + 1
+                dep.conceptdoi = siblings[0].conceptdoi
+            dep.doi = f"{DOI_PREFIX}{dep.id}"
+            dep.conceptdoi = dep.conceptdoi or f"{DOI_PREFIX}{dep.conceptrecid}"
+            dep.state = STATE_DONE
+            return dep
+
+    def grant_edit(self, deposition_id, granted: bool = True) -> None:
+        self.deposition(deposition_id).edit_granted = granted
+
+    def submit_to_community(self, deposition_id, community: str | None = None) -> CommunityRequest:
+        """What a record owner does on Zenodo: an inclusion request that
+        the community's curators (OSPREY) then accept."""
+        with self.lock:
+            req = CommunityRequest(
+                id=uuid.uuid4().hex,
+                record_id=int(deposition_id),
+                community=community or self.community,
+            )
+            self.community_requests[req.id] = req
+            return req
+
+    def latest_in_concept(self, conceptrecid: int) -> Deposition | None:
+        published = [d for d in self.depositions.values() if d.conceptrecid == conceptrecid and d.state != STATE_UNSUBMITTED]
+        return max(published, key=lambda d: d.version_index) if published else None
+
+    def record_representation(self, dep: Deposition) -> dict[str, Any]:
+        """The public /api/records shape: what a linked project reads."""
+        rep = self.representation(dep)
+        rep["files"] = [
+            {
+                "id": f["id"],
+                "key": f["filename"],
+                "size": f["filesize"],
+                "checksum": f["checksum"],
+                "links": {"self": f"{self.url}/api/records/{dep.id}/files/{f['filename']}/content"},
+            }
+            for f in dep.files
+        ]
+        rep["links"]["self_html"] = f"{self.url}/records/{dep.id}"
+        rep["links"]["versions"] = f"{self.url}/api/records/{dep.id}/versions"
+        latest = self.latest_in_concept(dep.conceptrecid)
+        rep["links"]["latest"] = f"{self.url}/api/records/{latest.id}" if latest else ""
+        rep["metadata"]["communities"] = [{"id": c} for c in dep.communities]
+        # Zenodo's version counter lives here, 0-based, newest is_last.
+        rep["metadata"]["relations"] = {
+            "version": [{
+                "index": dep.version_index - 1,
+                "is_last": latest is dep,
+                "parent": {"pid_type": "recid", "pid_value": str(dep.conceptrecid)},
+            }]
+        }
+        rep["owners"] = [{"id": 1 if dep.owner == "osprey" else 2}]
+        rep["created"] = rep["updated"] = "2026-01-01T00:00:00+00:00"
+        return rep
+
     # -- state changes (called by the handler under the lock) -------------
 
     def new_deposition(self, *, concept: int | None = None, copy_from: Deposition | None = None) -> Deposition:
+        # Like Zenodo, a new concept gets its own id just below its first
+        # version's id, so "the concept" and "version 1" are different
+        # records and a concept id resolves to the latest version.
+        if concept is None:
+            concept = self._next_id
+            self._next_id += 1
         dep_id = self._next_id
         self._next_id += 1
         dep = Deposition(
             id=dep_id,
-            conceptrecid=concept if concept is not None else dep_id,
+            conceptrecid=concept,
             bucket=uuid.uuid4().hex,
         )
         if copy_from is not None:
@@ -214,6 +322,11 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         ("DELETE", re.compile(r"^/api/deposit/depositions/(\d+)/files/([^/]+)$"), "delete_file"),
         ("PUT", re.compile(r"^/api/files/([^/]+)/(.+)$"), "upload"),
         ("GET", re.compile(r"^/api/records/(\d+)$"), "record_json"),
+        ("GET", re.compile(r"^/api/records/(\d+)/versions$"), "record_versions"),
+        ("GET", re.compile(r"^/api/records/(\d+)/files/([^/]+)/content$"), "record_file"),
+        ("GET", re.compile(r"^/api/records$"), "record_search"),
+        ("GET", re.compile(r"^/api/requests$"), "requests_list"),
+        ("POST", re.compile(r"^/api/requests/([^/]+)/actions/(accept|decline)$"), "request_action"),
         ("GET", re.compile(r"^/records/(\d+)$"), "record_html"),
     ]
 
@@ -299,7 +412,8 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
                 self._drain()
                 self._send(rule.status, raw=b"<html><body>Service temporarily unavailable</body></html>", content_type="text/html")
                 return
-        if path.startswith("/api/") and not self._authorized():
+        public = path.startswith("/api/records")
+        if path.startswith("/api/") and not public and not self._authorized():
             self._drain()
             self._error(401, "The server could not verify that you are authorized to access the URL requested.")
             return
@@ -332,14 +446,23 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
 
     def _route_get(self, dep_id: str) -> None:
         dep = self._dep_or_404(dep_id)
-        if dep is not None:
-            self._send(200, self.server.representation(dep))
+        if dep is None:
+            return
+        if not dep.platform_can_edit:
+            # Zenodo answers the deposit endpoint with 403 for records the
+            # token cannot edit; OSPREY uses exactly that to detect grants.
+            self._error(403, "You don't have the permission to edit this record.")
+            return
+        self._send(200, self.server.representation(dep))
 
     def _route_update(self, dep_id: str) -> None:
         dep = self._dep_or_404(dep_id)
         if dep is None:
             return
         body = self._read_json()
+        if not dep.platform_can_edit:
+            self._error(403, "You don't have the permission to edit this record.")
+            return
         if not dep.editable:
             self._error(403, "Deposit is not editable. Use actions/edit to reopen it.")
             return
@@ -355,6 +478,9 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         if dep is None:
             return
         self._drain()
+        if not dep.platform_can_edit:
+            self._error(403, "You don't have the permission to edit this record.")
+            return
         if action == "publish":
             self._publish(dep)
         elif action == "newversion":
@@ -397,7 +523,8 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
             return
         dep.doi = f"{DOI_PREFIX}{dep.id}"
         dep.conceptdoi = dep.conceptdoi or f"{DOI_PREFIX}{dep.conceptrecid}"
-        dep.metadata.setdefault("version", f"v{dep.version_index}")
+        # Zenodo does not invent a version label; it is only present when
+        # the depositor set one (OSPREY does for its own new versions).
         dep.state = STATE_DONE
         dep.published_metadata = None
         self._send(202, self.server.representation(dep))
@@ -449,13 +576,104 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         dep.files = [f for f in dep.files if f["filename"] != filename] + [entry]
         self._send(201, {"key": filename, "size": size, "checksum": entry["checksum"], "version_id": entry["id"]})
 
-    def _route_record_json(self, dep_id: str) -> None:
+    def _public_record(self, dep_id: str) -> Deposition | None:
+        """A record by id, or the latest version when given a concept id
+        (Zenodo resolves concept ids to the newest version)."""
         dep = self.server.depositions.get(int(dep_id))
         if dep is None or dep.state == STATE_UNSUBMITTED:
+            dep = self.server.latest_in_concept(int(dep_id))
+        return dep
+
+    def _route_record_json(self, dep_id: str) -> None:
+        dep = self._public_record(dep_id)
+        if dep is None:
             self._error(404, "PID does not exist.")
             return
-        rep = self.server.representation(dep)
-        self._send(200, {k: rep[k] for k in ("id", "doi", "conceptdoi", "conceptrecid", "metadata", "files", "links") if k in rep})
+        self._send(200, self.server.record_representation(dep))
+
+    def _route_record_versions(self, dep_id: str) -> None:
+        """Like Zenodo: newest first, paginated (default 10), with a
+        `links.next` while more remain."""
+        from urllib.parse import parse_qs
+        dep = self._public_record(dep_id)
+        if dep is None:
+            self._error(404, "PID does not exist.")
+            return
+        params = parse_qs(urlparse(self.path).query)
+        size = max(1, min(int(params.get("size", ["10"])[0] or 10), self.server.max_page_size))
+        page = max(1, int(params.get("page", ["1"])[0] or 1))
+        hits = sorted(
+            (d for d in self.server.depositions.values() if d.conceptrecid == dep.conceptrecid and d.state != STATE_UNSUBMITTED),
+            key=lambda d: d.version_index,
+            reverse=True,
+        )
+        chunk = hits[(page - 1) * size: page * size]
+        links = {"self": f"{self.server.url}/api/records/{dep_id}/versions?size={size}&page={page}"}
+        if page * size < len(hits):
+            links["next"] = f"{self.server.url}/api/records/{dep_id}/versions?size={size}&page={page + 1}"
+        self._send(200, {"hits": {"hits": [self.server.record_representation(d) for d in chunk], "total": len(hits)}, "links": links})
+
+    def _route_record_file(self, dep_id: str, filename: str) -> None:
+        dep = self._public_record(dep_id)
+        filename = unquote(filename)
+        entry = next((f for f in (dep.files if dep else []) if f["filename"] == filename), None)
+        if entry is None:
+            self._error(404, "File does not exist.")
+            return
+        # Bodies are not stored; serve zeros of the recorded size so a
+        # mirror sees the right byte count.
+        self._send(200, raw=b"\0" * int(entry["filesize"]), content_type="application/octet-stream")
+
+    def _route_record_search(self) -> None:
+        from urllib.parse import parse_qs
+        query = parse_qs(urlparse(self.path).query).get("q", [""])[0]
+        hits = []
+        for dep in self.server.depositions.values():
+            if dep.state == STATE_UNSUBMITTED:
+                continue
+            if query.startswith("doi:") and dep.doi == query[4:].strip('"'):
+                hits.append(dep)
+            elif query.startswith("conceptdoi:") and dep.conceptdoi == query[11:].strip('"'):
+                if self.server.latest_in_concept(dep.conceptrecid) is dep:
+                    hits.append(dep)
+        self._send(200, {"hits": {"hits": [self.server.record_representation(d) for d in hits], "total": len(hits)}})
+
+    def _route_requests_list(self) -> None:
+        from urllib.parse import parse_qs
+        params = parse_qs(urlparse(self.path).query)
+        status = params.get("status", [None])[0]
+        hits = []
+        for req in self.server.community_requests.values():
+            if status and req.status != status:
+                continue
+            if req.community != self.server.community:
+                continue
+            dep = self.server.depositions.get(req.record_id)
+            hits.append({
+                "id": req.id,
+                "status": req.status,
+                "type": "community-inclusion",
+                "receiver": {"community": req.community},
+                "topic": {"record": str(req.record_id)},
+                "record_doi": dep.doi if dep else "",
+            })
+        self._send(200, {"hits": {"hits": hits, "total": len(hits)}})
+
+    def _route_request_action(self, request_id: str, action: str) -> None:
+        self._drain()
+        req = self.server.community_requests.get(request_id)
+        if req is None:
+            self._error(404, "Request does not exist.")
+            return
+        if req.status != "submitted":
+            self._error(400, "Request is not open.")
+            return
+        req.status = "accepted" if action == "accept" else "declined"
+        if action == "accept":
+            dep = self.server.depositions.get(req.record_id)
+            if dep is not None and req.community not in dep.communities:
+                dep.communities.append(req.community)
+        self._send(200, {"id": req.id, "status": req.status})
 
     def _route_record_html(self, dep_id: str) -> None:
         dep = self.server.depositions.get(int(dep_id))

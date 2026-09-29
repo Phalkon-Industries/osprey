@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}How linked projects work &middot; OSPREY{% endblock %}
+
+{% block content %}
+<section style="max-width:46rem">
+    <h1>How linked projects work</h1>
+    <p>
+        There are different ways to get a project onto OSPREY. There is the
+        standard native OSPREY project where OSPREY takes user uploaded files
+        and publishes them to Zenodo, mints the DOI, and looks after the record.
+    </p>
+    <p>
+        If the work is already on Zenodo, or a creator wants to maintain full
+        control over the Zenodo record for a project, you have the option of
+        creating a linked project. OSPREY will read the information from the
+        Zenodo record and populate the OSPREY project with that information.
+    </p>
+    <p>
+        A linked project has most of the same benefits as a native OSPREY
+        project. They are both listed in the database, both have features like
+        tracking lineage, providing wikis, etc. The main difference is who looks
+        after the Zenodo record and what metadata goes into the Zenodo record.
+    </p>
+
+    <h2>Linking a record</h2>
+    <p>
+        Your OSPREY-associated ORCID iD must be listed as a creator on the
+        Zenodo record. This serves as a check to ensure that you are authorized
+        to list the project on OSPREY. If you aren't a creator on the record,
+        you have the option to index the project instead.
+        {# TODO: link "index the project" to the indexed-entries page once it exists. #}
+    </p>
+    <p>OSPREY will read the Zenodo record and autopopulate the relevant data fields.</p>
+    <p>
+        Coauthors on the record get a credit row on OSPREY. Coauthors on linked
+        projects with OSPREY accounts will receive a notification to accept a
+        project credit, the same as a native OSPREY project.
+    </p>
+    <p>
+        A note on licenses. Every project on OSPREY has to have an open license.
+        And the Zenodo record needs to have an open license that OSPREY accepts.
+        If OSPREY finds a non-open license, or a non-standard license, the link
+        will fail. If you feel a specific license should be supported that
+        isn't, you can submit a request in the Suggestion Box and staff will
+        review the request.
+    </p>
+
+    <h2>How to update Zenodo information on the OSPREY project</h2>
+    <p>
+        The title, authors, license, files and versions come from the record.
+        Changes to these must happen on Zenodo, then you can hit Refresh from
+        Zenodo on the OSPREY project's edit page. An automatic refresh also runs
+        occasionally (typically once per week or so) by itself depending on
+        server load.
+    </p>
+
+    <h2>The OSPREY community on Zenodo</h2>
+    <p>
+        There is an OSPREY community on Zenodo that native OSPREY projects
+        automatically get added to. If you are linking a project and also want
+        your project listed in the Zenodo community, you can optionally add it
+        to that community. On your Zenodo record, choose Submit to community and
+        pick OSPREY. OSPREY should accept Zenodo records to the community within
+        about ten minutes if they are associated with a linked project.
+    </p>
+</section>
+{% endblock %}

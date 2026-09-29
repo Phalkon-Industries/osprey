@@ -14,6 +14,8 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 INTERVAL_SECONDS = 30
+# Zenodo community inclusion requests are checked this often.
+COMMUNITY_POLL_SECONDS = 600
 
 
 class Command(BaseCommand):
@@ -28,15 +30,20 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         last_digest_date = None
+        last_community_poll = 0.0
         while True:
             try:
                 call_command("run_zenodo_jobs")
                 call_command("send_queued_email")
+                if time.monotonic() - last_community_poll >= COMMUNITY_POLL_SECONDS:
+                    call_command("accept_community_requests")
+                    last_community_poll = time.monotonic()
                 today = timezone.localdate()
                 if last_digest_date != today:
                     call_command("send_email_digests")
                     call_command("prune_notifications")
                     call_command("prune_draft_archives")
+                    call_command("refresh_linked_projects")
                     last_digest_date = today
             except Exception as exc:  # noqa: BLE001 - the loop must survive
                 # transient DB/provider outages and try again next tick.

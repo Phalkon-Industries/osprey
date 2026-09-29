@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Link your Zenodo record &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:46rem">
+    <h1>Link your Zenodo record</h1>
+    <p>
+        Already archived on Zenodo? Paste your DOI. OSPREY reads the record and gives
+        the project everything else an OSPREY project has.
+        <a href="{% url 'linked_projects_guide' %}">Learn more about how Linked Projects work.</a>
+    </p>
+    <p class="muted" style="font-size:.9rem">
+        Your OSPREY-associated ORCID iD must be listed as a creator on the Zenodo
+        record to be eligible. Not one of the record's creators? You can index the
+        project instead.
+        {# TODO: link "index the project" to the indexed-entries page once it exists. #}
+    </p>
+    {% if not verified_orcid %}
+    <p class="field-error">Sign in with ORCID first. The link is checked against your ORCID iD.</p>
+    {% endif %}
+    <form method="post" style="max-width:32rem">
+        {% csrf_token %}
+        <p>
+            <label for="id_doi"><strong>Zenodo DOI</strong></label><br>
+            <input type="text" id="id_doi" name="doi" value="{{ doi }}" placeholder="10.5281/zenodo.1234567 or https://doi.org/…" required style="width:100%">
+            <br><span class="muted" style="font-size:.85rem">Either the concept DOI or a version DOI works.</span>
+        </p>
+        {% if error %}<p class="field-error" style="color:#fca5a5">{{ error }}</p>{% endif %}
+        <p><button type="submit"{% if not verified_orcid %} disabled{% endif %}>Link this record</button></p>
+    </form>
+</section>
+{% endblock %}

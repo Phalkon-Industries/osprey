@@ -113,6 +113,19 @@ class Project(models.Model):
         ),
     )
     canonical_url = models.URLField(blank=True)
+    # Where the record lives and who answers for it. `native` and `linked`
+    # are both "OSPREY projects" to the public; `indexed` entries are not.
+    ORIGIN_NATIVE = "native"
+    ORIGIN_LINKED = "linked"
+    ORIGIN_INDEXED = "indexed"
+    ORIGIN_CHOICES = [
+        (ORIGIN_NATIVE, "Native (published through OSPREY)"),
+        (ORIGIN_LINKED, "Linked (the authors' own Zenodo record)"),
+        (ORIGIN_INDEXED, "Indexed entry (ownerless reference)"),
+    ]
+    origin = models.CharField(
+        max_length=16, choices=ORIGIN_CHOICES, default=ORIGIN_NATIVE, db_index=True
+    )
     cover_image_url = models.URLField(
         blank=True,
         help_text=(
@@ -342,10 +355,21 @@ class Project(models.Model):
 
     def publishable_by(self, user) -> bool:
         """Publishing (and new versions) mint DOIs; only the owner (or
-        staff) holds that irreversible click."""
+        staff) holds that irreversible click. Owner-only controls
+        (contributor list, transfer) key off this too."""
         if user is None or not user.is_authenticated:
             return False
         return user.is_staff or self.created_by_id == user.id
+
+    @property
+    def is_linked(self) -> bool:
+        return self.origin == self.ORIGIN_LINKED
+
+    @property
+    def accepts_publish(self) -> bool:
+        """Whether OSPREY publishes this project's record. A linked project
+        is published and versioned on Zenodo by its authors."""
+        return self.origin == self.ORIGIN_NATIVE
 
     @property
     def normalized_doi(self) -> str:
@@ -447,6 +471,11 @@ class ProjectDeposit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     published_at = models.DateTimeField(null=True, blank=True)
+    # False for a linked project: the record belongs to its authors and
+    # OSPREY only reads it.
+    managed = models.BooleanField(default=True)
+    zenodo_synced_at = models.DateTimeField(null=True, blank=True)
+    in_community = models.BooleanField(null=True, blank=True)
 
     class Meta:
         ordering = ["-updated_at"]

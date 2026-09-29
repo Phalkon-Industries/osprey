@@ -35,6 +35,7 @@ from .models import (
 from . import claiming
 from . import lineage as lineage_claims
 from . import zenodo_jobs
+from . import zenodo_link
 from .models import LineageEdge, ProjectDepositVersion, ZenodoJob
 from .zenodo import (
     ZenodoError,
@@ -331,6 +332,7 @@ def project_detail(request, slug: str):
             "citation_text": _build_citation_text(project, deposit),
             "citation_bibtex": _build_bibtex(project, deposit),
             "osprey_permalink": _osprey_permalink_for(project),
+            "linked_deposit": deposit if project.is_linked else None,
             "recent_citations": recent_citations,
             "citations_count": citations_count,
             "is_watching": is_watching,
@@ -848,9 +850,14 @@ def project_edit(request, slug: str):
     # The contributor list (and everything riding on it: credit, invites,
     # editor grants, transfer) is owner-only. Editors edit content; the
     # formset from their POST is ignored entirely.
-    manage_contributors = project.publishable_by(request.user)
+    manage_contributors = project.publishable_by(request.user) and not project.is_linked
+    # The bound form mutates `project` in place, so remember the
+    # Zenodo-owned values before it does.
+    linked_title, linked_license = project.title, project.license
     if request.method == "POST":
         action = request.POST.get("action", "save")
+        if project.is_linked and action == "publish":
+            action = "save"
         verified_orcid = _verified_orcid_for(request.user)
         form = ProjectForm(request.POST, request.FILES, instance=project)
         if manage_contributors:
@@ -884,6 +891,11 @@ def project_edit(request, slug: str):
             saved = form.save(commit=False)
             was_public = project.visibility == Project.VISIBILITY_PUBLIC
             saved.visibility = _resolve_visibility(project, action, is_new=False)
+            if project.is_linked:
+                # Title and license belong to the Zenodo record; the form
+                # shows them read-only and the record stays the source.
+                saved.title = linked_title
+                saved.license = linked_license
             saved.save()
             form.save_m2m()
             if manage_contributors:
@@ -901,6 +913,9 @@ def project_edit(request, slug: str):
                     "soon as Zenodo accepts the deposit, usually within a minute. "
                     "You'll get a notification when it's live.",
                 )
+            elif saved.is_linked:
+                # The record is theirs; a save here never touches Zenodo.
+                messages.success(request, "Project updated.")
             elif was_public and zenodo_configured():
                 # Existing public project: the metadata edit is pushed to
                 # the Zenodo record by a queued job, so a Zenodo outage
@@ -931,8 +946,14 @@ def project_edit(request, slug: str):
             "mode": "edit",
             "project": project,
             "role_suggestions": ROLE_SUGGESTIONS,
-            "can_publish_project": project.publishable_by(request.user),
+            "can_publish_project": project.publishable_by(request.user) and project.accepts_publish,
             "zenodo_job_pending": zenodo_jobs.pending_job(project) is not None,
+            "linked_deposit": (
+                project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+                if project.is_linked
+                else None
+            ),
+            "zenodo_community": settings.ZENODO_DEFAULT_COMMUNITY,
             "known_orcids": set(
                 SocialAccount.objects.filter(
                     provider="orcid",
@@ -985,6 +1006,13 @@ def project_zenodo_new_version(request, slug: str):
     if not project.publishable_by(request.user):
         messages.error(
             request, "Only the project owner can publish new versions."
+        )
+        return redirect(project.get_absolute_url())
+    if not project.accepts_publish:
+        messages.info(
+            request,
+            "New versions of a linked project are published on Zenodo. "
+            "Publish there, then hit Refresh from Zenodo on the edit page.",
         )
         return redirect(project.get_absolute_url())
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
@@ -1644,3 +1672,56 @@ def contributor_claims_manage(request):
         "projects/contributor_claims_manage.html",
         {"accepted": list(claiming.verified_for(request.user))},
     )
+
+
+@login_required
+@ratelimit(
+    key="user", rate=settings.RATELIMIT_PROJECT_CREATE, method="POST", block=True
+)
+def project_link(request):
+    """Register an existing Zenodo record as an OSPREY project."""
+    verified_orcid = _verified_orcid_for(request.user)
+    error = ""
+    doi = ""
+    if request.method == "POST":
+        doi = (request.POST.get("doi") or "").strip()
+        try:
+            project = zenodo_link.link_project(doi, request.user)
+        except zenodo_link.LinkError as exc:
+            error = str(exc)
+        else:
+            messages.success(
+                request,
+                f"\u201c{project.title}\u201d is now on OSPREY. Fill in what Zenodo "
+                "doesn't have, like the field, type and maturity, then save.",
+            )
+            return redirect(reverse("projects:edit", args=[project.slug]) + "?tab=basics")
+    return render(
+        request,
+        "projects/link.html",
+        {"error": error, "doi": doi, "verified_orcid": verified_orcid},
+    )
+
+
+@login_required
+def zenodo_refresh(request, slug: str):
+    """Owner's Refresh from Zenodo on a linked project."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.publishable_by(request.user) or not project.is_linked:
+        raise Http404
+    if request.method != "POST":
+        return redirect(reverse("projects:edit", args=[project.slug]))
+    try:
+        changes = zenodo_link.refresh_linked(project)
+    except zenodo_link.LinkError as exc:
+        messages.error(request, f"Couldn't refresh: {exc}")
+    else:
+        bits = []
+        if changes["versions_added"]:
+            bits.append(f"{changes['versions_added']} new version{'s' if changes['versions_added'] != 1 else ''}")
+        if changes["creators_added"]:
+            bits.append(f"{changes['creators_added']} new author{'s' if changes['creators_added'] != 1 else ''}")
+        if changes["fields"]:
+            bits.append("updated " + ", ".join(changes["fields"]))
+        messages.success(request, "Refreshed from Zenodo" + (": " + "; ".join(bits) + "." if bits else ". Nothing changed."))
+    return redirect(reverse("projects:edit", args=[project.slug]))

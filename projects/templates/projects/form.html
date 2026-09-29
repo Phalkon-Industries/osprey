@@ -4,10 +4,20 @@
 
 {% block content %}
 <h1>{% if mode == 'edit' %}Edit project{% else %}Submit a project{% endif %}</h1>
+{% if mode == 'new' %}
+<p class="muted" style="font-size:.9rem">
+    Already archived on Zenodo? <a href="{% url 'projects:link' %}">Link your Zenodo record</a> instead.
+</p>
+{% endif %}
 <p class="muted" style="font-size:.9rem">
     Fields marked <span class="req" aria-label="required">*</span> are required.
     Everything else is optional.
 </p>
+
+{% if linked_deposit %}
+{# Outside the project form: this block carries its own (Refresh) form. #}
+<div style="max-width:46rem">{% include "projects/_linked_record.html" %}</div>
+{% endif %}
 
 <form method="post" enctype="multipart/form-data" style="max-width:46rem" class="project-form" data-project-form data-autosave data-form-mode="{{ mode }}"{% if mode == 'edit' and not project.is_public %} data-bg-save="1"{% endif %}>
     {% csrf_token %}
@@ -46,23 +56,36 @@
         <button type="button" class="project-tab is-active" data-form-tab="basics">Basics <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="description">Description <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="contributors">Contributors <span class="form-tab-state" data-tab-state></span></button>
-        <button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>
+        {% if not project.is_linked %}<button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>{% endif %}
         <button type="button" class="project-tab" data-form-tab="details">More details <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="related">Lineage <span class="form-tab-state" data-tab-state></span></button>
     </nav>
 
     <section class="form-tab-panel" data-form-panel="basics"
         data-check-fields="title,summary,license_choice,artifact_type,self_rating">
+        {% if project.is_linked %}
+        <p>
+            <label for="{{ form.title.id_for_label }}"><strong>Title</strong> <span class="muted" style="font-weight:normal;font-size:.85rem">(from your Zenodo record)</span></label><br>
+            <input type="text" id="{{ form.title.id_for_label }}" name="{{ form.title.html_name }}" value="{{ form.title.value|default:project.title }}" readonly>
+        </p>
+        {% else %}
         {% include "projects/_form_field.html" with field=form.title %}
+        {% endif %}
         {% include "projects/_form_field.html" with field=form.summary %}
 
         <p>
             <label for="{{ form.license_choice.id_for_label }}"><strong>License</strong> <span class="req"
                     aria-label="required">*</span></label><br>
+            {% if project.is_linked %}
+            <input type="text" value="{{ project.license|default:'(none on the record)' }}" readonly>
+            <input type="hidden" name="{{ form.license_choice.html_name }}" value="{{ form.license_choice.value|default:project.license }}">
+            <br><span class="muted" style="font-size:.85rem">From your Zenodo record.</span>
+            {% else %}
             {{ form.license_choice }}
             <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the
                 <a href="{% url 'license_guide' %}" target="_blank" rel="noopener">license guide</a>.
                 Need a license that isn't listed? Ask through the Suggestion Box.</span>
+            {% endif %}
             {% if form.license_choice.errors %}<br><span class="field-error" style="color:#fca5a5">{{ form.license_choice.errors|join:" "
                 }}</span>{% endif %}
         </p>
@@ -120,6 +143,7 @@
         <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 
+    {% if not project.is_linked %}
     <section class="form-tab-panel" data-form-panel="files"
         data-has-archive="{% if form.instance.pk and form.instance.attachments.all %}1{% endif %}">
     <h2 style="margin-top:1.5rem">Project files</h2>
@@ -160,6 +184,7 @@
     {% endif %}
     <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
+    {% endif %}
 
     <section class="form-tab-panel" data-form-panel="contributors">
     <h2 style="margin-top:1.5rem">Contributors</h2>
@@ -376,7 +401,7 @@
         {% endfor %}
     </ul>
     <p class="muted" style="font-size:.85rem">
-        Only the Project Owner can edit the contributor list.
+        {% if project.is_linked %}Authors come from your Zenodo record. Change them there, then hit Refresh from Zenodo.{% else %}Only the Project Owner can edit the contributor list.{% endif %}
     </p>
     {% endif %}
     </section>

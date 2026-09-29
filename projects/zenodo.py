@@ -285,6 +285,12 @@ def _zenodo_license(project: Project) -> str:
         "CC-BY-4.0": "cc-by-4.0",
         "CC-BY-SA-4.0": "cc-by-sa-4.0",
         "CC0-1.0": "cc0-1.0",
+        # Hardware licenses. Zenodo's vocabulary has them under these ids;
+        # without them a CERN-OHL project was deposited with no license and
+        # Zenodo applied its default (CC-BY) to the record.
+        "CERN-OHL-P-2.0": "cern-ohl-p-2.0",
+        "CERN-OHL-S-2.0": "cern-ohl-s-2.0",
+        "CERN-OHL-W-2.0": "cern-ohl-w-2.0",
     }
     return mapping.get(project.license, "")
 

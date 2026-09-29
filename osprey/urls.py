@@ -22,6 +22,7 @@ urlpatterns = [
     path("about/licenses/", core_views.license_guide, name="license_guide"),
     path("about/markdown/", core_views.markdown_guide, name="markdown_guide"),
     path("about/lineage/", core_views.lineage_guide, name="lineage_guide"),
+    path("about/linked-projects/", core_views.linked_projects_guide, name="linked_projects_guide"),
     # The guide lived at /about/derivatives/ before the lineage rename.
     path(
         "about/derivatives/",

@@ -3,6 +3,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Before the <slug> routes, or "link" is taken for a project slug.
+    path("link/", views.project_link, name="link"),
     path("", views.project_list, name="list"),
     path("orcid-search/", views.orcid_search_json, name="orcid_search"),
     path("lineage-lookup/", views.lineage_lookup, name="lineage_lookup"),
@@ -32,6 +34,11 @@ urlpatterns = [
         "<slug:slug>/zenodo/new-version/",
         views.project_zenodo_new_version,
         name="zenodo_new_version",
+    ),
+    path(
+        "<slug:slug>/zenodo/refresh/",
+        views.zenodo_refresh,
+        name="zenodo_refresh",
     ),
     path(
         "<slug:slug>/zenodo/retry/",

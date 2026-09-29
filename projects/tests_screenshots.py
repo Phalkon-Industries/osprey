@@ -86,6 +86,15 @@ class ScreenshotBaselineTests(JourneyTestCase):
             created_by=owner,
         )
         Contribution.objects.create(project=draft, display_name="Shots Owner", role="Project lead")
+        # A linked project, for the link page and its edit form.
+        from projects import zenodo_link
+        from projects.tests_linked import RECORD
+        record = self.fz.seed_published({**RECORD, "creators": [{"name": "Owner, Shots", "orcid": owner.socialaccount_set.get().uid}]})
+        self.linked = zenodo_link.link_project(record.doi, owner)
+        # Linked slugs carry a random suffix and the placeholder cover's hue
+        # comes from the slug; pin it so the baseline is stable.
+        Project.objects.filter(pk=self.linked.pk).update(slug="shots-linked-pump")
+        self.linked.refresh_from_db()
         self.sign_in(owner)
         return owner, published, draft
 
@@ -101,6 +110,8 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-edit-contributors", self.url("projects:edit", draft.slug) + "?tab=contributors"),
             ("project-edit-lineage", self.url("projects:edit", draft.slug) + "?tab=related"),
             ("new-version", self.url("projects:zenodo_new_version", published.slug)),
+            ("link-page", self.url("projects:link")),
+            ("project-edit-linked", self.url("projects:edit", self.linked.slug)),
             ("contributor-credits", self.url("contributor_claims")),
             ("notification-settings", self.url("notifications:settings")),
             ("inbox", self.url("notifications:inbox")),
@@ -127,12 +138,20 @@ class ScreenshotBaselineTests(JourneyTestCase):
             with self.subTest(page=name, theme=theme):
                 actual = self._capture(url)
                 path = BASELINE_DIR / f"{name}-{theme}.png"
-                if update or not path.exists():
+                if not path.exists():
                     actual.save(path, optimize=True)
                     created.append(path.name)
                     continue
                 baseline = Image.open(path)
                 ratio, diff = _diff_ratio(baseline, actual)
+                if update:
+                    # Rewrite only pages that would have failed, so an
+                    # update doesn't churn every file in git over
+                    # antialiasing noise.
+                    if ratio > THRESHOLD:
+                        actual.save(path, optimize=True)
+                        created.append(path.name)
+                    continue
                 if ratio > THRESHOLD:
                     DIFF_DIR.mkdir(parents=True, exist_ok=True)
                     actual.save(DIFF_DIR / f"{name}-{theme}.actual.png")

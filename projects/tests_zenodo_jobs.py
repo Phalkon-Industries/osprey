@@ -379,6 +379,18 @@ class RecordShapeTests(ZenodoJobBase):
             ],
         )
 
+    def test_every_license_on_the_form_reaches_zenodo(self):
+        # Every license the submission form offers must translate to a
+        # Zenodo license id, or the record is deposited license-less and
+        # Zenodo applies its own default.
+        from projects.forms import COMMON_LICENSES
+        from projects.zenodo import _zenodo_license
+
+        for key, _label in COMMON_LICENSES:
+            self.project.license = key
+            with self.subTest(license=key):
+                self.assertTrue(_zenodo_license(self.project), f"{key} has no Zenodo id")
+
     def test_citation_names_both_publishers(self):
         from projects.views import _build_bibtex, _build_citation_text
 

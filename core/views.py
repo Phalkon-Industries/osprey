@@ -52,6 +52,10 @@ def lineage_guide(request):
     return render(request, "core/lineage_guide.html")
 
 
+def linked_projects_guide(request):
+    return render(request, "core/linked_projects_guide.html")
+
+
 @staff_member_required
 def staff_dashboard(request):
     """One-page overview for staff: feedback summary plus admin links.

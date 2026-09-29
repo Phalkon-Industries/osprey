@@ -102,7 +102,13 @@ def _create(project: Project, kind: str, user, payload: dict | None = None) -> Z
     return job
 
 
+def _require_native(project: Project) -> None:
+    if not project.accepts_publish:
+        raise ValueError("Linked projects are published and versioned on Zenodo by their authors.")
+
+
 def enqueue_publish(project: Project, user) -> ZenodoJob:
+    _require_native(project)
     existing = pending_job(project, ZenodoJob.KIND_PUBLISH)
     if existing is not None:
         return existing
@@ -110,6 +116,7 @@ def enqueue_publish(project: Project, user) -> ZenodoJob:
 
 
 def enqueue_new_version(project: Project, user, *, changelog: str, repo_link: str = "") -> ZenodoJob:
+    _require_native(project)
     existing = pending_job(project, ZenodoJob.KIND_NEW_VERSION)
     if existing is not None:
         return existing
@@ -213,6 +220,8 @@ def _execute(job: ZenodoJob) -> None:
         _notify(lambda events: events.new_version_published(project, actor=user))
         _notify(lambda events: events.deposit_published(project, deposit, new_version=True))
     elif job.kind == ZenodoJob.KIND_METADATA_SYNC:
+        if project.is_linked:
+            raise ZenodoError("HTTP 403: linked records are not edited by OSPREY.")
         update_published_metadata(project)
     else:  # pragma: no cover - guarded by model choices
         raise ZenodoError(f"Unknown Zenodo job kind {job.kind!r}.")

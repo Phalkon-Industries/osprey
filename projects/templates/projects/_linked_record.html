@@ -1,0 +1,18 @@
+{# Linked project: the Zenodo record it reads from. #}
+<section class="linked-record">
+    <h2 style="margin-top:0">Your Zenodo record</h2>
+    <p class="muted" style="font-size:.9rem">
+        This project reads from <a href="https://doi.org/{{ linked_deposit.concept_doi|default:linked_deposit.doi }}" rel="noopener">{{ linked_deposit.concept_doi|default:linked_deposit.doi }}</a>.
+        <a href="{% url 'linked_projects_guide' %}">How linked projects work</a>.
+        {% if linked_deposit.zenodo_synced_at %}Last synced {{ linked_deposit.zenodo_synced_at|timesince }} ago.{% endif %}
+    </p>
+    <form method="post" action="{% url 'projects:zenodo_refresh' project.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="ghost">Refresh from Zenodo</button>
+    </form>
+    <p class="muted" style="font-size:.9rem;margin:.75rem 0 0">
+        <strong>OSPREY community on Zenodo:</strong>
+        {% if linked_deposit.in_community %}listed.{% else %}not yet listed.
+        {% if zenodo_community %}On your record, choose <em>Submit to community</em> and pick <em>{{ zenodo_community }}</em>. OSPREY should accept it within about ten minutes.{% endif %}{% endif %}
+    </p>
+</section>

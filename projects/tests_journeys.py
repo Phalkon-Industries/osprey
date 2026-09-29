@@ -522,3 +522,37 @@ class NotificationSettingsJourneyTests(JourneyTestCase):
         self.assertEqual(NotificationPreference.objects.get(user=owner).new_projects, "off")
         self.assertEqual(self.page.input_value("select[name=new_projects]"), "off")
         self.assertNoBrowserErrors()
+
+
+class LinkJourneyTests(JourneyTestCase):
+    def test_link_a_zenodo_record_from_the_browser(self):
+        from projects.tests_linked import RECORD, OWNER_ORCID
+
+        owner = get_user_model().objects.create_user(username="journey-linker")
+        add_orcid_account(owner, OWNER_ORCID)
+        record = self.fz.seed_published(RECORD, files=[("pump-v1.zip", 4096)])
+        self.sign_in(owner)
+        self.page.goto(self.url("projects:new"))
+        self.page.click("text=Link your Zenodo record")
+        self.page.wait_for_url("**/projects/link/")
+        self.page.fill("input[name=doi]", f"https://doi.org/{record.doi}")
+        self.page.click("button:has-text('Link this record')")
+        self.page.wait_for_url("**/edit/?tab=basics", timeout=20000)
+        self.assertIn("Your Zenodo record", self.page.content())
+        self.assertIn("OSPREY community on Zenodo", self.page.content())
+        self.assertEqual(self.page.locator("[data-form-tab=files]").count(), 0)
+        self.assertEqual(self.page.input_value("input[name=title]"), "Deep Sea Peristaltic Pump")
+        project = Project.objects.get(origin=Project.ORIGIN_LINKED)
+        self.assertEqual(project.created_by, owner)
+        # Refresh from the page: nothing changed yet.
+        with self.page.expect_navigation():
+            self.page.click("button:has-text('Refresh from Zenodo')")
+        self.assertIn("Refreshed from Zenodo. Nothing changed.", self.page.content())
+        # Publish a new version on "Zenodo", refresh again: it shows up.
+        self.fz.seed_published(RECORD, concept=record.conceptrecid)
+        with self.page.expect_navigation():
+            self.page.click("button:has-text('Refresh from Zenodo')")
+        self.assertIn("1 new version", self.page.content())
+        self.page.goto(self.url("projects:versions", project.slug))
+        self.assertIn("v2", self.page.content())
+        self.assertNoBrowserErrors()

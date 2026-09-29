@@ -171,6 +171,12 @@
             <span class="muted small" data-cite-status></span>
         </div>
         <p class="muted small" style="margin:.4rem 0 0">Record on OSPREY: <a href="{{ osprey_permalink }}">{{ osprey_permalink }}</a></p>
+        {% if linked_deposit %}
+        <p class="muted small" style="margin:.4rem 0 0">
+            Record managed on Zenodo by its authors.{% if project.created_by %} Registered on OSPREY by @{{ project.created_by.get_username }}.{% endif %}
+            {% if linked_deposit.zenodo_synced_at %}Synced {{ linked_deposit.zenodo_synced_at|timesince }} ago.{% endif %}
+        </p>
+        {% endif %}
         <details class="cite-as" data-cite-as style="margin-top:.5rem">
             <summary class="muted small" style="cursor:pointer">BibTeX</summary>
             <div class="cite-as-row">
