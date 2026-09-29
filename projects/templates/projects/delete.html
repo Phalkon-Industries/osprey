@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Delete draft &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:46rem">
+    <h1>Delete this draft?</h1>
+    <p>This removes “{{ project.title }}” and its files. It can't be undone.</p>
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <button type="submit">Delete draft</button>
+            <a class="button ghost" href="{% url 'projects:edit' project.slug %}">Cancel</a>
+        </p>
+    </form>
+</section>
+{% endblock %}

@@ -556,3 +556,27 @@ class RegisterJourneyTests(JourneyTestCase):
         self.page.goto(self.url("projects:versions", project.slug))
         self.assertIn("v2", self.page.content())
         self.assertNoBrowserErrors()
+
+
+class DeleteDraftJourneyTests(JourneyTestCase):
+    def test_owner_deletes_a_draft_from_the_edit_page(self):
+        owner = self.make_owner()
+        draft = Project.objects.create(
+            slug="journey-scrap",
+            title="Scrap Draft",
+            summary="Never going to be published.",
+            artifact_type="Hardware",
+            field="Oceanography",
+            visibility=Project.VISIBILITY_PRIVATE,
+            created_by=owner,
+        )
+        self.sign_in(owner)
+        self.page.goto(self.url("projects:edit", draft.slug))
+        with self.page.expect_navigation():
+            self.page.click("text=Delete draft")
+        self.assertIn("Delete this draft?", self.page.content())
+        with self.page.expect_navigation():
+            self.page.click("button:has-text('Delete draft')")
+        self.assertIn("Deleted the draft", self.page.content())
+        self.assertFalse(Project.objects.filter(pk=draft.pk).exists())
+        self.assertNoBrowserErrors()

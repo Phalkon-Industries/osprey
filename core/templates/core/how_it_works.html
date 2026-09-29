@@ -25,6 +25,35 @@
         back to a draft, and published files can't be swapped out. The
         metadata for the project can still be edited after publishing.
     </p>
+    <p>
+        The submission form has tabs for Basics, Description, Contributors,
+        Files, More details and Lineage. Save and continue saves the draft
+        and moves you to the next tab, and after the first save each tab
+        shows a check when its required fields are filled or an x when they
+        aren't. You can publish once every tab has a check; hit Publish
+        before that and what's still missing shows in red.
+    </p>
+    <p>
+        Every contributor needs an ORCID iD before you can publish, and you
+        need to have signed in with ORCID.
+    </p>
+
+    <h2>Other kinds of projects</h2>
+    <p>There are several ways to get a project onto OSPREY.</p>
+    <p>
+        A native OSPREY project is the standard kind. You upload the files,
+        and OSPREY publishes them to Zenodo, mints the DOI, and looks after
+        the Zenodo record.
+    </p>
+    <p>
+        A registered project is existing work that's already on Zenodo, but
+        you want a standard OSPREY page for it too. You can give OSPREY your
+        Zenodo DOI and the project gets an OSPREY page with most OSPREY
+        Features: lineage, wiki, discussion, use reports and citations. More
+        details are in
+        <a href="{% url 'registered_projects_guide' %}">Registered Zenodo Projects</a>.
+    </p>
+    {# TODO indexed entries, when built: a reference entry for existing work that isn't on Zenodo or whose authors aren't on OSPREY. Expand with what an indexed record is and why it exists. #}
 
     <h2>Versions</h2>
     <p>
@@ -41,23 +70,18 @@
 
     <h2>Contributor credit</h2>
     <p>
-        Every contributor on a published project needs an ORCID iD,
-        attached through the search on the project submission form.
-        Listed contributors can view the project in its draft form. Their
-        name links to their OSPREY profile only after they accept and
-        confirm the credit, which they do from Settings, under
-        Contributor Credits. Until then the row shows as unverified.
+        Every contributor on a published project needs an ORCID iD. Listed
+        contributors can see the draft. Their name links to their OSPREY
+        profile only after they accept the credit from Settings, under
+        Contributor Credits.
     </p>
     <p>
         The Project Owner controls the contributor list and is the only
-        person who can publish. Owners can also grant Project Editor
-        access to accepted contributors, who can then edit everything
-        except the contributor list. Project Owners can transfer
-        ownership entirely to another contributor.
-    </p>
-    <p>
-        If you're managing a project you didn't build yourself, list the
-        real authors and give yourself a role like "Uploaded project".
+        person who can publish. Owners can grant Project Editor access to
+        accepted contributors, who can then edit everything except the
+        contributor list. Project Owners can transfer ownership entirely to
+        another contributor. The rest is in the
+        <a href="{% url 'contributor_guidelines' %}">contributor guidelines</a>.
     </p>
 
     <h2>Lineage</h2>
@@ -98,15 +122,22 @@
 
     <h2>Staying informed</h2>
     <p>
+        Email is optional. Add an address in Settings and you get a daily
+        summary by default, with weekly and immediate options per
+        category. Daily and weekly summaries only go by email if email is
+        on. Disabling email removes your email address from the system
+        entirely.
+    </p>
+    <p>
         You can follow a person to hear when they publish, and follow a
         project to hear about new versions, wiki pages, and use reports.
         Everything lands in your inbox, the bell in the header.
     </p>
     <p>
-        Email is optional. Add an address in Settings and you get a daily
-        summary by default, with weekly and immediate options per
-        category. Disabling email removes your email address from the
-        system entirely.
+        To hear about every new project published on OSPREY, not just ones
+        from people you follow, set New projects in Settings, under
+        Notifications. It can be Off, Immediate, Daily or Weekly, and starts
+        on Weekly. Off also keeps them out of your inbox.
     </p>
 
     <h2>Getting help</h2>

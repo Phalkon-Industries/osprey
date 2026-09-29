@@ -1,6 +1,7 @@
 """Zenodo deposit integration for OSPREY projects."""
 from __future__ import annotations
 
+import logging
 import html
 import io
 import http.client
@@ -15,6 +16,9 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import ArtifactLink, Project, ProjectDeposit, ProjectDepositVersion
+
+
+logger = logging.getLogger(__name__)
 
 
 class ZenodoError(RuntimeError):
@@ -211,6 +215,14 @@ class ZenodoClient:
             expected=(204, 200),
         )
 
+    def delete_deposition(self, deposition_id: str) -> None:
+        """Delete an unpublished deposition. Zenodo refuses (403) once published."""
+        self._request(
+            "DELETE",
+            f"/api/deposit/depositions/{deposition_id}",
+            expected=(204, 200),
+        )
+
     def edit_published_deposition(self, deposition_id: str) -> dict[str, Any]:
         return self._request(
             "POST",
@@ -234,6 +246,37 @@ def zenodo_configured() -> bool:
 
 def zenodo_mode_label() -> str:
     return "Zenodo sandbox" if settings.ZENODO_USE_SANDBOX else "Zenodo"
+
+
+def discard_draft_depositions(project: Project) -> int:
+    """Best effort: delete the project's never-published Zenodo depositions.
+
+    A draft whose publish failed can leave an unsubmitted deposition on the
+    OSPREY Zenodo account. Called when the owner deletes the draft. Zenodo
+    being down or the deposition already gone must not stop the deletion,
+    so every ZenodoError is logged and swallowed. Returns how many were
+    removed.
+    """
+    if not zenodo_configured():
+        return 0
+    candidates = project.deposits.exclude(deposition_id="").exclude(
+        state=ProjectDeposit.STATE_PUBLISHED
+    ).filter(doi="")
+    if not candidates.exists():
+        return 0
+    client = ZenodoClient.from_settings()
+    removed = 0
+    for deposit in candidates:
+        try:
+            client.delete_deposition(deposit.deposition_id)
+        except ZenodoError as exc:
+            logger.warning(
+                "Could not delete draft deposition %s for project %s: %s",
+                deposit.deposition_id, project.slug, exc,
+            )
+            continue
+        removed += 1
+    return removed
 
 
 def _project_upload_type(project: Project) -> str:

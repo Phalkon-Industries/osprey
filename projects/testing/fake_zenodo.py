@@ -317,6 +317,7 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         ("POST", re.compile(r"^/api/deposit/depositions$"), "create"),
         ("GET", re.compile(r"^/api/deposit/depositions/(\d+)$"), "get"),
         ("PUT", re.compile(r"^/api/deposit/depositions/(\d+)$"), "update"),
+        ("DELETE", re.compile(r"^/api/deposit/depositions/(\d+)$"), "delete_deposition"),
         ("POST", re.compile(r"^/api/deposit/depositions/(\d+)/actions/(publish|newversion|edit|discard)$"), "action"),
         ("GET", re.compile(r"^/api/deposit/depositions/(\d+)/files$"), "list_files"),
         ("DELETE", re.compile(r"^/api/deposit/depositions/(\d+)/files/([^/]+)$"), "delete_file"),
@@ -533,6 +534,17 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         dep = self._dep_or_404(dep_id)
         if dep is not None:
             self._send(200, [dict(f) for f in dep.files])
+
+    def _route_delete_deposition(self, dep_id: str) -> None:
+        dep = self._dep_or_404(dep_id)
+        if dep is None:
+            return
+        if dep.state != STATE_UNSUBMITTED:
+            self._error(403, "Deleting a published deposition is forbidden.")
+            return
+        with self.server.lock:
+            del self.server.depositions[int(dep_id)]
+        self._send(204)
 
     def _route_delete_file(self, dep_id: str, file_id: str) -> None:
         dep = self._dep_or_404(dep_id)

@@ -110,6 +110,7 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-edit-contributors", self.url("projects:edit", draft.slug) + "?tab=contributors"),
             ("project-edit-lineage", self.url("projects:edit", draft.slug) + "?tab=related"),
             ("new-version", self.url("projects:zenodo_new_version", published.slug)),
+            ("project-delete", self.url("projects:delete", draft.slug)),
             ("register-page", self.url("projects:register")),
             ("project-edit-registered", self.url("projects:edit", self.registered.slug)),
             ("contributor-credits", self.url("contributor_claims")),

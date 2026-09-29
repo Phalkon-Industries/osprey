@@ -37,6 +37,7 @@ from .models import (
     TagAssignment,
 )
 from .templatetags.osprey_md import render_markdown
+from .testing.fake_zenodo import FakeZenodoMixin
 from .zenodo import (
     ProjectArchive,
     ZenodoClient,
@@ -2684,3 +2685,152 @@ class ContributorClaimingTests(ProjectTestCase):
         victim.refresh_from_db()  # not deleted, not granted
         self.assertFalse(victim.editor)
         self.assertIsNone(self.public_project.pending_owner)
+
+
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
+class DraftDeleteTests(ProjectTestCase):
+    """Owner deletes a draft; published projects have a DOI and stay."""
+
+    def _attach(self, project):
+        return ProjectAttachment.objects.create(
+            project=project,
+            file=SimpleUploadedFile("draft.zip", b"PK\x03\x04zipbytes"),
+        )
+
+    def test_owner_sees_confirmation_page(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(
+            reverse("projects:delete", args=[self.private_project.slug])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Delete this draft?")
+        self.assertContains(response, "Private Pump")
+        self.assertTrue(Project.objects.filter(pk=self.private_project.pk).exists())
+
+    def test_owner_post_removes_rows_and_files(self):
+        attachment = self._attach(self.private_project)
+        path = attachment.file.path
+        self.assertTrue(os.path.exists(path))
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("projects:delete", args=[self.private_project.slug]),
+            follow=True,
+        )
+
+        self.assertEqual(response.redirect_chain[0], (reverse("people:me"), 302))
+        self.assertFalse(Project.objects.filter(pk=self.private_project.pk).exists())
+        self.assertFalse(ProjectAttachment.objects.filter(pk=attachment.pk).exists())
+        self.assertFalse(os.path.exists(path))
+        self.assertContains(response, "Deleted the draft")
+
+    def test_editors_contributors_and_strangers_get_404(self):
+        Contribution.objects.filter(project=self.private_project).update(
+            claim_status="verified", editor=True
+        )
+        url = reverse("projects:delete", args=[self.private_project.slug])
+        for user in (self.contributor, self.unrelated):
+            self.client.force_login(user)
+            self.assertEqual(self.client.get(url).status_code, 404)
+            self.assertEqual(self.client.post(url).status_code, 404)
+        self.assertTrue(Project.objects.filter(pk=self.private_project.pk).exists())
+
+    def test_anonymous_is_sent_to_sign_in(self):
+        response = self.client.post(
+            reverse("projects:delete", args=[self.private_project.slug])
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])
+
+    def test_published_project_is_refused(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("projects:delete", args=[self.public_project.slug]),
+            follow=True,
+        )
+        self.assertTrue(Project.objects.filter(pk=self.public_project.pk).exists())
+        self.assertEqual(
+            response.redirect_chain[0], (self.public_project.get_absolute_url(), 302)
+        )
+        self.assertContains(response, "Published projects can&#x27;t be deleted.")
+
+    def test_draft_mid_publish_is_refused(self):
+        from .models import ZenodoJob
+
+        ZenodoJob.objects.create(
+            project=self.private_project,
+            kind=ZenodoJob.KIND_PUBLISH,
+            status=ZenodoJob.STATUS_QUEUED,
+            requested_by=self.owner,
+        )
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("projects:delete", args=[self.private_project.slug]),
+            follow=True,
+        )
+        self.assertTrue(Project.objects.filter(pk=self.private_project.pk).exists())
+        self.assertContains(response, "being published")
+
+    def test_edit_form_offers_delete_only_to_the_owner_of_a_draft(self):
+        delete_url = reverse("projects:delete", args=[self.private_project.slug])
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("projects:edit", args=[self.private_project.slug]))
+        self.assertContains(response, delete_url)
+        response = self.client.get(reverse("projects:edit", args=[self.public_project.slug]))
+        self.assertNotContains(response, "Delete draft")
+
+        Contribution.objects.filter(project=self.private_project).update(
+            claim_status="verified", editor=True
+        )
+        self.client.force_login(self.contributor)
+        response = self.client.get(reverse("projects:edit", args=[self.private_project.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, delete_url)
+
+
+@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
+class DraftDeleteZenodoTests(FakeZenodoMixin, ProjectTestCase):
+    """Deleting a draft also removes its never-published Zenodo deposition."""
+
+    def _orphan_deposition(self):
+        created = ZenodoClient.from_settings().create_deposition()
+        ProjectDeposit.objects.create(
+            project=self.private_project,
+            deposition_id=str(created["id"]),
+            state=ProjectDeposit.STATE_ERROR,
+            last_error="Injected failure",
+            created_by=self.owner,
+        )
+        return int(created["id"])
+
+    def test_orphan_deposition_is_deleted_on_zenodo(self):
+        dep_id = self._orphan_deposition()
+        self.assertIn(dep_id, self.fz.depositions)
+        self.client.force_login(self.owner)
+
+        self.client.post(reverse("projects:delete", args=[self.private_project.slug]))
+
+        self.assertNotIn(dep_id, self.fz.depositions)
+        self.assertFalse(Project.objects.filter(pk=self.private_project.pk).exists())
+
+    def test_zenodo_outage_does_not_block_the_deletion(self):
+        dep_id = self._orphan_deposition()
+        self.fz.add_rule(match=f"/api/deposit/depositions/{dep_id}", mode="status", status=500)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("projects:delete", args=[self.private_project.slug]), follow=True
+        )
+
+        self.assertFalse(Project.objects.filter(pk=self.private_project.pk).exists())
+        self.assertIn(dep_id, self.fz.depositions)
+        self.assertContains(response, "Deleted the draft")
+
+    def test_published_deposition_is_never_deleted(self):
+        client = ZenodoClient.from_settings()
+        created = client.create_deposition()
+        dep_id = int(created["id"])
+        self.fz.depositions[dep_id].state = "done"
+        with self.assertRaises(ZenodoError):
+            client.delete_deposition(str(dep_id))
+        self.assertIn(dep_id, self.fz.depositions)

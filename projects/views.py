@@ -43,6 +43,7 @@ from .zenodo import (
     publish_project_now,
     start_new_version_for_deposit,
     update_published_metadata,
+    discard_draft_depositions,
     zenodo_configured,
     zenodo_mode_label,
 )
@@ -1729,6 +1730,37 @@ def project_register(request):
         "projects/register.html",
         {"error": error, "doi": doi, "verified_orcid": verified_orcid},
     )
+
+
+@login_required
+def project_delete(request, slug: str):
+    """Owner deletes a draft. Published projects have a DOI and stay."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.publishable_by(request.user):
+        raise Http404
+    if project.is_public:
+        messages.error(request, "Published projects can't be deleted.")
+        return redirect(project.get_absolute_url())
+    if ZenodoJob.objects.filter(
+        project=project, status__in=ZenodoJob.PENDING_STATUSES
+    ).exists():
+        messages.error(request, "This draft is being published and can't be deleted right now.")
+        return redirect(reverse("projects:edit", args=[project.slug]))
+    if request.method == "POST":
+        title = project.title
+        # CASCADE removes the rows; the files on the media volume need
+        # deleting by hand.
+        discard_draft_depositions(project)
+        for attachment in project.attachments.exclude(file=""):
+            attachment.file.delete(save=False)
+        for image in project.images.all():
+            image.image.delete(save=False)
+        if project.cover_image:
+            project.cover_image.delete(save=False)
+        project.delete()
+        messages.success(request, f"Deleted the draft \u201c{title}\u201d.")
+        return redirect(reverse("people:me"))
+    return render(request, "projects/delete.html", {"project": project})
 
 
 @login_required
