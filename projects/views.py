@@ -250,6 +250,12 @@ def project_list(request):
     project_type = request.GET.get("project_type", "").strip()
     institution = request.GET.get("institution", "").strip()
     tag = request.GET.get("tag", "").strip()
+    kind = request.GET.get("kind", "").strip()
+
+    if kind == "projects":
+        qs = qs.exclude(origin=Project.ORIGIN_INDEXED)
+    elif kind == "indexed":
+        qs = qs.filter(origin=Project.ORIGIN_INDEXED)
 
     if q:
         qs = qs.filter(
@@ -282,6 +288,7 @@ def project_list(request):
         {
             "projects": qs.distinct(),
             "q": q,
+            "active_kind": kind,
             "active_field": field,
             "active_project_type": project_type,
             "field_options": _filter_options(field_values, FIELD_SUGGESTIONS),
@@ -332,6 +339,9 @@ def project_detail(request, slug: str):
             "zenodo_deposit": deposit,
             "citation_text": _build_citation_text(project, deposit),
             "citation_bibtex": _build_bibtex(project, deposit),
+            "source_citation": (
+                _build_source_citation_text(project) if project.is_indexed else ""
+            ),
             "osprey_permalink": _osprey_permalink_for(project),
             "registered_deposit": deposit if project.is_registered else None,
             "recent_citations": recent_citations,
@@ -347,6 +357,43 @@ def project_detail(request, slug: str):
             ),
         },
     )
+
+
+def _build_source_citation_text(project: Project) -> str:
+    """'Cite the original' for an indexed entry, built from source metadata.
+
+    Authors (Year). Title. Venue. https://doi.org/<doi>  (or the source URL)
+    """
+    names = [
+        (c.display_name or "").strip()
+        for c in project.credited_contributions.all()[:6]
+    ]
+    names = [n for n in names if n]
+    if not names:
+        authors = ""
+    elif len(names) > 5:
+        authors = ", ".join(names[:5]) + ", et al."
+    elif len(names) == 1:
+        authors = names[0]
+    else:
+        authors = ", ".join(names[:-1]) + f", & {names[-1]}"
+    year = project.published_on.year if project.published_on else (
+        project.indexed_at.year if project.indexed_at else ""
+    )
+    title = (project.title or "").strip().rstrip(".")
+    venue = project.source_venue
+    ident = project.doi_url or project.canonical_url
+    parts = []
+    if authors:
+        parts.append(f"{authors} ({year})." if year else f"{authors}.")
+    elif year:
+        parts.append(f"({year}).")
+    parts.append(f"{title}.")
+    if venue:
+        parts.append(f"{venue}.")
+    if ident:
+        parts.append(ident)
+    return " ".join(parts)
 
 
 def _build_citation_text(project: Project, deposit) -> str:
@@ -871,7 +918,7 @@ def project_new(request):
 @login_required
 def project_edit(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
-    if not project.editable_by(request.user):
+    if not project.editable_by(request.user) or project.is_indexed:
         raise Http404
     # The contributor list (and everything riding on it: credit, invites,
     # editor grants, transfer) is owner-only. Editors edit content; the
@@ -1138,7 +1185,7 @@ def project_zenodo_new_version(request, slug: str):
 def project_versions(request, slug: str):
     """Public list of every published version of a project."""
     project = get_object_or_404(Project, slug=slug)
-    if not project.viewable_by(request.user):
+    if not project.viewable_by(request.user) or project.is_indexed:
         raise Http404
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
     versions = []
@@ -1389,7 +1436,7 @@ def project_lineage(request, slug: str):
             "children": children,
             "diagram": _lineage_diagram(project),
             "can_edit": can_edit,
-            "manage": can_edit and request.GET.get("manage") == "1",
+            "manage": can_edit and not project.is_indexed and request.GET.get("manage") == "1",
             "show_withdrawn": show_withdrawn,
             "has_withdrawn": has_withdrawn,
         },

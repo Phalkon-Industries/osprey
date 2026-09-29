@@ -744,6 +744,13 @@ button.ghost:hover {
     border-color: var(--badge-private-border);
 }
 
+.badge.indexed {
+    background: var(--badge-license-bg);
+    color: var(--fg-muted);
+    border-color: var(--badge-license-border);
+    border-style: dashed;
+}
+
 .badge.license {
     background: var(--badge-license-bg);
     color: var(--badge-license-fg);
@@ -760,6 +767,13 @@ button.ghost:hover {
     overflow: hidden;
     background: var(--bg-soft);
     border-bottom: 1px solid var(--border);
+}
+
+.card-badges {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin-top: .5rem;
 }
 
 .hero-image-frame {

@@ -14,7 +14,7 @@
         {% endif %}
     </header>
     <p class="muted">
-        Questions about this project.
+        {% if project.is_indexed %}This is an indexed entry. Its authors likely aren't on OSPREY, but you can still ask the OSPREY community.{% else %}Questions about this project.{% endif %}
     </p>
     {% for t in threads %}
     <article class="thread-row">

@@ -7,7 +7,7 @@
 <section>
     <h1 style="margin-top:1rem">Use reports</h1>
     <p class="muted">
-        First-hand accounts from people who used this project.
+        {% if project.is_indexed %}This is an indexed entry. Its authors likely aren't on OSPREY, but your report still helps others on OSPREY.{% else %}First-hand accounts from people who used this project.{% endif %}
     </p>
     {% if can_post %}
     <p><a class="primary button" href="{% url 'use_reports:new' project.slug %}">Add a use report</a></p>

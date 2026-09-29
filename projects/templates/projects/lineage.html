@@ -82,7 +82,8 @@
     {% endif %}
 
     {% if children %}
-    <h2>Based on this project</h2>
+    <h2>Based on this {% if project.is_indexed %}entry{% else %}project{% endif %}</h2>
+    {% if project.is_indexed %}<p class="muted small">Indexed entries have no team on OSPREY, so links to them can't be disputed here.</p>{% endif %}
     <ul>
         {% for edge in children %}
         <li style="margin-bottom:.5rem">

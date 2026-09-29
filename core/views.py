@@ -15,7 +15,7 @@ def home(request):
     # Drafts stay findable on the projects list and the owner's profile.
     qs = _visible_projects_for(request.user).filter(
         visibility=Project.VISIBILITY_PUBLIC, is_staff_hidden=False
-    )
+    ).exclude(origin=Project.ORIGIN_INDEXED)
     featured = qs.order_by("-updated_at")[:6]
     recent = qs.order_by("-created_at")[:8]
     return render(request, "core/home.html", {"featured": featured, "recent": recent})

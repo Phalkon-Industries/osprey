@@ -17,6 +17,14 @@
     </div>
     <div class="search-row narrow">
         <div class="search-field">
+            <label for="kind-filter">Kind</label>
+            <select name="kind" id="kind-filter">
+                <option value="">Everything</option>
+                <option value="projects">OSPREY projects</option>
+                <option value="indexed">Indexed entries</option>
+            </select>
+        </div>
+        <div class="search-field">
             <label for="field-filter">Field</label>
             <select name="field" id="field-filter">
                 <option value="">Any field</option>
@@ -50,6 +58,7 @@
                 }
             }
         }
+        setSel('kind-filter', params.get('kind'));
         setSel('field-filter', params.get('field'));
         setSel('type-filter', params.get('project_type'));
     })();
@@ -57,50 +66,7 @@
 
 <div class="grid">
     {% for project in projects %}
-    <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-        {% if project.cover_image_display_url %}
-        <span class="thumb-frame"
-            style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
-                loading="lazy"></span>
-        {% else %}
-        {% with first_image=project.images.first %}
-        {% if first_image %}
-        <span class="thumb-frame"
-            style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                class="thumb" src="{{ first_image.image.url }}"
-                alt="{{ first_image.caption|default:project.title }}"></span>
-        {% else %}
-        {% include "projects/_cover_placeholder.html" with frame_class="thumb-frame" %}
-        {% endif %}
-        {% endwith %}
-        {% endif %}
-        <h3>
-            <span>{{ project.title }}</span>
-            {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
-        </h3>
-        <p class="summary">{{ project.summary|truncatewords:22 }}</p>
-        {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
-        {% if authors %}
-        <p class="byline">
-            by
-            {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor %}
-            {% if total > 3 %}<span class="muted"> +{{ total|add:"-3" }}</span>{% endif %}
-        </p>
-        {% endif %}
-        {% endwith %}
-        <div class="meta">
-            {% if project.field %}<span>{{ project.field }}</span>{% endif %}
-            {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
-            {% for inst in project.institutions %}<span>· {{ inst }}</span>{% endfor %}
-            {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{% endif %}
-        </div>
-        {% if project.tags.all %}
-        <div style="margin-top:.5rem">
-            {% for tag in project.tags.all %}<span class="pill">{{ tag.name }}</span>{% endfor %}
-        </div>
-        {% endif %}
-    </a>
+    {% include "projects/_project_card.html" with words=22 %}
     {% empty %}
     <p class="muted">No projects match those filters.</p>
     {% endfor %}

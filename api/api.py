@@ -64,6 +64,9 @@ class ProjectSummary(Schema):
     institution: Optional[str] = None
     institutions: list[str] = []
     visibility: str
+    origin: str = "native"
+    source: str = ""
+    files_url: str = ""
     updated_at: datetime
 
 
@@ -106,6 +109,9 @@ def _project_summary(p: Project) -> dict:
         "institution": p.institution or None,
         "institutions": p.institutions,
         "visibility": p.visibility,
+        "origin": p.origin,
+        "source": p.source,
+        "files_url": p.files_url,
         "updated_at": p.updated_at,
     }
 
@@ -162,10 +168,13 @@ def list_projects(
     artifact_type: str = "",
     institution: str = "",
     tag: str = "",
+    origin: str = "",
 ):
-    qs = Project.objects.filter(visibility=Project.VISIBILITY_PUBLIC).prefetch_related(
-        "tags"
-    )
+    qs = Project.objects.filter(
+        visibility=Project.VISIBILITY_PUBLIC, is_staff_hidden=False
+    ).prefetch_related("tags")
+    if origin:
+        qs = qs.filter(origin=origin)
     if q:
         qs = qs.filter(
             Q(title__icontains=q)

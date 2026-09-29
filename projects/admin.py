@@ -99,6 +99,9 @@ class ProjectAdmin(admin.ModelAdmin):
     list_filter = (
         "visibility",
         "is_staff_hidden",
+        "origin",
+        "source",
+        "index_state",
         "field",
         "artifact_type",
         "institution",

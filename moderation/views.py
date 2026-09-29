@@ -255,9 +255,12 @@ def _purge_user_content(target_user) -> dict[str, int]:
 
     counts: dict[str, int] = {}
 
-    contributed_projects = Project.objects.filter(
-        contributions__user=target_user
-    ).distinct()
+    # Indexed entries have no owner and outlive any one credited author.
+    contributed_projects = (
+        Project.objects.filter(contributions__user=target_user)
+        .exclude(origin=Project.ORIGIN_INDEXED)
+        .distinct()
+    )
     solo_to_delete: set[int] = set()
     for project in contributed_projects:
         other_user_contrib = (

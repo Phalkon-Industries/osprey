@@ -1,0 +1,49 @@
+{% comment %}
+One project card for every grid: projects list, home, institution page.
+Pass `project`. Optional `words` (summary truncation, default 22).
+Tags stay off cards; they live on the project page.
+{% endcomment %}
+<a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
+    {% if project.cover_image_display_url %}
+    <span class="thumb-frame"
+        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
+            class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
+            loading="lazy"></span>
+    {% else %}
+    {% with first_image=project.images.first %}
+    {% if first_image %}
+    <span class="thumb-frame"
+        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
+            class="thumb" src="{{ first_image.image.url }}"
+            alt="{{ first_image.caption|default:project.title }}"></span>
+    {% else %}
+    {% include "projects/_cover_placeholder.html" with frame_class="thumb-frame" %}
+    {% endif %}
+    {% endwith %}
+    {% endif %}
+    <h3>
+        <span>{{ project.title }}</span>
+        {% if project.is_held %}<span class="badge private" style="font-weight:500">held</span>{% elif not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
+    </h3>
+    <p class="summary">{{ project.summary|truncatewords:words|default_if_none:"" }}</p>
+    {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
+    {% if authors %}
+    <p class="byline">
+        by
+        {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor %}
+        {% if total > 3 %}<span class="muted"> +{{ total|add:"-3" }}</span>{% endif %}
+    </p>
+    {% endif %}
+    {% endwith %}
+    <div class="meta">
+        {% if project.field %}<span>{{ project.field }}</span>{% endif %}
+        {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
+        {% for inst in project.institutions %}<span>· {{ inst }}</span>{% endfor %}
+    </div>
+    {% if project.is_indexed or project.license %}
+    <div class="card-badges">
+        {% if project.is_indexed %}<span class="badge indexed">Indexed &middot; {{ project.source_label }}</span>{% endif %}
+        {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{% endif %}
+    </div>
+    {% endif %}
+</a>

@@ -22,41 +22,7 @@
     {% if recent %}
     <div class="grid">
         {% for project in recent %}
-        <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-            {% if project.cover_image_display_url %}
-            <span class="thumb-frame"
-                style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                    class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
-                    loading="lazy"></span>
-            {% else %}
-            {% with first_image=project.images.first %}
-            {% if first_image %}
-            <span class="thumb-frame"
-                style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-                    class="thumb" src="{{ first_image.image.url }}"
-                    alt="{{ first_image.caption|default:project.title }}"></span>
-            {% else %}
-            {% include "projects/_cover_placeholder.html" with frame_class="thumb-frame" %}
-            {% endif %}
-            {% endwith %}
-            {% endif %}
-            <h3>{{ project.title }}</h3>
-            <p class="summary">{{ project.summary|truncatewords:18 }}</p>
-            {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
-            {% if authors %}
-            <p class="byline">
-                by
-                {% for c in authors %}{% if not forloop.first %}, {% endif %}<span>{{ c.display_name }}</span>{% endfor %}
-                {% if total > 3 %}<span class="muted"> +{{ total|add:"-3" }}</span>{% endif %}
-            </p>
-            {% endif %}
-            {% endwith %}
-            <div class="meta">
-                {% if project.field %}<span>{{ project.field }}</span>{% endif %}
-                {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
-                {% if project.institution %}<span>· {{ project.institution }}</span>{% endif %}
-            </div>
-        </a>
+        {% include "projects/_project_card.html" with words=18 %}
         {% endfor %}
     </div>
     {% else %}

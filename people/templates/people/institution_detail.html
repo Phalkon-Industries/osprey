@@ -10,17 +10,7 @@
 {% if projects %}
 <div class="grid">
     {% for project in projects %}
-    <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-        <h3>
-            <span>{{ project.title }}</span>
-            {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
-        </h3>
-        {% if project.summary %}<p class="summary">{{ project.summary|truncatewords:22 }}</p>{% endif %}
-        <div class="meta">
-            {% if project.field %}<span>{{ project.field }}</span>{% endif %}
-            {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
-        </div>
-    </a>
+    {% include "projects/_project_card.html" with words=22 %}
     {% endfor %}
 </div>
 {% else %}
