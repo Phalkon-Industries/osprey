@@ -520,3 +520,9 @@ the database schema matches what `pg_dump` actually produced.
 ## Indexed entries
 
 `GITHUB_API_TOKEN` is optional. Without it, GitHub allows 60 unauthenticated API calls an hour, enough for pasting a few repositories on the staff Index page; set a fine-grained token with no scopes to raise that when importing in bulk.
+
+`EXTERNAL_API_MAILTO` should be a real contact address; Crossref uses it to place OSPREY in its polite pool, which matters for the HardwareX listing. Before a release, run the read-only journal contract suite in dev:
+
+```
+RUN_LIVE_INDEXING=1 python manage.py test --tag=live-indexing
+```

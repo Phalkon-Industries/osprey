@@ -38,6 +38,13 @@ def normalize_license(text: str) -> str:
     if raw in ACCEPTED_LICENSES:
         return raw
     low = raw.lower()
+    # Creative Commons URLs: creativecommons.org/licenses/by-sa/4.0, /by/4.0, /publicdomain/zero/1.0
+    m = re.search(r"creativecommons\.org/(?:licenses/([a-z-]+)|publicdomain/(zero))", low)
+    if m:
+        code = m.group(1) or m.group(2)
+        if "nc" in code.split("-") or "nd" in code.split("-"):
+            return ""
+        return {"by": "CC-BY-4.0", "by-sa": "CC-BY-SA-4.0", "zero": "CC0-1.0"}.get(code, "")
     # Non-commercial and no-derivatives clauses are not open licenses.
     if re.search(r"\b(nc|nd)\b|non[\s-]*commercial|no[\s-]*deriv", low):
         return ""
@@ -52,9 +59,12 @@ class Gate:
     ok: bool = False
     found: str = ""
     where: str = ""
+    # True when the value was found but a person must confirm it, e.g. a
+    # repository link scanned out of an article body.
+    confirm: bool = False
 
     def as_dict(self) -> dict:
-        return {"ok": self.ok, "found": self.found, "where": self.where}
+        return {"ok": self.ok, "found": self.found, "where": self.where, "confirm": self.confirm}
 
 
 @dataclass
@@ -93,7 +103,11 @@ class SourceRecord:
 
     @property
     def passes(self) -> bool:
-        return self.gate_license.ok and self.gate_files.ok
+        """Both gates pass and neither still needs a person to confirm."""
+        return (
+            self.gate_license.ok and self.gate_files.ok
+            and not self.gate_license.confirm and not self.gate_files.confirm
+        )
 
 
 class SourceError(Exception):
@@ -103,7 +117,9 @@ class SourceError(Exception):
 DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.I)
 GITHUB_RE = re.compile(r"(?:https?://)?(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)", re.I)
 ZENODO_RECORD_RE = re.compile(r"(?:https?://)?(?:sandbox\.)?zenodo\.org/(?:records?/|doi/10\.\d+/zenodo\.)(\d+)", re.I)
-HARDWAREX_PREFIX = "10.1016/j.ohx."
+# HardwareX DOIs: 10.1016/j.ohx.YYYY.eNNNNN since 2018; the 2016-2017
+# volumes used Elsevier's PII form, 10.1016/S2468-0672(17)30019-6.
+HARDWAREX_PREFIXES = ("10.1016/j.ohx.", "10.1016/s2468-0672(")
 JOH_PREFIXES = ("10.5206/joh.", "10.5334/joh.")
 
 
@@ -129,7 +145,7 @@ def detect(line: str) -> tuple[str, str]:
         low = doi.lower()
         if "zenodo." in low:
             return "zenodo", doi
-        if low.startswith(HARDWAREX_PREFIX):
+        if low.startswith(HARDWAREX_PREFIXES):
             return "hardwarex", doi
         if low.startswith(JOH_PREFIXES):
             return "joh", doi

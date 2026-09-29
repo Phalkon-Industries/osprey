@@ -19,6 +19,9 @@ def _get(path: str, accept: str = "application/vnd.github+json") -> bytes:
     token = getattr(settings, "GITHUB_API_TOKEN", "")
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    from .http import _guard_test_run
+
+    _guard_test_run(f"{_base()}{path}")
     req = Request(f"{_base()}{path}", headers=headers)
     try:
         with urlopen(req, timeout=10) as resp:

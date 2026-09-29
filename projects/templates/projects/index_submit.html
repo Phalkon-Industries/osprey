@@ -39,6 +39,7 @@
             <label class="small">Summary
                 <textarea name="summary_{{ i }}" rows="2" style="width:100%">{{ g.summary }}</textarea>
             </label>
+            <label class="small">Image URL <span class="muted">(optional)</span> <input type="url" name="image_url_{{ i }}" value="{{ g.image_url }}" placeholder="https://…/photo.jpg"></label>
             {% elif row.needs_fields %}
             <p class="muted small" style="margin:.25rem 0">OSPREY can't read this source yet. Fill in the details and staff will review.</p>
             {% for e in row.errors %}<p class="field-error small" style="margin:.15rem 0">{{ e }}</p>{% endfor %}
@@ -52,6 +53,7 @@
             <label class="small">Design files link <input type="url" name="files_url_{{ i }}" value="{{ g.files_url }}" style="width:100%" required></label>
             <label class="small">Authors <input type="text" name="authors_{{ i }}" value="{{ g.authors }}" placeholder="Names, comma separated"></label>
             <label class="small">Summary <textarea name="summary_{{ i }}" rows="2" style="width:100%">{{ g.summary }}</textarea></label>
+            <label class="small">Image URL <span class="muted">(optional)</span> <input type="url" name="image_url_{{ i }}" value="{{ g.image_url }}" placeholder="https://…/photo.jpg"></label>
             {% elif p.outcome == "exists" %}
             <p class="muted small" style="margin:.25rem 0">Already on OSPREY: <a href="{{ p.existing.get_absolute_url }}">{{ p.existing.title }}</a>.</p>
             {% elif p.outcome == "yours" %}

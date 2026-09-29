@@ -11,6 +11,7 @@ from projects.indexing import service
 from projects.indexing.records import detect, normalize_license
 from projects.models import LineageEdge, Project
 from projects.testing.fake_github import FakeGitHubMixin
+from projects.testing.fake_journals import HARDWAREX_DOI, JOH_DOI, FakeJournalsMixin
 from projects.testing.fake_zenodo import FakeZenodoMixin
 from projects.tests import add_orcid_account
 from projects.tests_registered import COAUTHOR_ORCID, OWNER_ORCID, RECORD
@@ -24,6 +25,7 @@ class DetectTests(TestCase):
         self.assertEqual(detect("https://zenodo.org/records/19398871"), ("zenodo", "10.5281/zenodo.19398871"))
         self.assertEqual(detect("doi:10.1016/j.ohx.2026.e00839"), ("hardwarex", "10.1016/j.ohx.2026.e00839"))
         self.assertEqual(detect("10.5206/joh.v10i1.24875"), ("joh", "10.5206/joh.v10i1.24875"))
+        self.assertEqual(detect("https://doi.org/10.1016/S2468-0672(17)30019-6"), ("hardwarex", "10.1016/S2468-0672(17)30019-6"))
         self.assertEqual(detect("10.1000/xyz123")[0], "doi")
         self.assertEqual(detect("https://example.org/pump")[0], "url")
         self.assertEqual(detect("   "), ("", ""))
@@ -58,7 +60,7 @@ class DetectTests(TestCase):
 
 
 @override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
-class ResolveTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
+class ResolveTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.user = get_user_model().objects.create_user(username="submitter")
@@ -159,12 +161,12 @@ class ResolveTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         self.assertEqual(service.resolve("github.com/other/pump").outcome, service.LIVE)
 
     def test_unsupported_sources_say_so(self):
-        for line in ("10.1016/j.ohx.2026.e00839", "10.5206/joh.v10i1.1", "10.1000/other", "https://example.org/x"):
+        for line in ("10.1000/other", "https://example.org/x"):
             self.assertEqual(service.resolve(line).outcome, service.UNSUPPORTED, line)
 
 
 @override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
-class IndexRecordTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
+class IndexRecordTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
     def test_index_creates_live_or_held_entries_without_notifying_anyone(self):
         staff = get_user_model().objects.create_user(username="staff", is_staff=True)
         self.gh.seed_repo("acme/pump", description="A pump.", license="MIT", topics=["pump"])
@@ -203,7 +205,7 @@ class IndexRecordTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
 
 
 @override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
-class StaffPageTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
+class StaffPageTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.staff = get_user_model().objects.create_user(username="staff", is_staff=True)
@@ -295,7 +297,7 @@ class ConversionTests(FakeZenodoMixin, TestCase):
 
 
 @override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
-class PublicSubmitTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
+class PublicSubmitTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.staff = get_user_model().objects.create_user(username="staff", is_staff=True)
@@ -314,7 +316,7 @@ class PublicSubmitTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         self.gh.seed_repo("acme/pump", description="A pump.", license="MIT")
         self.gh.seed_repo("acme/bare", license="")
         self.client.force_login(self.user)
-        lines = "https://github.com/acme/pump\nhttps://github.com/acme/bare\n10.1016/j.ohx.2026.e00839\nhttps://example.org/somewhere\n"
+        lines = "https://github.com/acme/pump\nhttps://github.com/acme/bare\n10.1000/other.2026.1\nhttps://example.org/somewhere\n"
         response = self.client.post(self.url, {"action": "preview", "lines": lines})
         # Rows carry no verdicts; submitters never learn which would pass the gates.
         self.assertNotContains(response, "Goes to staff for review.")
@@ -347,9 +349,9 @@ class PublicSubmitTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         self.assertEqual(self.client.get(live.get_absolute_url()).status_code, 404)
         held = Project.objects.filter(origin=Project.ORIGIN_INDEXED, index_state=Project.INDEX_HELD)
         self.assertEqual(held.count(), 4)
-        self.assertEqual(set(held.values_list("source", flat=True)), {"github", "hardwarex", "other"})
-        request_row = held.get(source="hardwarex")
-        self.assertEqual(request_row.canonical_url, "https://doi.org/10.1016/j.ohx.2026.e00839")
+        self.assertEqual(set(held.values_list("source", flat=True)), {"github", "other"})
+        request_row = held.get(external_id="10.1000/other.2026.1")
+        self.assertEqual(request_row.canonical_url, "https://doi.org/10.1000/other.2026.1")
         self.assertEqual(request_row.listed_by, self.user)
         self.assertEqual(request_row.title, "Resistance welding rig")
         self.assertEqual(request_row.license, "CERN-OHL-S-2.0")
@@ -402,6 +404,32 @@ class PublicSubmitTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         self.assertContains(response, "github.com/acme/pump\nhttps://example.org/x")
         self.assertNotContains(response, 'name="action" value="submit"')
 
+    def test_suggested_image_is_fetched_and_stored_or_dropped(self):
+        import tempfile
+        from django.test import override_settings as _os
+
+        self.gh.seed_repo("acme/pump", license="MIT")
+        self.client.force_login(self.user)
+        with _os(MEDIA_ROOT=tempfile.mkdtemp(prefix="osprey-index-img-")):
+            self.client.post(self.url, {
+                "action": "submit",
+                "lines": "github.com/acme/pump\nhttps://example.org/rig",
+                "image_url_0": f"{self.gh.url}/image.png",
+                "title_1": "Rig", "license_1": "MIT", "files_url_1": "https://example.org/rig/files",
+                "image_url_1": f"{self.gh.url}/not-an-image",
+            })
+            pump = Project.objects.get(external_id="acme/pump")
+            self.assertTrue(pump.cover_image.name.endswith(".webp"))
+            self.assertEqual(pump.cover_image_url, "")
+            self.assertEqual(pump.source_metadata["submitted"]["image_url"], f"{self.gh.url}/image.png")
+            rig = Project.objects.get(title="Rig")
+            self.assertFalse(rig.cover_image)
+            self.assertEqual(rig.cover_image_url, "")
+            self.client.force_login(self.staff)
+            queue = self.client.get(reverse("index_staff"))
+            self.assertContains(queue, "Suggested cover")
+            self.assertContains(queue, pump.cover_image.url)
+
     def test_submitter_hears_the_decision(self):
         self.gh.seed_repo("acme/bare", license="")
         self.gh.seed_repo("acme/other", license="")
@@ -439,3 +467,257 @@ class PublicSubmitTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         response = self.client.post(self.url, {"action": "submit", "lines": "github.com/acme/pump"}, follow=True)
         self.assertContains(response, "Nothing new to add.")
         self.assertEqual(Project.objects.filter(origin=Project.ORIGIN_INDEXED).count(), 1)
+
+
+class JournalAdapterTests(FakeJournalsMixin, FakeGitHubMixin, TestCase):
+    def test_hardwarex_reads_spec_table_abstract_and_authors(self):
+        from projects.indexing import hardwarex_source
+
+        self.fj.seed_hardwarex_fixture()
+        rec = hardwarex_source.fetch(HARDWAREX_DOI)
+        self.assertEqual(rec.title, "Open-source modular resistance welding equipment for thermoplastic composites")
+        self.assertEqual(rec.license, "CERN-OHL-S-2.0")
+        self.assertTrue(rec.gate_license.ok)
+        self.assertEqual(rec.files_url, "http://doi.org/10.17632/8tb37yjp9m.3")
+        self.assertEqual(rec.files_url_source, "spec_table")
+        self.assertTrue(rec.gate_files.ok)
+        self.assertEqual(rec.oshwa_uid, "BR000022")
+        self.assertTrue(rec.readme.startswith("This paper presents"))
+        self.assertEqual(rec.authors[0].name, "Jonas Frank Reis")
+        self.assertEqual(rec.authors[0].orcid, "0000-0002-4540-4098")
+        self.assertEqual(len(rec.authors), 6)
+        self.assertEqual(rec.published_on.year, 2026)
+        self.assertEqual(rec.raw["pmcid"], "PMC13594966")
+        self.assertIn("Resistance welding", rec.keywords)
+        p = service.resolve(f"https://doi.org/{HARDWAREX_DOI}")
+        self.assertEqual(p.outcome, service.LIVE, p.message)
+
+    def test_declared_license_is_checked_against_a_linked_github_repo(self):
+        fulltext = (
+            '<article><front><article-meta><abstract><p>A rig.</p></abstract></article-meta></front>'
+            '<body><table-wrap><table><tbody>'
+            '<tr><td>Open source license</td><td>MIT</td></tr>'
+            '<tr><td>Source file repository</td><td>https://github.com/acme/rig</td></tr>'
+            '</tbody></table></table-wrap></body></article>'
+        )
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00002", title="Rig", authors=[], year=2025, pmcid="PMC1", fulltext_xml=fulltext)
+        # Repo says GPL: the declared MIT can't be trusted, hold it with both named.
+        self.gh.seed_repo("acme/rig", license="GPL-3.0")
+        p = service.resolve("10.1016/j.ohx.2025.e00002")
+        self.assertEqual(p.outcome, service.HELD)
+        self.assertEqual(p.record.license, "")
+        self.assertIn("declared MIT but the linked github says GPL-3.0", p.record.gate_license.found)
+        # Repo agrees: live, license MIT.
+        self.gh.seed_repo("acme/rig", license="MIT")
+        p = service.resolve("10.1016/j.ohx.2025.e00002")
+        self.assertEqual(p.outcome, service.LIVE, p.message)
+        self.assertEqual(p.record.license, "MIT")
+        # Repo has no license file: keep the declaration but ask for a confirmation.
+        self.gh.seed_repo("acme/rig", license="")
+        p = service.resolve("10.1016/j.ohx.2025.e00002")
+        self.assertEqual(p.outcome, service.HELD)
+        self.assertTrue(p.record.gate_license.ok)
+        self.assertTrue(p.record.gate_license.confirm)
+        self.assertEqual(p.record.license, "MIT")
+
+    def test_hardwarex_without_europepmc_full_text_is_held(self):
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00001", title="Unlisted rig", authors=[{"given": "A", "family": "Person"}])
+        p = service.resolve("10.1016/j.ohx.2025.e00001")
+        self.assertEqual(p.outcome, service.HELD)
+        self.assertIn("not in Europe PMC", p.record.gate_license.found)
+        self.assertEqual(p.record.title, "Unlisted rig")
+
+    def test_hardwarex_retries_through_a_503(self):
+        self.fj.seed_hardwarex_fixture()
+        self.fj.fail_next("/epmc/PMC13594966/fullTextXML", [503, 503])
+        p = service.resolve(HARDWAREX_DOI)
+        self.assertEqual(p.outcome, service.LIVE, p.message)
+        self.assertEqual(sum(1 for r in self.fj.requests if "fullTextXML" in r), 3)
+
+    def test_hardwarex_list_new(self):
+        from projects.indexing import hardwarex_source
+        from datetime import date
+
+        self.fj.seed_hardwarex_fixture()
+        self.fj.seed_crossref_work("10.1016/j.ohx.2020.e00100", title="Old", authors=[], year=2020)
+        self.assertEqual(hardwarex_source.list_new(date(2026, 1, 1)), [HARDWAREX_DOI])
+        self.assertEqual(set(hardwarex_source.list_new(date(2019, 1, 1))), {HARDWAREX_DOI, "10.1016/j.ohx.2020.e00100"})
+
+    def test_joh_reads_the_feed_and_is_always_held(self):
+        from projects.indexing import joh_source
+
+        self.fj.seed_joh_fixture()
+        rec = joh_source.fetch(JOH_DOI)
+        self.assertTrue(rec.title.startswith("A 6 Degree of Freedom Spark Assisted"))
+        self.assertEqual([a.name for a in rec.authors], ["Zhaohan Zheng", "Rolf Wüthrich"])
+        self.assertTrue(rec.readme.startswith("Spark Assisted Chemical Engraving"))
+        self.assertEqual(rec.text_license, "CC-BY-4.0")
+        self.assertEqual(rec.license, "")
+        self.assertEqual(rec.files_url, "https://zenodo.org/records/19053838")
+        self.assertEqual(rec.files_url_source, "body_scan")
+        self.assertNotIn("token=", " ".join(rec.raw["candidate_links"]))
+        self.assertIn("https://github.com/EGE-Group-Concordia-University/SACE_setup.git", rec.raw["candidate_links"])
+        self.assertEqual(rec.published_on.isoformat(), "2026-09-07")
+        p = service.resolve(JOH_DOI)
+        self.assertEqual(p.outcome, service.HELD)
+        self.assertIn("no hardware license", p.message)
+        self.assertTrue(p.record.gate_files.ok)
+        self.assertTrue(p.record.gate_files.confirm)
+        # The harvest is cached: a second DOI lookup doesn't refetch the feed.
+        before = len(self.fj.requests)
+        service.resolve(JOH_DOI)
+        self.assertEqual(len(self.fj.requests), before)
+
+    def test_joh_license_comes_from_the_linked_repository_when_it_has_one(self):
+        self.fj.seed_joh_fixture()
+        self.gh.seed_repo("EGE-Group-Concordia-University/SACE_setup", license="GPL-3.0", description="SACE machining center files")
+        p = service.resolve(JOH_DOI)
+        self.assertEqual(p.outcome, service.HELD)  # the body-scanned link still needs a human yes
+        self.assertEqual(p.record.license, "GPL-3.0")
+        self.assertTrue(p.record.gate_license.ok)
+        self.assertIn("from linked github", p.record.gate_license.found)
+        self.assertEqual(p.record.files_url, "https://github.com/EGE-Group-Concordia-University/SACE_setup")
+        self.assertTrue(p.record.gate_files.confirm)
+        entry = service.index_record(p.record, hold=True)
+        self.assertEqual(service.review_state(entry), "confirm")
+        self.assertEqual(entry.license, "GPL-3.0")
+
+    def test_joh_unknown_doi_and_list_new(self):
+        from projects.indexing import joh_source
+        from datetime import date
+
+        self.fj.seed_joh_fixture()
+        p = service.resolve("10.5206/joh.v1i1.999")
+        self.assertEqual(p.outcome, service.ERROR)
+        self.assertIn("isn't in the Journal of Open Hardware feed", p.message)
+        self.assertEqual(joh_source.list_new(date(2026, 9, 1)), [JOH_DOI])
+        self.assertEqual(joh_source.list_new(date(2026, 9, 30)), [])
+
+
+@override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
+class StaffJournalFlowTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(username="staff", is_staff=True)
+        self.user = get_user_model().objects.create_user(username="suggester")
+        self.url = reverse("index_staff")
+
+    def test_fetch_new_previews_only_unseen_articles(self):
+        self.fj.seed_hardwarex_fixture()
+        self.fj.seed_crossref_work("10.1016/j.ohx.2020.e00100", title="Old rig", authors=[], year=2020)
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, {"action": "fetch_new", "source": "hardwarex"})
+        self.assertContains(response, "from hardwarex since 2017-01-01")
+        self.assertContains(response, "Old rig")
+        self.assertContains(response, "resistance welding")
+        # Import the live one, then fetch again: only the old one comes back, and only newer-than-newest is asked for.
+        self.client.post(self.url, {"action": "import", "lines": f"{HARDWAREX_DOI}\n10.1016/j.ohx.2020.e00100", "import": [HARDWAREX_DOI]})
+        self.assertTrue(Project.objects.filter(external_id=HARDWAREX_DOI, index_state=Project.INDEX_LIVE).exists())
+        response = self.client.post(self.url, {"action": "fetch_new", "source": "hardwarex"}, follow=True)
+        self.assertContains(response, "Nothing new from hardwarex since 2026-12-01")
+
+    def test_public_journal_request_is_rechecked_into_a_real_entry(self):
+        self.fj.seed_hardwarex_fixture()
+        self.client.force_login(self.user)
+        # Simulate a request row that arrived before the adapter existed.
+        preview = service.Preview(line=HARDWAREX_DOI, source="hardwarex", external_id=HARDWAREX_DOI, outcome=service.UNSUPPORTED)
+        row = service.request_row(preview, listed_by=self.user, submitted=service.Submitted(title="typed title", license="MIT", files_url="https://example.org/f"))
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, {"action": "recheck", "project_id": row.pk}, follow=True)
+        self.assertContains(response, "Still held for your approval")
+        row.refresh_from_db()
+        self.assertEqual(row.index_state, Project.INDEX_HELD)
+        self.assertTrue(row.title.startswith("Open-source modular resistance welding"))
+        self.assertEqual(row.license, "CERN-OHL-S-2.0")
+        self.assertEqual(row.files_url_source, "spec_table")
+        self.assertEqual(row.listed_by, self.user)
+        self.assertEqual(row.contributions.count(), 6)
+        self.assertEqual(Project.objects.filter(external_id=HARDWAREX_DOI).count(), 1)
+
+    def test_joh_batch_lands_held_for_the_manual_pass(self):
+        self.fj.seed_joh_fixture()
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, {"action": "fetch_new", "source": "joh"})
+        self.assertContains(response, "Spark Assisted")
+        self.client.post(self.url, {"action": "import", "lines": JOH_DOI, "import": [JOH_DOI]})
+        entry = Project.objects.get(external_id=JOH_DOI)
+        self.assertEqual(entry.index_state, Project.INDEX_HELD)
+        self.assertEqual(entry.files_url, "https://zenodo.org/records/19053838")
+        queue = self.client.get(self.url)
+        self.assertContains(queue, "confirm it is the project&#x27;s own")
+        # No repo license could be read (nothing seeded), so it failed the license check.
+        self.assertContains(queue, "Failed a check")
+        self.assertContains(queue, "no hardware license in structured data")
+
+
+class IndexJournalCommandTests(FakeJournalsMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(username="staff", is_staff=True)
+
+    def _run(self, *args, **kwargs):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out, err = StringIO(), StringIO()
+        call_command("index_journal", *args, stdout=out, stderr=err, pause=0, **kwargs)
+        return out.getvalue(), err.getvalue()
+
+    def test_sweep_creates_live_and_held_and_is_resumable(self):
+        self.fj.seed_hardwarex_fixture()
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00001", title="Unlisted rig", authors=[], year=2025)
+        out, err = self._run("hardwarex", since="2017-01-01")
+        self.assertIn("2 listed since 2017-01-01, 2 new", out)
+        self.assertIn("done: live 1, held 1, errors 0", out)
+        self.assertEqual(Project.objects.filter(source="hardwarex", index_state="live").count(), 1)
+        self.assertEqual(Project.objects.filter(source="hardwarex", index_state="held").count(), 1)
+        self.assertEqual(Notification.objects.filter(user=self.staff, kind="index_run").count(), 1)
+        self.assertEqual(Notification.objects.filter(user=self.staff, kind="index_run").get().title, "Indexed 1 live, 1 held")
+        # Rerun: nothing new, no second notice.
+        out, err = self._run("hardwarex", since="2017-01-01")
+        self.assertIn("0 new", out)
+        self.assertEqual(Notification.objects.filter(kind="index_run").count(), 1)
+
+    def test_dry_run_and_limit_create_nothing_or_less(self):
+        self.fj.seed_hardwarex_fixture()
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00001", title="Unlisted rig", authors=[], year=2025)
+        out, _ = self._run("hardwarex", since="2017-01-01", dry_run=True)
+        self.assertIn("(dry run)", out)
+        self.assertIn("live  10.1016/j.ohx.2026.e00839", out)
+        self.assertEqual(Project.objects.filter(source="hardwarex").count(), 0)
+        self._run("hardwarex", since="2017-01-01", limit=1)
+        self.assertEqual(Project.objects.filter(source="hardwarex").count(), 1)
+
+    def test_joh_sweep_is_all_held(self):
+        self.fj.seed_joh_fixture()
+        out, _ = self._run("joh", since="2017-01-01")
+        self.assertIn("done: live 0, held 1", out)
+        self.assertEqual(Project.objects.get(source="joh").index_state, Project.INDEX_HELD)
+
+
+@override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
+class QueueGroupingTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
+    def test_queue_groups_by_what_staff_must_do(self):
+        staff = get_user_model().objects.create_user(username="staff", is_staff=True)
+        user = get_user_model().objects.create_user(username="suggester")
+        self.gh.seed_repo("acme/pump", license="MIT", description="A pump.")
+        self.gh.seed_repo("acme/bare", license="")
+        ready = service.index_record(service.resolve("github.com/acme/pump").record, hold=True)
+        failed = service.index_record(service.resolve("github.com/acme/bare").record)
+        typed = service.request_row(
+            service.Preview(line="https://example.org/rig", source="url", external_id="https://example.org/rig", outcome=service.UNSUPPORTED),
+            listed_by=user, submitted=service.Submitted(title="Rig", license="MIT", files_url="https://example.org/rig/files"),
+        )
+        self.assertEqual(service.review_state(ready), "ready")
+        self.assertEqual(service.review_state(failed), "failed")
+        self.assertEqual(service.review_state(typed), "confirm")
+        self.client.force_login(staff)
+        page = self.client.get(reverse("index_staff"))
+        self.assertContains(page, "1 ready, 1 to confirm, 1 failed a check")
+        body = page.content.decode()
+        self.assertLess(body.index("Ready to approve"), body.index("Needs a confirmation"))
+        self.assertLess(body.index("Needs a confirmation"), body.index("Failed a check"))
+        self.assertContains(page, "License: no license file")
+        self.assertContains(page, "check-ok")
+        self.assertContains(page, "check-confirm")
+        self.assertContains(page, "check-fail")

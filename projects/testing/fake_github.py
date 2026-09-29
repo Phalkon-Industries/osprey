@@ -47,6 +47,20 @@ class Repo:
         }
 
 
+def _tiny_png() -> bytes:
+    """A small solid PNG for cover-image tests, built with Pillow so it
+    always decodes."""
+    import io
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 36), (30, 90, 160)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+_PNG = _tiny_png()
+
+
 class FakeGitHubServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -97,6 +111,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.server.requests.append(self.path)
         if self.server.fail_status:
             self._send(self.server.fail_status, json.dumps({"message": "injected"}).encode())
+            return
+        if self.path == "/image.png":
+            self._send(200, _PNG, content_type="image/png")
+            return
+        if self.path == "/not-an-image":
+            self._send(200, b"<html>nope</html>", content_type="text/html")
             return
         m = re.match(r"^/repos/([^/]+)/([^/]+)(/readme)?$", self.path)
         if not m:

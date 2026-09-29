@@ -44,6 +44,9 @@ class ZenodoRecordReader:
         self.timeout = timeout or getattr(settings, "ZENODO_TIMEOUT_SECONDS", 20)
 
     def _get(self, path_or_url: str) -> dict:
+        from projects.indexing.http import _guard_test_run
+
+        _guard_test_run(path_or_url if path_or_url.startswith("http") else self.base_url)
         url = path_or_url if path_or_url.startswith("http") else f"{self.base_url}{path_or_url}"
         req = request.Request(
             url,

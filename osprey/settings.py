@@ -231,6 +231,15 @@ STAFF_EXPORT_TOKEN = os.environ.get("STAFF_EXPORT_TOKEN", "")
 # fake GitHub inside test runs only.
 GITHUB_API_BASE_URL = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
 GITHUB_API_TOKEN = os.environ.get("GITHUB_API_TOKEN", "")
+# Journal sources for indexed entries. Base URLs are overridden by the
+# fake journal server inside test runs only. Crossref asks for a mailto to
+# route callers into its polite pool.
+CROSSREF_API_BASE_URL = os.environ.get("CROSSREF_API_BASE_URL", "https://api.crossref.org")
+EUROPEPMC_API_BASE_URL = os.environ.get("EUROPEPMC_API_BASE_URL", "https://www.ebi.ac.uk/europepmc/webservices/rest")
+JOH_OAI_URL = os.environ.get("JOH_OAI_URL", "https://ojs.lib.uwo.ca/index.php/openhardware/oai")
+EXTERNAL_API_MAILTO = os.environ.get("EXTERNAL_API_MAILTO", "")
+# Seconds to wait between retries on 429/503 from external APIs (0 in tests).
+INDEXING_RETRY_SLEEP = float(os.environ.get("INDEXING_RETRY_SLEEP", "2"))
 
 # Socket timeout per Zenodo call. Tests lower it to exercise hangs quickly.
 ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "20"))

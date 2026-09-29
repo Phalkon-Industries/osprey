@@ -13,14 +13,21 @@ from projects import claiming
 from projects.models import Contribution, Project, ProjectDeposit, Tag, TagAssignment
 from projects.zenodo_register import normalize_orcid
 
-from . import github_source, zenodo_source
-from .records import SourceError, SourceRecord, detect
+from . import github_source, hardwarex_source, joh_source, zenodo_source
+from .records import Gate, SourceError, SourceRecord, detect
 
 logger = logging.getLogger(__name__)
 
 ADAPTERS = {
     "zenodo": zenodo_source.fetch,
     "github": github_source.fetch,
+    "hardwarex": hardwarex_source.fetch,
+    "joh": joh_source.fetch,
+}
+# Sources that can list what they published since a date.
+LISTERS = {
+    "hardwarex": hardwarex_source.list_new,
+    "joh": joh_source.list_new,
 }
 
 # Preview outcomes.
@@ -100,9 +107,7 @@ def resolve(line: str, user=None) -> Preview:
     if source not in ADAPTERS:
         preview.outcome = UNSUPPORTED
         preview.message = {
-            "hardwarex": "HardwareX import isn't wired up yet.",
-            "joh": "Journal of Open Hardware import isn't wired up yet.",
-            "doi": "Only Zenodo DOIs can be indexed automatically for now.",
+            "doi": "Only Zenodo, HardwareX and JOH DOIs can be read automatically for now.",
             "url": "Plain URLs can't be indexed automatically yet.",
         }.get(source, "Unsupported source.")
         return preview
@@ -117,6 +122,7 @@ def resolve(line: str, user=None) -> Preview:
         preview.outcome, preview.message = ERROR, str(exc)
         return preview
     preview.record = record
+    license_via_files(record)
     existing = find_existing(record.source, record.external_id, doi=record.doi, concept_id=record.concept_id)
     if existing is not None:
         preview.outcome, preview.existing = EXISTS, existing
@@ -137,6 +143,85 @@ def resolve(line: str, user=None) -> Preview:
     return preview
 
 
+def _family(key: str) -> str:
+    return (key or "").replace("-or-later", "").replace("-only", "").lower()
+
+
+def _linked_license(url: str):
+    """(source, SourceRecord) for a GitHub or Zenodo files link, else None."""
+    source, external_id = detect(url)
+    if source not in ("github", "zenodo"):
+        return None
+    try:
+        return source, ADAPTERS[source](external_id)
+    except SourceError:
+        return None
+
+
+def license_via_files(record: SourceRecord) -> bool:
+    """The license OSPREY shows must be the one the files live under.
+
+    When the source declared a license and the files link is a GitHub
+    repository or Zenodo record, read the license there and hold the entry
+    on any mismatch rather than pick one. When the source gave no usable
+    license, take it from the linked repository or record instead (the
+    files link becomes the link that answered). Returns True when the
+    license was taken from the linked files."""
+    if record.gate_license.ok:
+        linked = _linked_license(record.files_url) if record.files_url else None
+        if linked is not None:
+            source, found = linked
+            if found.license and _family(found.license) != _family(record.license):
+                record.gate_license = Gate(
+                    False,
+                    f"declared {record.license} but the linked {source} says {found.license}; pick the right one",
+                    f"source vs linked {source}",
+                )
+                record.license = ""
+            elif not found.license:
+                record.gate_license = Gate(
+                    True, f"{record.license} declared; the linked {source} shows no license file, confirm",
+                    record.gate_license.where, confirm=True,
+                )
+        return False
+    candidates = [record.files_url] + list((record.raw or {}).get("candidate_links") or [])
+    seen: set[str] = set()
+    for url in candidates:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        source, external_id = detect(url)
+        if source not in ("github", "zenodo"):
+            continue
+        try:
+            linked = ADAPTERS[source](external_id)
+        except SourceError:
+            continue
+        if not linked.license:
+            continue
+        record.license = linked.license
+        record.license_raw = linked.license_raw or linked.license
+        record.gate_license = Gate(True, f"{linked.license} from linked {source} {linked.canonical_url}", f"linked {source}")
+        if record.files_url != linked.files_url:
+            record.files_url = linked.files_url or url
+        if record.files_url_source == "body_scan":
+            record.gate_files = Gate(True, record.files_url, "link found in article body; confirm it is the project's own", confirm=True)
+        else:
+            record.files_url_source = record.files_url_source or ("repo" if source == "github" else "record")
+            record.gate_files = Gate(True, record.files_url, f"linked {source}")
+        return True
+    return False
+
+
+def review_state(project: Project) -> str:
+    """'ready' when every check is green, 'confirm' when something only
+    needs a human yes, else 'failed'. Drives the queue's grouping."""
+    gl, gf = project.gate_license or {}, project.gate_files or {}
+    if gl.get("ok") and gf.get("ok"):
+        return "confirm" if gl.get("confirm") or gf.get("confirm") else "ready"
+    return "failed"
+
+
 def _unique_slug(title: str) -> str:
     base = slugify(title)[:60].strip("-") or "entry"
     slug, n = base, 2
@@ -153,7 +238,7 @@ def index_record(record: SourceRecord, *, listed_by=None, hold: bool | None = No
     notifies anyone; the caller sends the run summary.
     """
     held = (not record.passes) if hold is None else hold
-    project = Project.objects.filter(source=record.source, external_id=record.external_id).first()
+    project = Project.objects.filter(source=record.source, external_id__iexact=record.external_id).first()
     creating = project is None
     if creating:
         project = Project(source=record.source, external_id=record.external_id, slug=_unique_slug(record.title), indexed_at=timezone.now(), listed_by=listed_by)
@@ -211,15 +296,38 @@ class Submitted:
     license: str = ""
     files_url: str = ""
     authors: str = ""
+    image_url: str = ""
 
     def clean(self) -> "Submitted":
+        image = self.image_url.strip()[:200]
+        if not image.lower().startswith(("http://", "https://")):
+            image = ""
         return Submitted(
             title=self.title.strip()[:300],
             summary=self.summary.strip()[:280],
             license=self.license.strip()[:80],
             files_url=self.files_url.strip()[:200],
             authors=", ".join(split_names(self.authors)),
+            image_url=image,
         )
+
+
+def _apply_image(project: Project, url: str) -> bool:
+    """Fetch and store a suggested cover through the normal cover pipeline.
+    A URL that doesn't fetch or isn't an image is dropped; the entry keeps
+    the placeholder."""
+    from projects.cover_images import process_cover_image
+
+    if not url:
+        return False
+    project.cover_image_url = url
+    if process_cover_image(project):
+        project.cover_image_url = ""  # stored locally now; don't hotlink
+        project.save(update_fields=["cover_image", "cover_image_url"])
+        return True
+    project.cover_image_url = ""
+    project.save(update_fields=["cover_image_url"])
+    return False
 
 
 def _replace_author_rows(project: Project, names: list[str]) -> None:
@@ -260,12 +368,13 @@ def request_row(preview: Preview, *, listed_by, submitted: Submitted | None = No
         visibility=Project.VISIBILITY_PRIVATE,
         listed_by=listed_by,
         indexed_at=timezone.now(),
-        gate_license={"ok": False, "found": given.license or "not given", "where": f"chosen by @{who}; not checked against the source"},
-        gate_files={"ok": False, "found": given.files_url or "not given", "where": f"entered by @{who}; not checked"},
+        gate_license={"ok": bool(given.license), "confirm": True, "found": given.license or "not given", "where": f"chosen by @{who}; not checked against the source"},
+        gate_files={"ok": bool(given.files_url), "confirm": True, "found": given.files_url or "not given", "where": f"entered by @{who}; not checked"},
         source_metadata={"submitted": {"by": who, **given.__dict__}},
     )
     project.save()
     _replace_author_rows(project, split_names(given.authors))
+    _apply_image(project, given.image_url)
     return project
 
 
@@ -293,6 +402,8 @@ def apply_submitted(project: Project, submitted: Submitted | None, by, record: S
         if names != current:
             _replace_author_rows(project, names)
             changed["authors"] = names
+    if given.image_url and _apply_image(project, given.image_url):
+        changed["image_url"] = given.image_url
     if changed:
         meta = dict(project.source_metadata or {})
         meta["submitted"] = {"by": by.get_username() if by else "", **changed}
@@ -307,6 +418,30 @@ def _tell_submitter(project: Project, *, title: str, body: str = "", url: str = 
     from notifications.models import send
 
     send(project.listed_by, kind="index_decision", title=title, body=body, url=url or project.get_absolute_url())
+
+
+def recheck(project: Project) -> Preview:
+    """Re-read a held entry from its source and refresh it in place, keeping
+    it held for staff. Used on request rows that came in before their
+    source had an adapter, and to refresh any held entry."""
+    line = project.external_id if project.source != Project.SOURCE_OTHER else project.canonical_url
+    preview = resolve(line)
+    if preview.outcome == EXISTS and preview.existing and preview.existing.pk == project.pk and preview.source in ADAPTERS:
+        # resolve() stopped at the duplicate check: it found this very row.
+        try:
+            preview.record = ADAPTERS[preview.source](preview.external_id)
+        except SourceError as exc:
+            preview.outcome, preview.message = ERROR, str(exc)
+            return preview
+        preview.outcome = LIVE if preview.record.passes else HELD
+    if preview.record is not None:
+        keep_summary = project.summary
+        index_record(preview.record, listed_by=project.listed_by, hold=True)
+        project.refresh_from_db()
+        if keep_summary and not project.summary:
+            project.summary = keep_summary
+            project.save(update_fields=["summary"])
+    return preview
 
 
 def approve(project: Project, staff, *, title: str = "", license: str = "", files_url: str = "", summary: str = "") -> Project:

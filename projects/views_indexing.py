@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from django.conf import settings
 from django.contrib import messages
@@ -14,6 +15,7 @@ from django.views.decorators.http import require_http_methods
 
 from .forms import COMMON_LICENSES
 from .indexing import service
+from .indexing.records import SourceError
 from .models import Project
 
 MAX_LINES = 50
@@ -57,6 +59,38 @@ def index_staff(request):
             held = sum(1 for _, p in results if p.index_state == Project.INDEX_HELD)
             messages.success(request, f"Indexed {live} live and {held} held.")
             return redirect(reverse("index_staff"))
+        elif action == "fetch_new":
+            source = request.POST.get("source", "")
+            lister = service.LISTERS.get(source)
+            if lister is None:
+                messages.error(request, "That source can't be listed.")
+                return redirect(reverse("index_staff"))
+            last = (
+                Project.objects.filter(source=source, published_on__isnull=False)
+                .order_by("-published_on").values_list("published_on", flat=True).first()
+            )
+            since = last or date(2017, 1, 1)
+            try:
+                dois = lister(since)
+            except SourceError as exc:
+                messages.error(request, f"Couldn't list {source}: {exc}")
+                return redirect(reverse("index_staff"))
+            known = set(Project.objects.filter(source=source).values_list("external_id", flat=True))
+            new_lines = [d for d in dois if d not in known][:MAX_LINES]
+            if not new_lines:
+                messages.info(request, f"Nothing new from {source} since {since}.")
+                return redirect(reverse("index_staff"))
+            pasted = "\n".join(new_lines)
+            previews = [service.resolve(line, request.user) for line in new_lines]
+            messages.info(request, f"{len(new_lines)} from {source} since {since}. Review and import below.")
+        elif action == "recheck":
+            project = get_object_or_404(Project, pk=request.POST.get("project_id"), origin=Project.ORIGIN_INDEXED, index_state=Project.INDEX_HELD)
+            preview = service.recheck(project)
+            if preview.record is not None:
+                messages.success(request, f"Re-read “{project.title}” from {preview.source}. Still held for your approval.")
+            else:
+                messages.error(request, f"Couldn't re-read “{project.title}”: {preview.message}")
+            return redirect(reverse("index_staff"))
         elif action == "approve":
             project = get_object_or_404(Project, pk=request.POST.get("project_id"), origin=Project.ORIGIN_INDEXED)
             service.approve(
@@ -75,11 +109,16 @@ def index_staff(request):
             service.decline(project, request.user, request.POST.get("reason", ""))
             messages.success(request, f"Declined “{title}”.")
             return redirect(reverse("index_staff"))
-    held = (
+    held_rows = list(
         Project.objects.filter(origin=Project.ORIGIN_INDEXED, index_state=Project.INDEX_HELD)
         .prefetch_related("contributions")
         .order_by("-indexed_at")
     )
+    for row in held_rows:
+        row.review_state = service.review_state(row)
+    order = {"ready": 0, "confirm": 1, "failed": 2}
+    held = sorted(held_rows, key=lambda r: order[r.review_state])
+    held_counts = {k: sum(1 for r in held_rows if r.review_state == k) for k in order}
     recent = Project.objects.filter(origin=Project.ORIGIN_INDEXED, index_state=Project.INDEX_LIVE).order_by("-indexed_at")[:20]
     return render(
         request,
@@ -88,9 +127,11 @@ def index_staff(request):
             "pasted": pasted,
             "previews": previews,
             "held": held,
+            "held_counts": held_counts,
             "recent": recent,
             "licenses": COMMON_LICENSES,
             "max_lines": MAX_LINES,
+            "listers": sorted(service.LISTERS),
         },
     )
 
@@ -128,6 +169,7 @@ def index_submit(request):
                 license=request.POST.get(f"license_{i}", ""),
                 files_url=request.POST.get(f"files_url_{i}", ""),
                 authors=request.POST.get(f"authors_{i}", ""),
+                image_url=request.POST.get(f"image_url_{i}", ""),
             ).clean()
             if action == "preview" and preview.record is not None:
                 given.summary = preview.record.summary
