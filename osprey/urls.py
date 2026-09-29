@@ -39,6 +39,7 @@ urlpatterns = [
     path("settings/", core_views.settings_home, name="settings"),
     path("staff/zenodo/", project_views.zenodo_jobs_staff, name="zenodo_jobs"),
     path("staff/index/", views_indexing.index_staff, name="index_staff"),
+    path("staff/licenses/", views_indexing.licenses_staff, name="licenses_staff"),
     # Browsers ask for this regardless of the <link>; point it at the mark.
     path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "img/osprey-mark.svg", permanent=True)),
     path("@<str:handle>/", people_views.person_by_handle, name="profile"),

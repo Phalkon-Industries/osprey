@@ -716,8 +716,12 @@ class ZenodoServiceTests(ProjectTestCase):
         self.public_project.refresh_from_db()
         self.assertEqual(self.public_project.doi, "10.5072/zenodo.123")
         client.update_deposition_metadata.assert_called_once()
-        # Two sidecar uploads: osprey-project.json and CITATION.cff.
-        self.assertEqual(client.upload_to_bucket.call_count, 2)
+        # Three sidecar uploads: osprey-project.json, CITATION.cff, LICENSE.txt.
+        self.assertEqual(client.upload_to_bucket.call_count, 3)
+        self.assertEqual(
+            [c.args[1].filename for c in client.upload_to_bucket.call_args_list],
+            ["osprey-project.json", "CITATION.cff", "LICENSE.txt"],
+        )
 
     @override_settings(
         ZENODO_USE_SANDBOX=True,
@@ -1094,8 +1098,12 @@ class ProjectVersionsTests(ProjectTestCase):
         )
         client.create_new_version.assert_called_once_with("123")
         client.update_deposition_metadata.assert_called_once()
-        # Two sidecar uploads: osprey-project.json and CITATION.cff.
-        self.assertEqual(client.upload_to_bucket.call_count, 2)
+        # Three sidecar uploads: osprey-project.json, CITATION.cff, LICENSE.txt.
+        self.assertEqual(client.upload_to_bucket.call_count, 3)
+        self.assertEqual(
+            [c.args[1].filename for c in client.upload_to_bucket.call_args_list],
+            ["osprey-project.json", "CITATION.cff", "LICENSE.txt"],
+        )
 
     @override_settings(
         ZENODO_USE_SANDBOX=True,

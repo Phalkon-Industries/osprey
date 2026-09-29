@@ -115,8 +115,13 @@ class EntryPageTests(IndexedBase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Indexed &middot; HardwareX")
         self.assertContains(response, "View original")
-        self.assertContains(response, reverse("projects:files", args=[self.hardwarex.slug]))
+        # Files live on the Files tab; the overview doesn't repeat the link.
+        self.assertNotContains(response, "Design files")
+        self.assertContains(response, reverse("projects:files", args=[self.hardwarex.slug]))  # the tab itself
         self.assertContains(response, "Authors as listed by HardwareX")
+        self.assertContains(response, "Submitted to the index by")
+        body = response.content.decode()
+        self.assertLess(body.index("Cite the original"), body.index("Submitted to the index by"))
         self.assertContains(response, "Cite the original")
         self.assertContains(response, "Text from HardwareX, CC BY-NC-ND 4.0")
         self.assertNotContains(response, "Cite this project")
@@ -135,9 +140,9 @@ class EntryPageTests(IndexedBase):
         self.assertNotContains(response, "Cite the original")
         self.assertContains(response, "https://github.com/OceanographyforEveryone/OpenCTD")
 
-    def test_missing_files_link_says_so(self):
+    def test_missing_files_link_says_so_on_the_files_tab(self):
         Project.objects.filter(pk=self.github.pk).update(files_url="")
-        response = self.client.get(self.github.get_absolute_url())
+        response = self.client.get(reverse("projects:files", args=[self.github.slug]))
         self.assertContains(response, "not yet linked")
 
     def test_signed_in_readers_can_follow_an_entry(self):

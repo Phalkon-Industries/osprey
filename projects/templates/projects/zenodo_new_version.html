@@ -52,6 +52,12 @@
             {% if form.archive.errors %}<p class="form-error">{{ form.archive.errors|join:" " }}</p>{% endif %}
         </div>
         <div class="form-row">
+            <label for="{{ form.license_choice.id_for_label }}">{{ form.license_choice.label }}</label>
+            {{ form.license_choice }}
+            {% if form.license_choice.help_text %}<p class="muted small">{{ form.license_choice.help_text }}</p>{% endif %}
+            {% if form.license_choice.errors %}<p class="form-error">{{ form.license_choice.errors|join:" " }}</p>{% endif %}
+        </p>
+        <p>
             <label for="{{ form.repo_link.id_for_label }}">{{ form.repo_link.label }}</label>
             {{ form.repo_link }}
             {% if form.repo_link.help_text %}<p class="muted small">{{ form.repo_link.help_text }}</p>{% endif %}

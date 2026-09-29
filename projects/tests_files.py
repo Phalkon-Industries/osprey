@@ -107,7 +107,7 @@ class FilesTabTests(FakeZenodoMixin, TestCase):
         response = self.client.get(reverse("projects:files", args=[entries["github"].slug]))
         self.assertContains(response, "not yet linked")
         overview = self.client.get(entries["github"].get_absolute_url())
-        self.assertContains(overview, reverse("projects:files", args=[entries["github"].slug]))
+        self.assertNotContains(overview, "Design files")
 
     def test_repositories_moved_to_the_files_tab(self):
         project = self._native()

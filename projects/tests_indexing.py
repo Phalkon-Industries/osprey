@@ -52,10 +52,14 @@ class DetectTests(TestCase):
     def test_license_normalization(self):
         self.assertEqual(normalize_license("CERN-OHL-S v2.0"), "CERN-OHL-S-2.0")
         self.assertEqual(normalize_license("GNU General Public License v3"), "GPL-3.0")
+        self.assertEqual(normalize_license("GNU General Public License (GPL) 3.0"), "GPL-3.0")
+        self.assertEqual(normalize_license("GNU General Public License (GPL)"), "")
         self.assertEqual(normalize_license("MIT License"), "MIT")
         self.assertEqual(normalize_license("CC BY 4.0"), "CC-BY-4.0")
         self.assertEqual(normalize_license("CC BY-NC-ND 4.0"), "")
         self.assertEqual(normalize_license("NOASSERTION"), "")
+        self.assertEqual(normalize_license("TAPR OHL"), "TAPR-OHL-1.0")
+        self.assertEqual(normalize_license("The TAPR Open Hardware License."), "TAPR-OHL-1.0")
         self.assertEqual(normalize_license(""), "")
 
 
@@ -243,6 +247,37 @@ class StaffPageTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCa
         self.assertContains(response, "Held for review")
         self.assertContains(response, "bare")
 
+    def test_recheck_keeps_edits_and_reads_the_license_from_the_files_link(self):
+        self.gh.seed_repo("acme/bare", license="")
+        self.gh.seed_repo("acme/real", license="CERN-OHL-S-2.0")
+        held = service.index_record(service.resolve("github.com/acme/bare").record)
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, {
+            "action": "recheck", "project_id": held.pk,
+            "title": "Bare rig, corrected", "summary": "Staff summary.", "files_url": "https://github.com/acme/real",
+        }, follow=True)
+        self.assertContains(response, "License CERN-OHL-S-2.0 read from the linked github.")
+        held.refresh_from_db()
+        self.assertEqual(held.title, "Bare rig, corrected")
+        self.assertEqual(held.summary, "Staff summary.")
+        self.assertEqual(held.files_url, "https://github.com/acme/real")
+        self.assertEqual(held.files_url_source, "staff")
+        self.assertEqual(held.license, "CERN-OHL-S-2.0")
+        self.assertEqual(held.index_state, Project.INDEX_HELD)
+        self.assertEqual(service.review_state(held), "ready")
+        self.assertEqual(held.contributions.count(), 1)  # authors untouched
+
+    def test_tapr_is_accepted_for_indexed_entries_only(self):
+        from projects.forms import COMMON_LICENSES
+        from projects.indexing.records import INDEX_ACCEPTED_LICENSES
+
+        self.assertIn("TAPR-OHL-1.0", INDEX_ACCEPTED_LICENSES)
+        self.assertNotIn("TAPR-OHL-1.0", {k for k, _ in COMMON_LICENSES})
+        self.gh.seed_repo("acme/bsd", license="BSD-3-Clause")
+        p = service.resolve("github.com/acme/bsd")
+        self.assertEqual(p.outcome, service.HELD)
+        self.assertIn("open, but not on OSPREY", p.record.gate_license.found)
+
     def test_approve_with_edits_and_decline(self):
         self.gh.seed_repo("acme/bare", license="")
         self.gh.seed_repo("acme/other", license="")
@@ -375,7 +410,7 @@ class PublicSubmitTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, Tes
         live.refresh_from_db()
         self.assertEqual(live.index_state, Project.INDEX_LIVE)
         self.assertEqual(live.license, "MIT")
-        self.assertContains(self.client.get(live.get_absolute_url()), "Listed by")
+        self.assertContains(self.client.get(live.get_absolute_url()), "Submitted to the index by")
         self.client.force_login(self.user)
         self.assertEqual(
             list(Notification.objects.filter(user=self.user).values_list("title", flat=True)),
@@ -520,6 +555,59 @@ class JournalAdapterTests(FakeJournalsMixin, FakeGitHubMixin, TestCase):
         self.assertTrue(p.record.gate_license.confirm)
         self.assertEqual(p.record.license, "MIT")
 
+    def test_spec_table_parsing_handles_the_design_files_table(self):
+        import xml.etree.ElementTree as ET
+        from projects.indexing.hardwarex_source import spec_table, hardware_license
+
+        # Design-files table first (its header must not be read as a value), then the spec table.
+        both = ET.fromstring(
+            '<article><body>'
+            '<table><tr><th>Design file name</th><th>File type</th><th>Open source license</th><th>Location of the file</th></tr>'
+            '<tr><td>frame.stl</td><td>CAD</td><td>CERN-OHL-S 2.0</td><td>https://osf.io/x</td></tr></table>'
+            '<table><tr><td>Open source license</td><td>GNU General Public License (GPL) 3.0</td></tr>'
+            '<tr><td>Source file repository</td><td>https://osf.io/x</td></tr></table>'
+            '</body></article>'
+        )
+        t = spec_table(both)
+        self.assertEqual(t["license"], "GNU General Public License (GPL) 3.0")
+        self.assertEqual(hardware_license(t["license"]), "GPL-3.0")
+        self.assertEqual(t["per_file_licenses"], ["CERN-OHL-S 2.0"])
+        # Only a design-files table, all rows agreeing: use it.
+        only_files = ET.fromstring(
+            '<article><body><table><tr><th>Design file name</th><th>File type</th><th>Open source license</th><th>Location of the file</th></tr>'
+            '<tr><td>a.stl</td><td>CAD</td><td>CERN-OHL-S-2.0</td><td>x</td></tr><tr><td>b.ino</td><td>code</td><td>CERN OHL S v2</td><td>x</td></tr></table></body></article>'
+        )
+        t = spec_table(only_files)
+        self.assertEqual(hardware_license(t["license"]), "CERN-OHL-S-2.0")
+        self.assertEqual(t["license_from"], "design files table")
+        # Mixed per-file licenses: don't guess.
+        mixed = ET.fromstring(
+            '<article><body><table><tr><th>Design file name</th><th>File type</th><th>Open source license</th><th>Location of the file</th></tr>'
+            '<tr><td>a.stl</td><td>CAD</td><td>CERN-OHL-S-2.0</td><td>x</td></tr><tr><td>b.ino</td><td>code</td><td>MIT</td><td>x</td></tr></table></body></article>'
+        )
+        self.assertTrue(spec_table(mixed)["license_from"].endswith("(mixed)"))
+
+    def test_disagreements_are_logged_for_staff_with_a_csv(self):
+        fulltext = (
+            '<article><front><article-meta><abstract><p>A rig.</p></abstract></article-meta></front>'
+            '<body><table><tr><td>Open source license</td><td>MIT</td></tr>'
+            '<tr><td>Source file repository</td><td>https://github.com/acme/rig</td></tr></table></body></article>'
+        )
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00002", title="Rig", authors=[{"given": "A", "family": "Person", "ORCID": "https://orcid.org/0000-0001-0000-0001"}], year=2025, pmcid="PMC1", fulltext_xml=fulltext)
+        self.gh.seed_repo("acme/rig", license="GPL-3.0")
+        service.index_record(service.resolve("10.1016/j.ohx.2025.e00002").record)
+        staff = get_user_model().objects.create_user(username="staff2", is_staff=True)
+        self.client.force_login(staff)
+        page = self.client.get(reverse("licenses_staff"))
+        self.assertContains(page, "article says one license, the files say another")
+        self.assertContains(page, "GPL-3.0")
+        csv_response = self.client.get(reverse("licenses_staff") + "?export=disagreements")
+        self.assertEqual(csv_response["Content-Type"], "text/csv")
+        body = csv_response.content.decode()
+        self.assertIn("10.1016/j.ohx.2025.e00002", body)
+        self.assertIn("MIT,github,GPL-3.0", body)
+        self.assertIn("0000-0001-0000-0001", body)
+
     def test_hardwarex_without_europepmc_full_text_is_held(self):
         self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00001", title="Unlisted rig", authors=[{"given": "A", "family": "Person"}])
         p = service.resolve("10.1016/j.ohx.2025.e00001")
@@ -622,9 +710,10 @@ class StaffJournalFlowTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin,
         # Simulate a request row that arrived before the adapter existed.
         preview = service.Preview(line=HARDWAREX_DOI, source="hardwarex", external_id=HARDWAREX_DOI, outcome=service.UNSUPPORTED)
         row = service.request_row(preview, listed_by=self.user, submitted=service.Submitted(title="typed title", license="MIT", files_url="https://example.org/f"))
-        self.client.force_login(self.staff)
-        response = self.client.post(self.url, {"action": "recheck", "project_id": row.pk}, follow=True)
-        self.assertContains(response, "Still held for your approval")
+        # A full re-read from the source is the command's job (index_recheck);
+        # the queue button only checks the files link.
+        preview = service.recheck(row)
+        self.assertEqual(preview.outcome, service.LIVE, preview.message)
         row.refresh_from_db()
         self.assertEqual(row.index_state, Project.INDEX_HELD)
         self.assertTrue(row.title.startswith("Open-source modular resistance welding"))
@@ -721,3 +810,67 @@ class QueueGroupingTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, Te
         self.assertContains(page, "check-ok")
         self.assertContains(page, "check-confirm")
         self.assertContains(page, "check-fail")
+
+
+@override_settings(ZENODO_DEFAULT_COMMUNITY="osprey")
+class IndexRecheckCommandTests(FakeJournalsMixin, FakeGitHubMixin, FakeZenodoMixin, TestCase):
+    def test_live_entry_is_pulled_back_when_the_linked_repo_disagrees(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        fulltext = (
+            '<article><front><article-meta><abstract><p>A rig.</p></abstract></article-meta></front>'
+            '<body><table-wrap><table><tbody>'
+            '<tr><td>Open source license</td><td>MIT</td></tr>'
+            '<tr><td>Source file repository</td><td>https://github.com/acme/rig</td></tr>'
+            '</tbody></table></table-wrap></body></article>'
+        )
+        self.fj.seed_crossref_work("10.1016/j.ohx.2025.e00002", title="Rig", authors=[], year=2025, pmcid="PMC1", fulltext_xml=fulltext)
+        self.gh.seed_repo("acme/rig", license="MIT")
+        entry = service.index_record(service.resolve("10.1016/j.ohx.2025.e00002").record)
+        self.assertEqual(entry.index_state, Project.INDEX_LIVE)
+        # The repository's license changes under us.
+        self.gh.seed_repo("acme/rig", license="GPL-3.0")
+        out = StringIO()
+        call_command("index_recheck", source="hardwarex", state="live", linked_only=True, pause=0, stdout=out)
+        entry.refresh_from_db()
+        self.assertEqual(entry.index_state, Project.INDEX_HELD)
+        self.assertEqual(entry.visibility, Project.VISIBILITY_PRIVATE)
+        self.assertEqual(entry.license, "")
+        self.assertIn("declared MIT but the linked github says GPL-3.0", entry.gate_license["found"])
+        self.assertIn("pulled back 10.1016/j.ohx.2025.e00002", out.getvalue())
+        self.assertEqual(self.client.get(entry.get_absolute_url()).status_code, 404)
+
+    def test_promote_ready_moves_only_green_staff_imports_live(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        self.gh.seed_repo("acme/pump", license="MIT")
+        self.gh.seed_repo("acme/bare", license="")
+        self.gh.seed_repo("acme/pub", license="MIT")
+        ready = service.index_record(service.resolve("github.com/acme/pump").record, hold=True)
+        failed = service.index_record(service.resolve("github.com/acme/bare").record)
+        user = get_user_model().objects.create_user(username="u")
+        public = service.index_record(service.resolve("github.com/acme/pub").record, listed_by=user, hold=True)
+        out = StringIO()
+        call_command("index_recheck", promote_ready=True, pause=0, stdout=out)
+        self.assertIn("promoted 1", out.getvalue())
+        for p in (ready, failed, public):
+            p.refresh_from_db()
+        self.assertEqual(ready.index_state, Project.INDEX_LIVE)
+        self.assertEqual(failed.index_state, Project.INDEX_HELD)
+        self.assertEqual(public.index_state, Project.INDEX_HELD)  # public submissions always wait for staff
+
+    def test_held_joh_entry_gains_the_linked_license_on_recheck(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        self.fj.seed_joh_fixture()
+        entry = service.index_record(service.resolve(JOH_DOI).record)
+        self.assertEqual(entry.license, "")
+        self.gh.seed_repo("EGE-Group-Concordia-University/SACE_setup", license="GPL-3.0")
+        call_command("index_recheck", source="joh", pause=0, stdout=StringIO())
+        entry.refresh_from_db()
+        self.assertEqual(entry.license, "GPL-3.0")
+        self.assertEqual(entry.index_state, Project.INDEX_HELD)
+        self.assertEqual(service.review_state(entry), "confirm")

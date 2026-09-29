@@ -370,7 +370,7 @@ class ZenodoFlowsThroughFakeTests(FakeZenodoMixin, TestCase):
         self.assertEqual(fake_dep.state, STATE_DONE)
         self.assertEqual(
             sorted(f["filename"] for f in fake_dep.files),
-            ["CITATION.cff", "osprey-project.json", "pump-v1.zip"],
+            ["CITATION.cff", "LICENSE.txt", "osprey-project.json", "pump-v1.zip"],
         )
         self.assertEqual(fake_dep.metadata["title"], "Fake Flow Pump")
         self.assertEqual(fake_dep.metadata["creators"][0]["name"], "Flow Tester")
@@ -419,7 +419,7 @@ class ZenodoFlowsThroughFakeTests(FakeZenodoMixin, TestCase):
         fake_v2 = self.fz.deposition(deposit.deposition_id)
         self.assertEqual(fake_v2.conceptdoi, self.fz.deposition(first_id).conceptdoi)
         # Carried-over files were cleared; only the fresh sidecars remain.
-        self.assertEqual(sorted(f["filename"] for f in fake_v2.files), ["CITATION.cff", "osprey-project.json"])
+        self.assertEqual(sorted(f["filename"] for f in fake_v2.files), ["CITATION.cff", "LICENSE.txt", "osprey-project.json"])
         versions = ProjectDepositVersion.objects.filter(deposit=deposit).order_by("version_index")
         self.assertEqual([v.version_index for v in versions], [1, 2])
         self.assertEqual(versions[1].changelog, "Second spin of the board.")

@@ -25,6 +25,12 @@
     {% if form.non_field_errors %}
     <p class="field-error" style="color:#fca5a5">{{ form.non_field_errors|join:" " }}</p>
     {% endif %}
+    {% if mode == 'edit' and project.license_findings %}
+    <div class="callout license-callout">
+        <strong>License check.</strong>
+        {% for f in project.license_findings %}{{ f.text }} {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="form-actions" style="display:flex;justify-content:flex-end;align-items:center;gap:.5rem;margin:0 0 .25rem">
         {% if mode == 'edit' and project.is_public %}
@@ -82,6 +88,10 @@
             <input type="text" value="{{ project.license|default:'(none on the record)' }}" readonly>
             <input type="hidden" name="{{ form.license_choice.html_name }}" value="{{ form.license_choice.value|default:project.license }}">
             <br><span class="muted" style="font-size:.85rem">From your Zenodo record.</span>
+            {% elif mode == 'edit' and project.is_public and project.license %}
+            <input type="text" value="{{ project.license }}" readonly>
+            <input type="hidden" name="{{ form.license_choice.html_name }}" value="{{ project.license }}">
+            <br><span class="muted" style="font-size:.85rem">Set for the published files. It changes with the next version.</span>
             {% else %}
             {{ form.license_choice }}
             <br><span class="muted" style="font-size:.85rem">Not sure which to pick? See the

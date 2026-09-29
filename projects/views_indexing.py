@@ -85,11 +85,14 @@ def index_staff(request):
             messages.info(request, f"{len(new_lines)} from {source} since {since}. Review and import below.")
         elif action == "recheck":
             project = get_object_or_404(Project, pk=request.POST.get("project_id"), origin=Project.ORIGIN_INDEXED, index_state=Project.INDEX_HELD)
-            preview = service.recheck(project)
-            if preview.record is not None:
-                messages.success(request, f"Re-read “{project.title}” from {preview.source}. Still held for your approval.")
-            else:
-                messages.error(request, f"Couldn't re-read “{project.title}”: {preview.message}")
+            result = service.recheck_files_link(
+                project,
+                title=request.POST.get("title", "").strip(),
+                summary=request.POST.get("summary", "").strip(),
+                files_url=request.POST.get("files_url", "").strip(),
+                by=request.user,
+            )
+            messages.info(request, f"“{project.title}”: {result}")
             return redirect(reverse("index_staff"))
         elif action == "approve":
             project = get_object_or_404(Project, pk=request.POST.get("project_id"), origin=Project.ORIGIN_INDEXED)
@@ -211,3 +214,65 @@ def index_submit(request):
         "projects/index_submit.html",
         {"pasted": pasted, "rows": rows, "max_lines": settings.INDEX_SUBMIT_MAX_LINES, "licenses": COMMON_LICENSES},
     )
+
+
+@staff_member_required
+def licenses_staff(request):
+    """Open license findings across native and registered projects."""
+    from .indexing import license_check
+
+    if request.method == "POST" and request.POST.get("action") == "recheck":
+        project = get_object_or_404(Project, pk=request.POST.get("project_id"))
+        license_check.audit(project)
+        messages.success(request, f"Re-checked “{project.title}”.")
+        return redirect(reverse("licenses_staff"))
+    rows = [p for p in Project.objects.exclude(license_check={}).select_related("created_by").order_by("-license_checked_at") if p.license_findings]
+    unchecked = license_check.auditable().filter(license_checked_at__isnull=True).count()
+    disagreements = _indexed_disagreements()
+    if request.GET.get("export") == "disagreements":
+        return _disagreements_csv(disagreements)
+    return render(
+        request,
+        "projects/licenses_staff.html",
+        {"rows": rows, "unchecked": unchecked, "disagreements": disagreements},
+    )
+
+
+def _indexed_disagreements() -> list[dict]:
+    """Indexed entries whose declared license disagrees with the license on
+    the record or repository that holds the files. Kept as a log for later
+    outreach to the authors (decided 2026-09-29)."""
+    import re
+
+    out = []
+    for p in Project.objects.filter(origin=Project.ORIGIN_INDEXED).exclude(gate_license={}).prefetch_related("contributions").order_by("published_on"):
+        found = (p.gate_license or {}).get("found", "")
+        m = re.search(r"declared (\S+) but the linked (\w+) says (\S+)", found)
+        if not m:
+            continue
+        out.append({
+            "project": p,
+            "declared": m.group(1),
+            "linked_source": m.group(2),
+            "linked": m.group(3),
+            "authors": [(c.display_name, c.orcid_id) for c in p.contributions.all()],
+        })
+    return out
+
+
+def _disagreements_csv(disagreements):
+    import csv
+
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="license-disagreements.csv"'
+    writer = csv.writer(response)
+    writer.writerow(["source", "doi", "title", "published", "declared_license", "files_at", "files_license", "files_url", "osprey_state", "authors", "orcids"])
+    for d in disagreements:
+        p = d["project"]
+        writer.writerow([
+            p.source, p.doi, p.title, p.published_on or "", d["declared"], d["linked_source"], d["linked"], p.files_url, p.index_state,
+            "; ".join(n for n, _ in d["authors"]), "; ".join(o for _, o in d["authors"] if o),
+        ])
+    return response

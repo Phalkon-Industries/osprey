@@ -180,6 +180,14 @@ class Project(models.Model):
     gate_license = models.JSONField(default=dict, blank=True)
     gate_files = models.JSONField(default=dict, blank=True)
     oshwa_uid = models.CharField(max_length=20, blank=True)
+    # License audit (all kinds): OSPREY's license compared with the Zenodo
+    # record and any linked GitHub repository. See projects/indexing/license_check.py.
+    license_check = models.JSONField(default=dict, blank=True)
+    license_checked_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def license_findings(self) -> list:
+        return list((self.license_check or {}).get("findings") or [])
     cover_image_url = models.URLField(
         blank=True,
         help_text=(

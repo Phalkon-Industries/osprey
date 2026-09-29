@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}License checks &middot; OSPREY
+<h2 style="margin-top:2rem">Indexed entries: article says one license, the files say another <span class="muted small">({{ disagreements|length }})</span></h2>
+<p class="muted">A log for later outreach to the authors. <a href="?export=disagreements">Download as CSV</a>.</p>
+<table class="zenodo-jobs">
+    <thead><tr><th>Entry</th><th>Article says</th><th>Files say</th><th>State</th><th>Authors</th></tr></thead>
+    <tbody>
+    {% for d in disagreements %}
+    <tr>
+        <td><a href="{{ d.project.get_absolute_url }}">{{ d.project.title|truncatechars:60 }}</a><br><span class="muted small">{{ d.project.source_label }}{% if d.project.published_on %} &middot; {{ d.project.published_on|date:"Y" }}{% endif %} &middot; <a href="{{ d.project.canonical_url }}" rel="noopener">original</a></span></td>
+        <td>{{ d.declared }}</td>
+        <td>{{ d.linked }} <span class="muted small">on {{ d.linked_source }}</span></td>
+        <td>{{ d.project.index_state }}</td>
+        <td class="small">{% for name, orcid in d.authors|slice:":4" %}{{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if d.authors|length > 4 %} +{{ d.authors|length|add:"-4" }}{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="muted">None recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+{% block content %}
+<h1>License checks</h1>
+<p class="muted">OSPREY's license for each public project, compared with its Zenodo record and any linked GitHub repository. Runs daily; owners are told when a finding appears.{% if unchecked %} {{ unchecked }} project{{ unchecked|pluralize }} not checked yet.{% endif %}</p>
+<table class="zenodo-jobs">
+    <thead><tr><th>Project</th><th>OSPREY</th><th>Zenodo</th><th>GitHub</th><th>Findings</th><th>Checked</th><th></th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+    <tr>
+        <td><a href="{{ p.get_absolute_url }}">{{ p.title|truncatechars:60 }}</a><br><span class="muted small">{{ p.get_origin_display }}{% if p.created_by %} &middot; @{{ p.created_by.get_username }}{% endif %}</span></td>
+        <td>{{ p.license_check.osprey|default:"—" }}</td>
+        <td>{{ p.license_check.zenodo|default:"—" }}</td>
+        <td class="small">{% for repo, lic in p.license_check.github.items %}{{ repo }}: {{ lic|default:"none" }}<br>{% empty %}—{% endfor %}</td>
+        <td class="small">{% for f in p.license_findings %}<span class="check-fail-text">{{ f.text }}</span>{% endfor %}</td>
+        <td class="muted small">{{ p.license_checked_at|timesince }} ago</td>
+        <td><form method="post" style="margin:0">{% csrf_token %}<input type="hidden" name="action" value="recheck"><input type="hidden" name="project_id" value="{{ p.pk }}"><button type="submit" class="ghost small">Re-check</button></form></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" class="muted">No open findings.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

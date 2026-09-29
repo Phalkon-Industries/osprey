@@ -138,7 +138,8 @@ class EmailTransportTests(TestCase):
         self.assertIsInstance(backend.delegate, ConsoleBackend)
 
     @override_settings(
-        ANYMAIL={"MAILJET_API_KEY": "env-key", "MAILJET_SECRET_KEY": "env-secret"}
+        EMAIL_DELIVERY_BACKEND="anymail.backends.mailjet.EmailBackend",
+        ANYMAIL={"MAILJET_API_KEY": "env-key", "MAILJET_SECRET_KEY": "env-secret"},
     )
     def test_backend_uses_env_credentials_when_enabled(self):
         config = EmailSettings.load()
@@ -894,7 +895,7 @@ class EmailAdminAccessTests(TestCase):
         self.assertIn("ready", status)
         self.assertNotIn("not ready", status)
 
-    @override_settings(ANYMAIL={})
+    @override_settings(EMAIL_DELIVERY_BACKEND="anymail.backends.mailjet.EmailBackend", ANYMAIL={})
     def test_provider_status_reports_not_ready_with_reason(self):
         from .admin import EmailSettingsAdmin
 

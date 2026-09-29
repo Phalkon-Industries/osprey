@@ -220,7 +220,7 @@ class NewVersionJourneyTests(JourneyTestCase):
         fake_v2 = self.fz.deposition(deposit.deposition_id)
         self.assertEqual(
             sorted(f["filename"] for f in fake_v2.files),
-            ["CITATION.cff", "osprey-project.json", "pump-v2.zip"],
+            ["CITATION.cff", "LICENSE.txt", "osprey-project.json", "pump-v2.zip"],
         )
         self.assertNoBrowserErrors()
 
@@ -599,7 +599,7 @@ class IndexedEntryJourneyTests(JourneyTestCase):
         with self.page.expect_navigation():
             self.page.click("text=OpenCTD")
         self.assertIn("View original", self.page.content())
-        self.assertIn("Design files", self.page.content())
+        self.assertIn("Submitted to the index by", self.page.content())
         self.assertEqual(self.page.locator("a.project-tab:has-text('Wiki')").count(), 0)
         with self.page.expect_navigation():
             self.page.click("button:has-text('Follow Project')")

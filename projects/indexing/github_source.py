@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
-from .records import Author, Gate, SourceError, SourceRecord, normalize_license, summary_from_readme, user_agent
+from .records import INDEX_ACCEPTED_LICENSES, Author, Gate, SourceError, SourceRecord, normalize_license, summary_from_readme, user_agent
 
 
 def _base() -> str:
@@ -71,6 +71,9 @@ def fetch(full_name: str) -> SourceRecord:
         artifact_type="Software",
         raw={k: repo.get(k) for k in ("full_name", "html_url", "homepage", "pushed_at", "stargazers_count", "archived", "default_branch")},
     )
-    rec.gate_license = Gate(bool(license_key), spdx or "no license file", "GitHub repository license (SPDX)")
+    accepted = license_key in INDEX_ACCEPTED_LICENSES
+    rec.gate_license = Gate(accepted, spdx or "no license file", "GitHub repository license (SPDX)")
+    if license_key and not accepted:
+        rec.gate_license.found = f"{spdx}: open, but not on OSPREY's list"
     rec.gate_files = Gate(True, "repository", "GitHub")
     return rec

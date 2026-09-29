@@ -44,6 +44,7 @@ class Command(BaseCommand):
                     call_command("prune_notifications")
                     call_command("prune_draft_archives")
                     call_command("refresh_registered_projects")
+                    call_command("license_audit")
                     last_digest_date = today
             except Exception as exc:  # noqa: BLE001 - the loop must survive
                 # transient DB/provider outages and try again next tick.

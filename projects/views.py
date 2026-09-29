@@ -186,6 +186,29 @@ def _process_attachments(request, project: Project) -> None:
     )
 
 
+def _archive_license_conflict(request, project, chosen_license: str, *, field: str = "attachment_files") -> str:
+    """Block message when the archive being published carries a license
+    that disagrees with the chosen one. Looks at the file in this request
+    first, else the pending draft archive."""
+    from .licensing import archive_license_conflict
+
+    uploads = request.FILES.getlist(field) if field == "attachment_files" else ([request.FILES[field]] if field in request.FILES else [])
+    if uploads:
+        return archive_license_conflict(uploads[0], chosen_license)
+    if project is not None and project.pk:
+        pending = project.attachments.filter(published_to_zenodo=False).exclude(file="").first()
+        if pending is not None:
+            try:
+                pending.file.open("rb")
+                return archive_license_conflict(pending.file, chosen_license)
+            finally:
+                try:
+                    pending.file.close()
+                except Exception:  # noqa: BLE001
+                    pass
+    return ""
+
+
 def _visible_projects_for(user):
     """Queryset of projects the given user is allowed to see in lists."""
     qs = Project.objects.prefetch_related("tags", "images", "contributions__user")
@@ -862,6 +885,11 @@ def project_new(request):
                     "Every contributor needs an attached ORCID iD before "
                     f"publishing. Missing for: {', '.join(missing)}.",
                 )
+        if action == "publish" and can_publish and form.is_valid():
+            conflict = _archive_license_conflict(request, None, form.cleaned_data.get("resolved_license", ""))
+            if conflict:
+                form.add_error(None, conflict)
+                can_publish = False
         if form.is_valid() and formset.is_valid() and can_publish:
             project = form.save(commit=False)
             project.created_by = request.user
@@ -956,6 +984,11 @@ def project_edit(request, slug: str):
                     "Every contributor needs an attached ORCID iD before "
                     f"publishing. Missing for: {', '.join(missing)}.",
                 )
+        if action == "publish" and can_publish and form.is_valid():
+            conflict = _archive_license_conflict(request, project, form.cleaned_data.get("resolved_license", ""))
+            if conflict:
+                form.add_error(None, conflict)
+                can_publish = False
         if (
             form.is_valid()
             and (not manage_contributors or formset.is_valid())
@@ -1107,7 +1140,7 @@ def project_zenodo_new_version(request, slug: str):
     )
     if request.method == "POST":
         action = request.POST.get("action", "draft")
-        form = NewVersionForm(request.POST, request.FILES)
+        form = NewVersionForm(request.POST, request.FILES, current_license=project.license)
         upload = request.FILES.get("archive")
         # An archive is required unless one is already pending locally.
         if upload is None and pending_attachment is None:
@@ -1116,7 +1149,15 @@ def project_zenodo_new_version(request, slug: str):
             form.add_error("archive", "Only .zip archives are accepted.")
         elif upload is not None and getattr(upload, "size", 0) > MAX_ATTACHMENT_BYTES:
             form.add_error("archive", "Archive exceeds 500 MiB limit.")
+        chosen_license = form.data.get("license_choice") or project.license
+        if action == "publish" and not form.errors:
+            conflict = _archive_license_conflict(request, project, chosen_license, field="archive")
+            if conflict:
+                form.add_error("archive", conflict)
         if form.is_valid():
+            if chosen_license and chosen_license != project.license:
+                project.license = chosen_license
+                project.save(update_fields=["license"])
             if upload is not None:
                 # Replace any prior draft attachment so only the new
                 # archive is queued for the new version.
@@ -1163,7 +1204,7 @@ def project_zenodo_new_version(request, slug: str):
             initial["changelog"] = deposit.pending_changelog
         if deposit.repo_link:
             initial["repo_link"] = deposit.repo_link
-        form = NewVersionForm(initial=initial)
+        form = NewVersionForm(initial=initial, current_license=project.license)
     return render(
         request,
         "projects/zenodo_new_version.html",

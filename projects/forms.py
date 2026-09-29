@@ -300,6 +300,13 @@ class ProjectForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         cleaned["resolved_license"] = cleaned.get("license_choice", "")
+        # A published project's license travels with its published files,
+        # so it can't be changed here (decided 2026-09-29). It changes with
+        # the next version, on the new-version page.
+        instance = self.instance
+        if instance is not None and instance.pk and instance.is_public and instance.origin == Project.ORIGIN_NATIVE and instance.license:
+            cleaned["resolved_license"] = instance.license
+            self.errors.pop("license_choice", None)
         return cleaned
 
     def clean_cover_image(self):
@@ -446,6 +453,16 @@ ContributionFormSet = inlineformset_factory(
 class NewVersionForm(forms.Form):
     """Form shown when starting a new published Zenodo version."""
 
+    def __init__(self, *args, current_license: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = list(ProjectForm.LICENSE_CHOICES[1:])
+        known = {key for key, _label in COMMON_LICENSES}
+        if current_license and current_license not in known:
+            choices = [(current_license, f"Current license: {current_license}")] + choices
+        self.fields["license_choice"].choices = choices
+        if current_license:
+            self.fields["license_choice"].initial = current_license
+
     changelog = forms.CharField(
         label="What changed in this version",
         widget=forms.Textarea(attrs={"rows": 6}),
@@ -454,6 +471,14 @@ class NewVersionForm(forms.Form):
             "Plain text or Markdown."
         ),
     )
+    license_choice = forms.ChoiceField(
+        label="License for this version",
+        required=False,
+        help_text="Applies to this version's files. Leave as is unless the license changed.",
+    )
+    # The archive is read from request.FILES by the view; the field exists so
+    # archive errors have somewhere to land.
+    archive = forms.FileField(required=False)
     repo_link = forms.URLField(
         label="Repository link for this version (optional)",
         required=False,

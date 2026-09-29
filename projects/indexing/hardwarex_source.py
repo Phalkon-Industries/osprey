@@ -17,7 +17,7 @@ from datetime import date
 from django.conf import settings
 
 from . import http
-from .records import Author, Gate, SourceError, SourceRecord, normalize_license
+from .records import INDEX_ACCEPTED_LICENSES, Author, Gate, SourceError, SourceRecord, normalize_license
 
 ISSN = "2468-0672"
 DOI_PREFIX = "10.1016/j.ohx."
@@ -43,26 +43,73 @@ def _text(el) -> str:
     return re.sub(r"\s+", " ", html.unescape(" ".join(el.itertext()))).strip() if el is not None else ""
 
 
-def _cells(root) -> list[str]:
-    """Every table cell's text, in document order, for the spec-table scan."""
-    return [_text(td) for td in root.iter() if td.tag.split("}")[-1] in ("td", "th")]
+def _tables(root) -> list[list[list[str]]]:
+    """Every table as rows of cell texts, in document order."""
+    tables = []
+    for table in root.iter():
+        if table.tag.split("}")[-1] != "table":
+            continue
+        rows = []
+        for tr in table.iter():
+            if tr.tag.split("}")[-1] != "tr":
+                continue
+            cells = [_text(td) for td in tr if td.tag.split("}")[-1] in ("td", "th")]
+            if cells:
+                rows.append(cells)
+        if rows:
+            tables.append(rows)
+    return tables
+
+
+HEADER_WORDS = ("location of the file", "file type", "design file name", "open source license")
 
 
 def spec_table(root) -> dict:
-    """Pull the Specifications table rows HardwareX requires of every article."""
-    cells = _cells(root)
+    """Pull what HardwareX requires of every article.
+
+    The Specifications table is two columns of key/value rows ("Open
+    source license", "Source file repository", "OSHWA certification UID",
+    "Cost of hardware"). The design-files table has a column headed
+    "Open source license" with one license per file; it is the fallback
+    when the spec table has no license row, and its header must never be
+    mistaken for a value.
+    """
     found: dict = {}
-    for i, cell in enumerate(cells[:-1]):
-        key = cell.lower().rstrip(":")
-        nxt = cells[i + 1]
-        if key.startswith("open source license") and "license" not in found:
-            found["license"] = nxt
-        elif key.startswith("source file repository") and "repository" not in found:
-            found["repository"] = nxt
-        elif key.startswith("oshwa certification") and "oshwa" not in found:
-            found["oshwa"] = nxt
-        elif key.startswith("cost of hardware") and "cost" not in found:
-            found["cost"] = nxt
+    per_file: list[str] = []
+    for rows in _tables(root):
+        header = [c.lower().rstrip(":") for c in rows[0]]
+        if "open source license" in header and any(w in " ".join(header) for w in ("location of the file", "file type", "design file")):
+            col = header.index("open source license")
+            for row in rows[1:]:
+                if len(row) > col and row[col].strip():
+                    per_file.append(row[col].strip())
+            continue
+        for row in rows:
+            if len(row) < 2:
+                continue
+            key = row[0].lower().rstrip(":")
+            value = row[1].strip()
+            if value.lower() in HEADER_WORDS:
+                continue
+            if key.startswith("open source license") and "license" not in found:
+                found["license"] = value
+            elif key.startswith("source file repository") and "repository" not in found:
+                found["repository"] = value
+            elif key.startswith("oshwa certification") and "oshwa" not in found:
+                found["oshwa"] = value
+            elif key.startswith("cost of hardware") and "cost" not in found:
+                found["cost"] = value
+    if per_file:
+        found["per_file_licenses"] = per_file
+        if "license" not in found:
+            keys = {normalize_license(v) for v in per_file}
+            keys.discard("")
+            if len(keys) == 1:
+                found["license"] = per_file[0]
+                found["license_from"] = "design files table"
+            elif len(keys) > 1:
+                found["license"] = "; ".join(sorted(set(per_file)))
+                found["license_from"] = "design files table (mixed)"
     return found
 
 
@@ -173,8 +220,18 @@ def fetch(doi: str) -> SourceRecord:
         rec.oshwa_uid = ""
     lic_text = table.get("license", "")
     rec.license_raw = lic_text
-    rec.license = hardware_license(lic_text)
-    rec.gate_license = Gate(bool(rec.license), lic_text or "no Open source license row in the spec table", "Specifications table (Europe PMC full text)")
+    where = "Specifications table (Europe PMC full text)"
+    if table.get("license_from"):
+        where = table["license_from"].capitalize() + " (Europe PMC full text)"
+    if table.get("license_from", "").endswith("(mixed)"):
+        rec.license = ""
+        rec.gate_license = Gate(False, f"design files carry different licenses: {lic_text}; pick the hardware one", where)
+    else:
+        rec.license = hardware_license(lic_text)
+        accepted = rec.license in INDEX_ACCEPTED_LICENSES
+        rec.gate_license = Gate(accepted, lic_text or "no Open source license row in the spec table", where)
+        if rec.license and not accepted:
+            rec.gate_license.found = f"{lic_text}: open, but not on OSPREY's list"
     repo = first_url(table.get("repository", ""))
     rec.files_url = repo
     rec.files_url_source = "spec_table" if repo else ""

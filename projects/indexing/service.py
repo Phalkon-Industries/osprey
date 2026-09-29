@@ -14,7 +14,7 @@ from projects.models import Contribution, Project, ProjectDeposit, Tag, TagAssig
 from projects.zenodo_register import normalize_orcid
 
 from . import github_source, hardwarex_source, joh_source, zenodo_source
-from .records import Gate, SourceError, SourceRecord, detect
+from .records import INDEX_ACCEPTED_LICENSES, Gate, SourceError, SourceRecord, detect
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +197,7 @@ def license_via_files(record: SourceRecord) -> bool:
             linked = ADAPTERS[source](external_id)
         except SourceError:
             continue
-        if not linked.license:
+        if not linked.license or linked.license not in INDEX_ACCEPTED_LICENSES:
             continue
         record.license = linked.license
         record.license_raw = linked.license_raw or linked.license
@@ -211,6 +211,36 @@ def license_via_files(record: SourceRecord) -> bool:
             record.gate_files = Gate(True, record.files_url, f"linked {source}")
         return True
     return False
+
+
+def refresh_entry(project: Project) -> Preview:
+    """Re-read an entry from its source and apply the current rules.
+
+    A live entry that no longer passes (a license mismatch found by the
+    cross-check, a repository gone private) is pulled back to held; a held
+    entry stays held for staff. Used by the index_recheck command."""
+    if project.source not in ADAPTERS:
+        return Preview(line=project.external_id, source=project.source, outcome=UNSUPPORTED, message="No adapter for this source.")
+    try:
+        record = ADAPTERS[project.source](project.external_id)
+    except SourceError as exc:
+        return Preview(line=project.external_id, source=project.source, external_id=project.external_id, outcome=ERROR, message=str(exc))
+    license_via_files(record)
+    was_live = project.index_state == Project.INDEX_LIVE
+    hold = None if was_live else True
+    index_record(record, listed_by=project.listed_by, hold=hold)
+    project.refresh_from_db()
+    if was_live and not record.passes:
+        project.index_state = Project.INDEX_HELD
+        project.visibility = Project.VISIBILITY_PRIVATE
+        project.save(update_fields=["index_state", "visibility"])
+    preview = Preview(line=project.external_id, source=project.source, external_id=project.external_id, record=record)
+    preview.outcome = LIVE if record.passes else HELD
+    if not record.gate_license.ok:
+        preview.reasons.append(f"License: {record.gate_license.found}.")
+    if not record.gate_files.ok:
+        preview.reasons.append(f"Files: {record.gate_files.found}.")
+    return preview
 
 
 def review_state(project: Project) -> str:
@@ -420,10 +450,47 @@ def _tell_submitter(project: Project, *, title: str, body: str = "", url: str = 
     send(project.listed_by, kind="index_decision", title=title, body=body, url=url or project.get_absolute_url())
 
 
+def recheck_files_link(project: Project, *, title: str = "", summary: str = "", files_url: str = "", by=None) -> str:
+    """Queue Re-check: keep staff's edits, then read the license from the
+    (possibly new) files link when it is a GitHub repository or Zenodo
+    record. Nothing else on the entry is refetched or overwritten.
+    Returns a one-line result for the flash message."""
+    changed = []
+    if title and title != project.title:
+        project.title = title[:300]
+        changed.append("title")
+    if summary and summary != project.summary:
+        project.summary = summary[:280]
+        changed.append("summary")
+    if files_url and files_url != project.files_url:
+        project.files_url = files_url[:200]
+        project.files_url_source = "staff"
+        changed.extend(["files_url", "files_url_source"])
+    if changed:
+        project.save(update_fields=changed)
+    who = by.get_username() if by else "staff"
+    if not project.files_url:
+        return "No files link to check."
+    linked = _linked_license(project.files_url)
+    if linked is None:
+        project.gate_files = {"ok": True, "confirm": False, "found": project.files_url, "where": f"confirmed by @{who}"}
+        project.save(update_fields=["gate_files"])
+        return "Files link isn't a GitHub repository or Zenodo record, so no license could be read from it. Files marked confirmed."
+    source, found = linked
+    project.gate_files = {"ok": True, "confirm": False, "found": project.files_url, "where": f"linked {source}, confirmed by @{who}"}
+    if found.license and found.license in INDEX_ACCEPTED_LICENSES:
+        project.license = found.license
+        project.gate_license = {"ok": True, "confirm": False, "found": f"{found.license} from linked {source} {found.canonical_url}", "where": f"linked {source}"}
+        project.save(update_fields=["gate_files", "license", "gate_license"])
+        return f"License {found.license} read from the linked {source}."
+    project.gate_license = {"ok": False, "confirm": False, "found": f"linked {source} shows {found.license or 'no license'}", "where": f"linked {source}"}
+    project.save(update_fields=["gate_files", "gate_license"])
+    return f"The linked {source} shows {found.license or 'no license'}; pick the license by hand."
+
+
 def recheck(project: Project) -> Preview:
     """Re-read a held entry from its source and refresh it in place, keeping
-    it held for staff. Used on request rows that came in before their
-    source had an adapter, and to refresh any held entry."""
+    it held for staff. Used by the index_recheck command."""
     line = project.external_id if project.source != Project.SOURCE_OTHER else project.canonical_url
     preview = resolve(line)
     if preview.outcome == EXISTS and preview.existing and preview.existing.pk == project.pk and preview.source in ADAPTERS:

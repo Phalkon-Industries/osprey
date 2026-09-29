@@ -574,6 +574,17 @@ def _upload_osprey_sidecars(client, deposit, project) -> None:
             content_type="application/octet-stream",
         ),
     )
+    if (project.license or "").strip():
+        from .licensing import license_sidecar_text
+
+        client.upload_to_bucket(
+            deposit.bucket_url,
+            ProjectArchive(
+                filename="LICENSE.txt",
+                content=license_sidecar_text(project).encode("utf-8"),
+                content_type="application/octet-stream",
+            ),
+        )
 
 
 def build_project_archive(project: Project) -> ProjectArchive:

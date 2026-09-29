@@ -6,6 +6,12 @@
 <article>
     {% include "projects/_project_hero.html" with current_tab="overview" project_can_edit=can_edit show_watch=True is_watching=is_watching can_new_version=can_new_version %}
 {% include "projects/_zenodo_status.html" %}
+    {% if can_edit and project.license_findings %}
+    <div class="callout license-callout">
+        <strong>License check.</strong>
+        {% for f in project.license_findings %}{{ f.text }} {% endfor %}
+    </div>
+    {% endif %}
 
     {% if user.is_authenticated and project.pending_owner_id == user.id %}
     <div class="callout">
@@ -22,10 +28,8 @@
     <section class="indexed-source">
         <p>
             Indexed from {{ project.source_venue|default:project.source_label }}{% if project.published_on %}, {{ project.published_on|date:"Y" }}{% endif %}.
-            {% if project.listed_by %}Listed by <a href="{% url 'profile' project.listed_by.get_username %}">@{{ project.listed_by.get_username }}</a>.{% else %}Listed by OSPREY staff.{% endif %}
             <a class="button ghost" href="{{ project.canonical_url }}" rel="noopener" style="margin-left:.5rem">View original</a>
         </p>
-        <p><a href="{% url 'projects:files' project.slug %}">Design files</a>{% if not project.files_url %} <span class="muted small">(not yet linked)</span>{% endif %}</p>
     </section>
     {% endif %}
 
@@ -177,6 +181,13 @@
             Cite the project DOI for the work as a whole. Cite a version DOI when
             you need to point at exactly one snapshot.
         </p>
+    </section>
+    {% endif %}
+
+    {% if project.is_indexed %}
+    <section>
+        <h2>Submitted to the index by</h2>
+        <p>{% if project.listed_by %}<a href="{% url 'profile' project.listed_by.get_username %}">@{{ project.listed_by.get_username }}</a>{% else %}OSPREY staff{% endif %}{% if project.indexed_at %} <span class="muted small">&middot; {{ project.indexed_at|date:"Y-m-d" }}</span>{% endif %}</p>
     </section>
     {% endif %}
 

@@ -5,7 +5,7 @@ from datetime import date
 
 from projects import zenodo_register as zr
 
-from .records import Author, Gate, SourceError, SourceRecord, normalize_license
+from .records import INDEX_ACCEPTED_LICENSES, Author, Gate, SourceError, SourceRecord, normalize_license
 
 
 def fetch(doi: str) -> SourceRecord:
@@ -48,6 +48,9 @@ def fetch(doi: str) -> SourceRecord:
         artifact_type={"software": "Software", "dataset": "Dataset"}.get((metadata.get("resource_type") or {}).get("type") or metadata.get("upload_type") or "", "Hardware"),
         raw=record,
     )
-    rec.gate_license = Gate(bool(license_key), raw_license or "no license on the record", "Zenodo record metadata")
+    accepted = license_key in INDEX_ACCEPTED_LICENSES
+    rec.gate_license = Gate(accepted, raw_license or "no license on the record", "Zenodo record metadata")
+    if license_key and not accepted:
+        rec.gate_license.found = f"{license_key}: open, but not on OSPREY's list"
     rec.gate_files = Gate(bool(files), f"{len(files)} file(s) on the record" if files else "no files on the record", "Zenodo record")
     return rec

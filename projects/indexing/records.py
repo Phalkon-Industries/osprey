@@ -8,16 +8,23 @@ from django.conf import settings
 
 from projects.forms import COMMON_LICENSES
 
+# Licenses OSPREY lists on native and registered projects (the dropdown).
 ACCEPTED_LICENSES = {key for key, _label in COMMON_LICENSES}
+# Open licenses an indexed entry may carry as a badge without being
+# selectable for OSPREY's own projects. TAPR OHL meets the OSHWA open
+# source hardware definition; decided 2026-09-29 for indexed entries only.
+INDEXED_ONLY_LICENSES = {"TAPR-OHL-1.0"}
+INDEX_ACCEPTED_LICENSES = ACCEPTED_LICENSES | INDEXED_ONLY_LICENSES
 
 # Free-text and SPDX spellings seen in the wild, mapped onto OSPREY's keys.
 _LICENSE_PATTERNS = [
+    (r"\btapr\b", "TAPR-OHL-1.0"),
     (r"cern[\s-]*ohl[\s-]*s", "CERN-OHL-S-2.0"),
     (r"cern[\s-]*ohl[\s-]*w", "CERN-OHL-W-2.0"),
     (r"cern[\s-]*ohl[\s-]*p", "CERN-OHL-P-2.0"),
     (r"\bagpl", "AGPL-3.0"),
     (r"\blgpl", "LGPL-3.0"),
-    (r"\bgpl[\s-]*v?3|gnu general public license v?3", "GPL-3.0"),
+    (r"\bgpl[^a-z0-9]{0,6}v?3|general public license[^0-9]{0,12}v?3", "GPL-3.0"),
     (r"\bapache", "Apache-2.0"),
     (r"\bmit\b", "MIT"),
     (r"bsd[\s-]*3", "BSD-3-Clause"),
@@ -35,7 +42,7 @@ def normalize_license(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
         return ""
-    if raw in ACCEPTED_LICENSES:
+    if raw in INDEX_ACCEPTED_LICENSES:
         return raw
     low = raw.lower()
     # Creative Commons URLs: creativecommons.org/licenses/by-sa/4.0, /by/4.0, /publicdomain/zero/1.0

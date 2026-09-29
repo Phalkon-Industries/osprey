@@ -58,6 +58,7 @@ EVENTS = {
     "watched_version_published": GROUP_FOLLOWS,
     "deposit_published": GROUP_PROJECTS,
     "deposit_failed": GROUP_ACCOUNT,
+    "license_check": GROUP_ACCOUNT,
     "watched_activity": GROUP_FOLLOWS,
     "lineage_claimed": GROUP_PROJECTS,
     "lineage_responded": GROUP_PROJECTS,

@@ -83,7 +83,7 @@
         <label>Summary <textarea name="summary" rows="2" style="width:100%">{{ project.summary }}</textarea></label>
         <div style="display:flex;gap:.5rem;align-items:center">
             <button type="submit" name="action" value="approve">Approve</button>
-            {% if project.source != "other" %}<button type="submit" name="action" value="recheck" class="ghost" title="Re-read from the source; stays held">Re-check</button>{% endif %}
+            {% if project.source != "other" %}<button type="submit" name="action" value="recheck" class="ghost" title="Keep your edits, then read the license from the files link">Re-check files link</button>{% endif %}
             <input type="text" name="reason" placeholder="Reason (kept in the log)" style="flex:1">
             <button type="submit" name="action" value="decline" class="ghost">Decline</button>
         </div>
