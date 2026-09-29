@@ -115,7 +115,7 @@ class EntryPageTests(IndexedBase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Indexed &middot; HardwareX")
         self.assertContains(response, "View original")
-        self.assertContains(response, "https://doi.org/10.17632/8tb37yjp9m.3")
+        self.assertContains(response, reverse("projects:files", args=[self.hardwarex.slug]))
         self.assertContains(response, "Authors as listed by HardwareX")
         self.assertContains(response, "Cite the original")
         self.assertContains(response, "Text from HardwareX, CC BY-NC-ND 4.0")

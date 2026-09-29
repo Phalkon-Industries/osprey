@@ -109,6 +109,7 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-detail", self.url("projects:detail", published.slug)),
             ("project-lineage", self.url("projects:lineage", published.slug)),
             ("project-versions", self.url("projects:versions", published.slug)),
+            ("project-files", self.url("projects:files", published.slug)),
             ("project-new", self.url("projects:new")),
             ("project-edit-basics", self.url("projects:edit", draft.slug) + "?tab=basics"),
             ("project-edit-contributors", self.url("projects:edit", draft.slug) + "?tab=contributors"),

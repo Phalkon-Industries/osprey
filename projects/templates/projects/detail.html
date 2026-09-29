@@ -25,10 +25,7 @@
             {% if project.listed_by %}Listed by <a href="{% url 'profile' project.listed_by.get_username %}">@{{ project.listed_by.get_username }}</a>.{% else %}Listed by OSPREY staff.{% endif %}
             <a class="button ghost" href="{{ project.canonical_url }}" rel="noopener" style="margin-left:.5rem">View original</a>
         </p>
-        <p>
-            <strong>Design files:</strong>
-            {% if project.files_url %}<a href="{{ project.files_url }}" rel="noopener">{{ project.files_url }}</a>{% else %}not yet linked.{% endif %}
-        </p>
+        <p><a href="{% url 'projects:files' project.slug %}">Design files</a>{% if not project.files_url %} <span class="muted small">(not yet linked)</span>{% endif %}</p>
     </section>
     {% endif %}
 
@@ -65,7 +62,7 @@
     </section>
     {% endif %}
 
-    <div class="two-col" style="margin-top:1.5rem">
+    <div style="margin-top:1.5rem">
         <section>
             <h2>{% if project.is_indexed %}Authors as listed by {{ project.source_venue|default:project.source_label }}{% else %}Contributors{% endif %}</h2>
             <ul class="contributor-list">
@@ -95,49 +92,6 @@
             </ul>
         </section>
 
-        {% if not project.is_indexed %}
-        <section>
-            <h2>Repositories</h2>
-            <ul>
-                {% if project.canonical_url %}
-                <li>
-                    <span class="pill">{{ project.canonical_url_label }}</span>
-                    <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a>
-                </li>
-                {% endif %}
-                {% for a in project.artifact_links.all %}
-                {% if a.url != project.canonical_url %}
-                <li>
-                    <span class="pill">{{ a.get_kind_display }}</span>
-                    <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
-                </li>
-                {% endif %}
-                {% empty %}
-                {% if not project.canonical_url %}<li class="muted">No repository links yet.</li>{% endif %}
-                {% endfor %}
-            </ul>
-            {% if project.attachments.all %}
-            {% with zenodo_record=zenodo_deposit.external_url %}
-            <h3 style="margin-top:1rem">Project files</h3>
-            <ul>
-                {% for att in project.attachments.all %}
-                <li>
-                    {% if att.published_to_zenodo and zenodo_record %}
-                    <a href="{{ zenodo_record }}" rel="noopener">{{ att.filename }}</a>
-                    <span class="muted small">&middot; on Zenodo</span>
-                    {% elif att.file %}
-                    <a href="{{ att.file.url }}">{{ att.filename }}</a>
-                    <span class="muted small">&middot; draft (will be moved to Zenodo on publish)</span>
-                    {% else %}
-                    {{ att.filename }}
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-            {% endwith %}
-            {% endif %}
-        </section>
-        {% endif %}
     </div>
 
     {% if project.funding %}

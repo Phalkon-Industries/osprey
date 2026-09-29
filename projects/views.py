@@ -1182,6 +1182,72 @@ def project_zenodo_new_version(request, slug: str):
     )
 
 
+def _files_from_response(response: dict, record_url: str) -> list[dict]:
+    """Normalize Zenodo file entries from either API shape.
+
+    Deposit API (native publishes): filename / filesize / links.download.
+    Records API (registered reads): key / size / links.self.
+    """
+    out = []
+    for f in (response or {}).get("files") or []:
+        name = f.get("key") or f.get("filename") or ""
+        if not name:
+            continue
+        links = f.get("links") or {}
+        url = links.get("download") or (
+            f"{record_url}/files/{name}?download=1" if record_url else links.get("self", "")
+        )
+        out.append({"name": name, "size": f.get("size") or f.get("filesize") or 0, "url": url})
+    return out
+
+
+def _file_groups(project: Project, deposit) -> list[dict]:
+    """Per-version file lists for the Files tab, latest first."""
+    groups = []
+    if deposit is None:
+        return groups
+    versions = list(deposit.versions.all())
+    for i, version in enumerate(versions):
+        record_url = version.external_url
+        files = _files_from_response(version.last_response, record_url)
+        if not files and i == 0:
+            # Legacy native publishes stored the response on the deposit only.
+            files = _files_from_response(deposit.last_response, record_url)
+        if not files and i == 0 and project.attachments.exists():
+            files = [{"name": a.filename, "size": a.size_bytes, "url": record_url} for a in project.attachments.all()]
+        groups.append({"version": version, "record_url": record_url, "files": files})
+    if not versions and deposit.state == ProjectDeposit.STATE_PUBLISHED:
+        record_url = deposit.external_url
+        files = _files_from_response(deposit.last_response, record_url) or [
+            {"name": a.filename, "size": a.size_bytes, "url": record_url} for a in project.attachments.all()
+        ]
+        groups.append({"version": None, "record_url": record_url, "files": files})
+    return groups
+
+
+def project_files(request, slug: str):
+    """Files tab: where the downloads are, for every kind of project."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.viewable_by(request.user):
+        raise Http404
+    deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+    published = bool(deposit and deposit.state == ProjectDeposit.STATE_PUBLISHED) or bool(
+        deposit and deposit.versions.exists()
+    )
+    draft_attachments = [] if published or project.is_indexed else list(project.attachments.all())
+    return render(
+        request,
+        "projects/files.html",
+        {
+            "project": project,
+            "zenodo_deposit": deposit,
+            "file_groups": _file_groups(project, deposit) if published else [],
+            "draft_attachments": draft_attachments,
+            "can_edit": project.editable_by(request.user),
+        },
+    )
+
+
 def project_versions(request, slug: str):
     """Public list of every published version of a project."""
     project = get_object_or_404(Project, slug=slug)

@@ -210,6 +210,9 @@ RATELIMIT_LINEAGE_DECLARE = os.environ.get("RATELIMIT_LINEAGE_DECLARE", "20/h")
 RATELIMIT_STAFF_THREAD_REPLY = os.environ.get("RATELIMIT_STAFF_THREAD_REPLY", "20/h")
 RATELIMIT_CONTRIBUTOR_INVITE = os.environ.get("RATELIMIT_CONTRIBUTOR_INVITE", "10/h")
 RATELIMIT_OSPREY_INVITE = os.environ.get("RATELIMIT_OSPREY_INVITE", "10/h")
+# Public index submissions: per user per day, and lines per submission.
+RATELIMIT_INDEX_SUBMIT = os.environ.get("RATELIMIT_INDEX_SUBMIT", "20/d")
+INDEX_SUBMIT_MAX_LINES = int(os.environ.get("INDEX_SUBMIT_MAX_LINES", "10"))
 
 ZENODO_USE_SANDBOX = _env_bool("ZENODO_USE_SANDBOX", default=True)
 ZENODO_ACCESS_TOKEN = os.environ.get("ZENODO_ACCESS_TOKEN", "")
@@ -222,6 +225,12 @@ ZENODO_DEFAULT_COMMUNITY = os.environ.get("ZENODO_DEFAULT_COMMUNITY", "")
 # browser session (a dev machine). Empty disables token access; staff
 # sessions always work. Env only, never the database.
 STAFF_EXPORT_TOKEN = os.environ.get("STAFF_EXPORT_TOKEN", "")
+
+# Indexed entries: GitHub as a source. Unauthenticated calls are allowed
+# (60/hour); a token raises the limit. The base URL is overridden by the
+# fake GitHub inside test runs only.
+GITHUB_API_BASE_URL = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
+GITHUB_API_TOKEN = os.environ.get("GITHUB_API_TOKEN", "")
 
 # Socket timeout per Zenodo call. Tests lower it to exercise hangs quickly.
 ZENODO_TIMEOUT_SECONDS = int(os.environ.get("ZENODO_TIMEOUT_SECONDS", "20"))

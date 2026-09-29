@@ -187,7 +187,7 @@ class FakeZenodoServer(ThreadingHTTPServer):
             dep.metadata = json.loads(json.dumps(metadata))
             dep.files = [
                 {"id": uuid.uuid4().hex, "filename": name, "filesize": size, "checksum": "md5:seeded"}
-                for name, size in (files or [("archive.zip", 1234)])
+                for name, size in (files if files is not None else [("archive.zip", 1234)])
             ]
             siblings = [d for d in self.depositions.values() if d.conceptrecid == dep.conceptrecid and d is not dep]
             if siblings:

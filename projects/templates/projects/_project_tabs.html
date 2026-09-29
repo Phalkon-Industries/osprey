@@ -5,6 +5,7 @@ The host page is responsible for its own header above this strip.
 {% endcomment %}
 <nav class="project-tabs" aria-label="Project sections" role="tablist">
     <a href="{% url 'projects:detail' project.slug %}" class="project-tab{% if current_tab == 'overview' %} is-active{% endif %}"{% if current_tab == 'overview' %} aria-current="page"{% endif %}>Overview</a>
+    <a href="{% url 'projects:files' project.slug %}" class="project-tab{% if current_tab == 'files' %} is-active{% endif %}"{% if current_tab == 'files' %} aria-current="page"{% endif %}>Files</a>
     {% if not project.is_indexed %}<a href="{% url 'wiki:index' project.slug %}" class="project-tab{% if current_tab == 'wiki' %} is-active{% endif %}"{% if current_tab == 'wiki' %} aria-current="page"{% endif %}>Wiki</a>{% endif %}
     <a href="{% url 'use_reports:index' project.slug %}" class="project-tab{% if current_tab == 'use-reports' %} is-active{% endif %}"{% if current_tab == 'use-reports' %} aria-current="page"{% endif %}>Use reports</a>
     <a href="{% url 'conversations:index' project.slug %}" class="project-tab{% if current_tab == 'discussion' %} is-active{% endif %}"{% if current_tab == 'discussion' %} aria-current="page"{% endif %}>Discussion</a>

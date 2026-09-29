@@ -155,6 +155,7 @@ class Project(models.Model):
         ("repo", "Repository"),
         ("body_scan", "Found in article body"),
         ("staff", "Entered by staff"),
+        ("submitter", "Entered by the submitter"),
     ]
     files_url_source = models.CharField(
         max_length=16, choices=FILES_FROM_CHOICES, blank=True

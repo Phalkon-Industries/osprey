@@ -1,10 +1,11 @@
 from django.urls import path
 
-from . import views
+from . import views, views_indexing
 
 urlpatterns = [
     # Before the <slug> routes, or "register" is taken for a project slug.
     path("register/", views.project_register, name="register"),
+    path("index/", views_indexing.index_submit, name="index_submit"),
     path("", views.project_list, name="list"),
     path("orcid-search/", views.orcid_search_json, name="orcid_search"),
     path("lineage-lookup/", views.lineage_lookup, name="lineage_lookup"),
@@ -14,6 +15,7 @@ urlpatterns = [
     path("<slug:slug>/delete/", views.project_delete, name="delete"),
     path("<slug:slug>/watch/", views.watch_toggle, name="watch_toggle"),
     path("<slug:slug>/versions/", views.project_versions, name="versions"),
+    path("<slug:slug>/files/", views.project_files, name="files"),
     path("<slug:slug>/citations/", views.project_citations, name="citations"),
     path("<slug:slug>/lineage/", views.project_lineage, name="lineage"),
     path(

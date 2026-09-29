@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Files — {{ project.title }} — OSPREY{% endblock %}
+
+{% block content %}
+<article>
+    {% include "projects/_project_hero.html" with current_tab="files" %}
+    <section>
+        <h1 style="margin-top:1rem">Files</h1>
+
+        {% if project.is_indexed %}
+        <p>
+            <strong>Design files:</strong>
+            {% if project.files_url %}<a href="{{ project.files_url }}" rel="noopener">{{ project.files_url }}</a>{% else %}not yet linked.{% endif %}
+        </p>
+        <p><strong>Original:</strong> <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a></p>
+        {% endif %}
+
+        {% for group in file_groups %}
+        {% if forloop.first %}
+        <h2>{% if group.version %}v{{ group.version.version_index }} <span class="muted small">&middot; {{ group.version.published_at|date:"Y-m-d" }}</span>{% else %}Published files{% endif %}</h2>
+        <p class="muted small">{% if group.record_url %}<a href="{{ group.record_url }}" rel="noopener">Zenodo record</a>{% endif %}{% if group.version.doi %} &middot; DOI <code>{{ group.version.doi }}</code>{% elif zenodo_deposit.doi %} &middot; DOI <code>{{ zenodo_deposit.doi }}</code>{% endif %}</p>
+        <ul class="file-list">
+            {% for f in group.files %}
+            <li><a href="{{ f.url }}" rel="noopener">{{ f.name }}</a>{% if f.size %} <span class="muted small">{{ f.size|filesizeformat }}</span>{% endif %}</li>
+            {% empty %}
+            <li class="muted">No files listed on the record.</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        {% if forloop.counter == 2 %}<details class="older-versions"><summary class="muted">Older versions</summary>{% endif %}
+        <h3>v{{ group.version.version_index }} <span class="muted small">&middot; {{ group.version.published_at|date:"Y-m-d" }}</span></h3>
+        <p class="muted small">{% if group.record_url %}<a href="{{ group.record_url }}" rel="noopener">Zenodo record</a>{% endif %}{% if group.version.doi %} &middot; DOI <code>{{ group.version.doi }}</code>{% endif %}</p>
+        <ul class="file-list">
+            {% for f in group.files %}
+            <li><a href="{{ f.url }}" rel="noopener">{{ f.name }}</a>{% if f.size %} <span class="muted small">{{ f.size|filesizeformat }}</span>{% endif %}</li>
+            {% empty %}
+            <li class="muted">No files listed on the record.</li>
+            {% endfor %}
+        </ul>
+        {% if forloop.last %}</details>{% endif %}
+        {% endif %}
+        {% endfor %}
+
+        {% if draft_attachments %}
+        <h2>Draft files</h2>
+        <ul class="file-list">
+            {% for att in draft_attachments %}
+            <li>{% if att.file %}<a href="{{ att.file.url }}">{{ att.filename }}</a>{% else %}{{ att.filename }}{% endif %}{% if att.size_bytes %} <span class="muted small">{{ att.size_bytes|filesizeformat }}</span>{% endif %}</li>
+            {% endfor %}
+        </ul>
+        <p class="muted small">Moves to Zenodo on publish.</p>
+        {% elif not file_groups and not project.is_indexed %}
+        <p class="muted">No files yet.</p>
+        {% endif %}
+
+        {% if project.artifact_links.all or project.canonical_url and not project.is_indexed %}
+        <h2>Repositories</h2>
+        <ul>
+            {% if project.canonical_url and not project.is_indexed %}
+            <li>
+                <span class="pill">{{ project.canonical_url_label }}</span>
+                <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a>
+            </li>
+            {% endif %}
+            {% for a in project.artifact_links.all %}
+            {% if a.url != project.canonical_url %}
+            <li>
+                <span class="pill">{{ a.get_kind_display }}</span>
+                <a href="{{ a.url }}" rel="noopener">{{ a.label|default:a.url }}</a>
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </section>
+</article>
+{% endblock %}

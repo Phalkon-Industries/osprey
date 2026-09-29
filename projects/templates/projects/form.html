@@ -7,6 +7,7 @@
 {% if mode == 'new' %}
 <p class="muted" style="font-size:.9rem">
     Already archived on Zenodo? <a href="{% url 'projects:register' %}">Register your Zenodo record</a> instead.
+    Not your work? <a href="{% url 'projects:index_submit' %}">Add it to the index</a>.
 </p>
 {% endif %}
 <p class="muted" style="font-size:.9rem">

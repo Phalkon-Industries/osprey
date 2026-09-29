@@ -10,6 +10,7 @@ from core import views as core_views
 from feedback import views as feedback_views
 from people import views as people_views
 from projects import views as project_views
+from projects import views_indexing
 
 admin.site.site_header = "OSPREY admin"
 admin.site.site_title = "OSPREY admin"
@@ -37,6 +38,7 @@ urlpatterns = [
     ),
     path("settings/", core_views.settings_home, name="settings"),
     path("staff/zenodo/", project_views.zenodo_jobs_staff, name="zenodo_jobs"),
+    path("staff/index/", views_indexing.index_staff, name="index_staff"),
     # Browsers ask for this regardless of the <link>; point it at the mark.
     path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "img/osprey-mark.svg", permanent=True)),
     path("@<str:handle>/", people_views.person_by_handle, name="profile"),

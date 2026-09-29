@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Index &middot; OSPREY{% endblock %}
+{% block content %}
+<h1>Index</h1>
+<p class="muted">Paste DOIs or URLs, one per line, up to {{ max_lines }}. Zenodo records and GitHub repositories resolve now; journal imports come next.</p>
+
+<form method="post" style="max-width:46rem">
+    {% csrf_token %}
+    <textarea name="lines" rows="6" style="width:100%" placeholder="https://doi.org/10.5281/zenodo.1234567&#10;https://github.com/owner/repo">{{ pasted }}</textarea>
+    <p><button type="submit" name="action" value="preview">Preview</button></p>
+</form>
+
+{% if previews %}
+<form method="post" style="max-width:60rem">
+    {% csrf_token %}
+    <input type="hidden" name="lines" value="{{ pasted }}">
+    <table class="zenodo-jobs">
+        <thead><tr><th></th><th>Line</th><th>Source</th><th>Outcome</th><th>Title</th><th>License</th><th>Files</th><th>Hold</th></tr></thead>
+        <tbody>
+        {% for p in previews %}
+        <tr class="status-{{ p.outcome }}">
+            <td>{% if p.can_import %}<input type="checkbox" name="import" value="{{ p.line }}" checked>{% endif %}</td>
+            <td class="small"><code>{{ p.line|truncatechars:60 }}</code></td>
+            <td>{{ p.source }}</td>
+            <td>
+                <strong>{{ p.outcome }}</strong>
+                <div class="muted small">{% if p.existing %}<a href="{{ p.existing.get_absolute_url }}">{{ p.message }}</a>{% else %}{{ p.message }}{% endif %}</div>
+            </td>
+            <td>{% if p.record %}{{ p.record.title|truncatechars:70 }}<div class="muted small">{% for a in p.record.authors|slice:":3" %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
+            <td class="small">{% if p.record %}{{ p.record.license|default:p.record.license_raw|default:"none" }}{% endif %}</td>
+            <td class="small">{% if p.record %}{% if p.record.files_url %}<a href="{{ p.record.files_url }}" rel="noopener">{{ p.record.gate_files.found }}</a>{% else %}{{ p.record.gate_files.found }}{% endif %}{% endif %}</td>
+            <td>{% if p.outcome == "live" %}<input type="checkbox" name="hold:{{ p.line }}" value="1" title="Import held instead of live">{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p><button type="submit" name="action" value="import">Import selected</button></p>
+</form>
+{% endif %}
+
+<h2 style="margin-top:2rem">Held for review <span class="muted small">({{ held|length }})</span></h2>
+{% for project in held %}
+<details class="held-entry" style="margin:.75rem 0;padding:.75rem 1rem;border:1px solid var(--border);border-radius:8px">
+    <summary>
+        <strong>{{ project.title }}</strong>
+        <span class="badge indexed">Indexed &middot; {{ project.source_label }}</span>
+        <span class="muted small">{{ project.indexed_at|date:"Y-m-d" }}{% if project.listed_by %} &middot; listed by @{{ project.listed_by.get_username }}{% endif %}</span>
+    </summary>
+    <p class="muted small" style="margin:.5rem 0">
+        License gate: {{ project.gate_license.found|default:"nothing found" }} <em>({{ project.gate_license.where }})</em><br>
+        Files gate: {{ project.gate_files.found|default:"nothing found" }} <em>({{ project.gate_files.where }})</em><br>
+        <a href="{{ project.canonical_url }}" rel="noopener">View original</a> &middot; <a href="{{ project.get_absolute_url }}">Preview page</a>
+    </p>
+    <form method="post" style="display:grid;gap:.5rem;max-width:46rem">
+        {% csrf_token %}
+        <input type="hidden" name="project_id" value="{{ project.pk }}">
+        <label>Title <input type="text" name="title" value="{{ project.title }}" style="width:100%"></label>
+        <label>License
+            <select name="license">
+                <option value="">{% if project.license %}{{ project.license }} (keep){% else %}none yet{% endif %}</option>
+                {% for key, label in licenses %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>Design files URL <input type="url" name="files_url" value="{{ project.files_url }}" style="width:100%"></label>
+        <label>Summary <textarea name="summary" rows="2" style="width:100%">{{ project.summary }}</textarea></label>
+        <div style="display:flex;gap:.5rem;align-items:center">
+            <button type="submit" name="action" value="approve">Approve</button>
+            <input type="text" name="reason" placeholder="Reason (kept in the log)" style="flex:1">
+            <button type="submit" name="action" value="decline" class="ghost">Decline</button>
+        </div>
+    </form>
+</details>
+{% empty %}
+<p class="muted">Nothing waiting.</p>
+{% endfor %}
+
+<h2 style="margin-top:2rem">Recently indexed</h2>
+<ul>
+    {% for project in recent %}
+    <li><a href="{{ project.get_absolute_url }}">{{ project.title }}</a> <span class="muted small">{{ project.source_label }} &middot; {{ project.indexed_at|date:"Y-m-d" }}</span></li>
+    {% empty %}
+    <li class="muted">No live entries yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

@@ -769,6 +769,25 @@ button.ghost:hover {
     border-bottom: 1px solid var(--border);
 }
 
+.index-row label {
+    display: block;
+    margin: .4rem 0;
+}
+
+.index-row select,
+.index-row input[type=text],
+.index-row input[type=url] {
+    width: 100%;
+}
+
+.file-list li {
+    margin: .25rem 0;
+}
+
+.older-versions {
+    margin-top: 1.25rem;
+}
+
 .card-badges {
     display: flex;
     align-items: center;

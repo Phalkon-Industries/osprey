@@ -516,3 +516,7 @@ gunzip -c /path/to/dump.sql.gz | \
 
 If you're restoring across schema versions, deploy the matching code first so
 the database schema matches what `pg_dump` actually produced.
+
+## Indexed entries
+
+`GITHUB_API_TOKEN` is optional. Without it, GitHub allows 60 unauthenticated API calls an hour, enough for pasting a few repositories on the staff Index page; set a fine-grained token with no scopes to raise that when importing in bulk.
