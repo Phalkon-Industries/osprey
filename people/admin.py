@@ -4,7 +4,7 @@ from django.urls import reverse
 
 from moderation.helpers import log_action
 
-from .models import Profile
+from .models import SignupGate, Profile
 
 
 @admin.register(Profile)
@@ -83,3 +83,14 @@ class ProfileAdmin(admin.ModelAdmin):
         self.message_user(
             request, f"Reinstated {count} account(s).", level=messages.SUCCESS
         )
+
+
+@admin.register(SignupGate)
+class SignupGateAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "enabled", "scope", "updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        return not SignupGate.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

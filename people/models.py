@@ -126,3 +126,49 @@ class Follow(models.Model):
 
     def __str__(self) -> str:
         return f"{self.follower_id} follows {self.creator_id}"
+
+
+class SignupGate(models.Model):
+    """Singleton: the staff switch that limits ORCID sign-in to records with
+    a verified institutional email domain. The emergency brake for a bot
+    wave. Takes effect on the next sign-in; no restart, no env setting.
+    """
+
+    SCOPE_NEW = "new"
+    SCOPE_ALL = "all"
+    SCOPE_CHOICES = [
+        (SCOPE_NEW, "New accounts only"),
+        (SCOPE_ALL, "Every sign-in, existing accounts too"),
+    ]
+
+    enabled = models.BooleanField(default=False)
+    scope = models.CharField(max_length=4, choices=SCOPE_CHOICES, default=SCOPE_NEW)
+    allowlist = models.TextField(
+        blank=True,
+        default="",
+        help_text="ORCID iDs that bypass the check, one per line.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "sign-up gate"
+        verbose_name_plural = "sign-up gate"
+
+    def __str__(self) -> str:
+        return "Sign-up gate"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "SignupGate":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def allowlisted(self) -> set[str]:
+        return {line.strip() for line in self.allowlist.splitlines() if line.strip()}

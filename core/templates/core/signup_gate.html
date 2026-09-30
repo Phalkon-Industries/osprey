@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Sign-up gate &middot; OSPREY{% endblock %}
+{% block content %}
+<section style="max-width:46rem">
+    <h1>Sign-up gate</h1>
+    <p class="muted">
+        When on, an ORCID sign-in is refused unless the ORCID record has a
+        verified institutional email domain set to public. Takes effect on the
+        next sign-in, no restart.
+    </p>
+    <p><strong>Status:</strong> {% if gate.enabled %}on, {{ gate.get_scope_display|lower }}{% else %}off{% endif %}.
+    {% if gate.updated_by %}<span class="muted small">Last changed by @{{ gate.updated_by.get_username }}, {{ gate.updated_at|timesince }} ago.</span>{% endif %}</p>
+    <form method="post" style="display:grid;gap:.75rem">
+        {% csrf_token %}
+        <label><input type="checkbox" name="enabled" value="1"{% if gate.enabled %} checked{% endif %}> Gate on</label>
+        <fieldset style="border:0;padding:0;margin:0">
+            <legend class="small">Applies to</legend>
+            {% for value, label in gate.SCOPE_CHOICES %}
+            <label style="display:block"><input type="radio" name="scope" value="{{ value }}"{% if gate.scope == value %} checked{% endif %}> {{ label }}</label>
+            {% endfor %}
+        </fieldset>
+        <label>Allowlist <span class="muted small">(ORCID iDs that always get in, one per line)</span>
+            <textarea name="allowlist" rows="4" style="width:100%">{{ gate.allowlist }}</textarea>
+        </label>
+        <p><button type="submit">Save</button></p>
+    </form>
+    <p class="muted small">Put your own iD on the allowlist before choosing "every sign-in". Sign-ins fail closed while ORCID's API is unreachable.</p>
+</section>
+{% endblock %}

@@ -427,23 +427,14 @@ doesn't write to anyone's ORCID record.
 
 ### Optional ORCID hardening
 
-Two env vars gate who can sign in:
-
-```env
-ORCID_REQUIRE_VERIFIED_DOMAIN=0
-ORCID_SIGNIN_ALLOWLIST=0000-0001-2345-6789,0000-0002-3456-7890
-```
-
-- `ORCID_REQUIRE_VERIFIED_DOMAIN=1` rejects ORCID sign-ins unless the iD has at
-  least one email address marked verified by a third party (i.e. an institution
-  that itself wrote the verified email to the record). Self-asserted emails do
-  not count. This relies on the public ORCID API and only sees data the user
-  has set to "Everyone" visibility. Use it sparingly; many real researchers
-  keep their institutional email private.
-- `ORCID_SIGNIN_ALLOWLIST` is a comma-separated list of ORCID iDs that bypass
-  the domain gate. Put seed accounts and known collaborators here.
-
-If the verification lookup fails (network error, ORCID 5xx) the gate fails
+The sign-up gate is a staff switch, not an env setting: `/staff/signup-gate/`
+(linked from the staff dashboard). When on it rejects ORCID sign-ins unless
+the iD has at least one email address marked verified by a third party, i.e.
+an institution that wrote the verified email to the record; self-asserted
+emails don't count. It reads the public ORCID API and only sees data set to
+"Everyone" visibility, so use it sparingly. Scope is new accounts only
+(default) or every sign-in; the allowlist on the page names ORCID iDs that
+always get in. If the lookup fails (network error, ORCID 5xx) the gate fails
 closed and the user sees a "couldn't verify your ORCID record" message.
 
 ### Staff Messages export

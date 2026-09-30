@@ -83,14 +83,18 @@ class OrcidSocialAccountAdapter(DefaultSocialAccountAdapter):
         super().pre_social_login(request, sociallogin)
 
     def _enforce_verified_domain_gate(self, request, sociallogin) -> None:
-        if not getattr(settings, "ORCID_REQUIRE_VERIFIED_DOMAIN", False):
+        from .models import SignupGate
+
+        gate = SignupGate.load()
+        if not gate.enabled:
+            return
+        if gate.scope == SignupGate.SCOPE_NEW and sociallogin.is_existing:
             return
         extra_data = sociallogin.account.extra_data or {}
         orcid_id = extract_orcid(extra_data) or sociallogin.account.uid or ""
         if not orcid_id:
             _reject(request, "Could not read your ORCID iD. Please try again.")
-        allowlist = getattr(settings, "ORCID_SIGNIN_ALLOWLIST", []) or []
-        if orcid_id in allowlist:
+        if orcid_id in gate.allowlisted:
             return
         try:
             has_domain, domains = has_verified_institutional_domain(

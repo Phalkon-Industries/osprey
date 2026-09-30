@@ -183,18 +183,8 @@ SOCIALACCOUNT_PROVIDERS = {
 
 OSPREY_IS_SANDBOX = _env_bool("OSPREY_IS_SANDBOX", default=False)
 
-# ORCID verified-domain sign-in gate. When ORCID_REQUIRE_VERIFIED_DOMAIN is
-# true, new ORCID sign-ins are only allowed if the ORCID record exposes at
-# least one verified institutional email domain via the public API, or if
-# the ORCID iD is on ORCID_SIGNIN_ALLOWLIST.
-ORCID_REQUIRE_VERIFIED_DOMAIN = _env_bool(
-    "ORCID_REQUIRE_VERIFIED_DOMAIN", default=False
-)
-ORCID_SIGNIN_ALLOWLIST = [
-    o.strip()
-    for o in os.environ.get("ORCID_SIGNIN_ALLOWLIST", "").split(",")
-    if o.strip()
-]
+# The ORCID verified-domain sign-in gate is a staff switch in the database
+# (people.SignupGate, /staff/signup-gate/), not an env setting.
 
 # Rate limits for write endpoints. Per-user unless noted. Setting the env
 # var to an empty string disables the limit (useful for tests).

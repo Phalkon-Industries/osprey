@@ -129,16 +129,15 @@ A user who hits a limit sees an HTTP 429.
 
 ## ORCID sign-in gate
 
-Two env vars in `osprey/settings.py` narrow who can sign in:
-
-- `ORCID_REQUIRE_VERIFIED_DOMAIN` (default off). Rejects ORCID sign-ins
-  unless the iD has at least one institution-verified email address. Self-
-  asserted emails don't count. The check uses the public ORCID API and only
-  sees data the user has marked "Everyone." Turning this on will block real
-  researchers who keep their institutional email private, so use it
-  sparingly.
-- `ORCID_SIGNIN_ALLOWLIST` (comma-separated ORCID iDs). Bypasses the domain
-  gate. Put seed accounts and known collaborators here.
+A staff switch at `/staff/signup-gate/` (linked from the staff dashboard)
+narrows who can sign in. When on, an ORCID sign-in is rejected unless the
+iD has at least one institution-verified email address set to "Everyone"
+visibility; self-asserted emails don't count. Scope is "new accounts only"
+(default) or "every sign-in". The allowlist on the same page names ORCID
+iDs that always get in; put your own iD there before choosing "every
+sign-in". Takes effect on the next sign-in, no restart. Turning it on will
+block real researchers who keep their institutional email private, so use
+it sparingly.
 
 If the ORCID lookup fails (network error, 5xx), the gate fails closed and
 the user sees a "couldn't verify your ORCID record" message. Try again or
@@ -155,8 +154,8 @@ add them to the allowlist.
   contact the uploader, unhide once the artifact is removed or the claim is
   cleared.
 - **Someone scraped the site and is reposting under different ORCID iDs:**
-  set `ORCID_REQUIRE_VERIFIED_DOMAIN=1` until the wave passes, allowlist
-  any legitimate users who get caught.
+  turn on the sign-up gate until the wave passes, allowlist any legitimate
+  users who get caught.
 
 ## Files of interest
 
