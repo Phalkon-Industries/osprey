@@ -44,7 +44,7 @@ class ZenodoRecordReader:
         self.timeout = timeout or getattr(settings, "ZENODO_TIMEOUT_SECONDS", 20)
 
     def _get(self, path_or_url: str) -> dict:
-        from projects.indexing.http import _guard_test_run
+        from projects.sources.http import _guard_test_run
 
         _guard_test_run(path_or_url if path_or_url.startswith("http") else self.base_url)
         url = path_or_url if path_or_url.startswith("http") else f"{self.base_url}{path_or_url}"
@@ -302,16 +302,11 @@ def register_record(doi: str, user, reader: ZenodoRecordReader | None = None) ->
             "lists open-licensed work only. If you think this license should be "
             "supported, ask in the Suggestion Box and staff will review it."
         )
-    existing = find_existing(record) or Project.objects.filter(
-        origin=Project.ORIGIN_INDEXED, source=Project.SOURCE_ZENODO,
-        external_id=str(record.get("conceptrecid") or ""),
-    ).first()
-    if existing is not None and not existing.is_indexed:
+    existing = find_existing(record)
+    if existing is not None:
         raise RegistrationError(f"That record is already on OSPREY as “{existing.title}”.")
 
     versions = reader.versions(record["id"]) or [record]
-    if existing is not None:
-        return _convert_indexed_entry(existing, record, versions, creators, orcid, user)
     description = metadata.get("description") or ""
     title = (metadata.get("title") or "Untitled Zenodo record")[:300]
     with transaction.atomic():
@@ -364,70 +359,6 @@ def register_record(doi: str, user, reader: ZenodoRecordReader | None = None) ->
         try:
             claiming.request_confirmation(row, user)
         except Exception:  # noqa: BLE001 - never block the link on a notification
-            logger.exception("confirmation request failed for %s", row.pk)
-    notify_project_published(project)
-    return project
-
-
-def _convert_indexed_entry(project: Project, record: dict, versions: list[dict], creators: list[dict], orcid: str, user) -> Project:
-    """An indexed Zenodo entry becomes a registered project in place: same
-    row, same slug, lineage edges kept. The entry's author rows are
-    rebuilt from the record; rows someone already claimed stay theirs."""
-    from .zenodo_jobs import notify_project_published
-
-    metadata = record.get("metadata") or {}
-    description = metadata.get("description") or ""
-    with transaction.atomic():
-        project.origin = Project.ORIGIN_REGISTERED
-        project.created_by = user
-        project.visibility = Project.VISIBILITY_PUBLIC
-        project.index_state = Project.INDEX_LIVE
-        project.title = (metadata.get("title") or project.title)[:300]
-        project.summary = _strip_html(description)[:280] or project.summary
-        project.readme = description if "<" not in description else _strip_html(description)
-        project.license = license_of(record)
-        project.doi = record.get("conceptdoi") or record.get("doi") or project.doi
-        project.save()
-        by_orcid = {row.orcid_id: row for row in project.contributions.exclude(orcid_id="")}
-        seen = set()
-        owner_row = None
-        for index, creator in enumerate(creators):
-            row = by_orcid.get(creator["orcid"]) if creator["orcid"] else None
-            if row is None:
-                row = Contribution(project=project, orcid_id=creator["orcid"])
-            row.display_name = display_name(creator["name"])[:200] or "Author"
-            row.role = "Author"
-            row.affiliation = (creator["affiliation"] or "")[:200]
-            row.order = index
-            row.save()
-            seen.add(row.pk)
-            if creator["orcid"] == orcid and owner_row is None:
-                owner_row = row
-        project.contributions.exclude(pk__in=seen).filter(user__isnull=True).delete()
-        if owner_row is not None:
-            owner_row.user = user
-            owner_row.claim_status = Contribution.CLAIM_VERIFIED
-            owner_row.save(update_fields=["user", "claim_status"])
-        deposit = ProjectDeposit.objects.create(
-            project=project,
-            sandbox=is_sandbox_doi(record.get("doi") or ""),
-            managed=False,
-            deposition_id=str(record["id"]),
-            record_id=str(record["id"]),
-            concept_id=str(record.get("conceptrecid") or ""),
-            doi=record.get("doi") or "",
-            concept_doi=record.get("conceptdoi") or "",
-            state=ProjectDeposit.STATE_PUBLISHED,
-            published_at=_published_at(record),
-            created_by=user,
-            last_response=record,
-            zenodo_synced_at=timezone.now(),
-        )
-        _sync_versions(deposit, versions)
-    for row in project.contributions.exclude(pk=getattr(owner_row, "pk", None)).exclude(orcid_id="").filter(user__isnull=True):
-        try:
-            claiming.request_confirmation(row, user)
-        except Exception:  # noqa: BLE001
             logger.exception("confirmation request failed for %s", row.pk)
     notify_project_published(project)
     return project
@@ -540,7 +471,7 @@ def accept_community_requests() -> int:
         deposit = ProjectDeposit.objects.filter(provider=ProjectDeposit.PROVIDER_ZENODO).filter(
             models_q(record_id, doi)
         ).select_related("project").first()
-        if deposit is None or deposit.project.origin == Project.ORIGIN_INDEXED:
+        if deposit is None:
             continue
         try:
             client._request("POST", f"/api/requests/{hit['id']}/actions/accept", payload={}, expected=(200, 201, 202))

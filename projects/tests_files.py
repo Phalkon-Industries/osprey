@@ -9,7 +9,6 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from projects import zenodo_register
-from projects.management.commands.seed_indexed_examples import seed_indexed_examples
 from projects.models import ArtifactLink, Project, ProjectAttachment
 from projects.testing.fake_zenodo import FakeZenodoMixin
 from projects.tests import add_orcid_account
@@ -97,17 +96,6 @@ class FilesTabTests(FakeZenodoMixin, TestCase):
         self.assertContains(response, "KB")
         self.assertContains(response, f"/records/{record.id}")
         self.assertContains(response, "Zenodo record")
-
-    def test_indexed_entry_shows_design_files_and_original(self):
-        entries = {e.source: e for e in seed_indexed_examples()}
-        response = self.client.get(reverse("projects:files", args=[entries["hardwarex"].slug]))
-        self.assertContains(response, "https://doi.org/10.17632/8tb37yjp9m.3")
-        self.assertContains(response, "https://doi.org/10.1016/j.ohx.2026.e00839")
-        Project.objects.filter(pk=entries["github"].pk).update(files_url="")
-        response = self.client.get(reverse("projects:files", args=[entries["github"].slug]))
-        self.assertContains(response, "not yet linked")
-        overview = self.client.get(entries["github"].get_absolute_url())
-        self.assertNotContains(overview, "Design files")
 
     def test_repositories_moved_to_the_files_tab(self):
         project = self._native()

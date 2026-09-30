@@ -12,7 +12,7 @@ from django.urls import reverse
 
 from notifications.models import Notification
 from projects import zenodo_register
-from projects.indexing import license_check
+from projects.sources import license_check
 from projects.models import ArtifactLink, Project, ProjectAttachment
 from projects.testing.fake_github import FakeGitHubMixin
 from projects.testing.fake_zenodo import FakeZenodoMixin
@@ -114,9 +114,3 @@ class LicenseAuditTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
         self.client.post(reverse("licenses_staff"), {"action": "recheck", "project_id": bad.pk})
         bad.refresh_from_db()
         self.assertEqual(len(bad.license_findings), 1)
-
-    def test_indexed_entries_are_not_audited(self):
-        from projects.management.commands.seed_indexed_examples import seed_indexed_examples
-
-        seed_indexed_examples()
-        self.assertEqual(license_check.auditable().filter(origin=Project.ORIGIN_INDEXED).count(), 0)

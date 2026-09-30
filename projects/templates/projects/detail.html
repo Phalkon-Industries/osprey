@@ -24,21 +24,9 @@
     </div>
     {% endif %}
 
-    {% if project.is_indexed %}
-    <section class="indexed-source">
-        <p>
-            Indexed from {{ project.source_venue|default:project.source_label }}{% if project.published_on %}, {{ project.published_on|date:"Y" }}{% endif %}.
-            <a class="button ghost" href="{{ project.canonical_url }}" rel="noopener" style="margin-left:.5rem">View original</a>
-        </p>
-    </section>
-    {% endif %}
-
     {% if project.readme %}
     <section>
         <div class="prose">{{ project.readme|markdown }}</div>
-        {% if project.is_indexed and project.source_metadata.text_license %}
-        <p class="muted small">Text from {{ project.source_venue|default:project.source_label }}, {{ project.source_metadata.text_license }}.</p>
-        {% endif %}
     </section>
     {% endif %}
 
@@ -68,7 +56,7 @@
 
     <div style="margin-top:1.5rem">
         <section>
-            <h2>{% if project.is_indexed %}Authors as listed by {{ project.source_venue|default:project.source_label }}{% else %}Contributors{% endif %}</h2>
+            <h2>Contributors</h2>
             <ul class="contributor-list">
                 {% for c in project.credited_contributions.all %}
                 <li>
@@ -105,21 +93,7 @@
     </section>
     {% endif %}
 
-    {% if project.is_indexed %}
-    {% if source_citation and project.doi %}
-    <section class="project-doi">
-        <h2>Cite the original</h2>
-        <div class="cite-as" data-cite-as>
-            <label for="cite-as-text"><strong>Cite as</strong></label>
-            <div class="cite-as-row">
-                <textarea id="cite-as-text" rows="3" readonly>{{ source_citation }}</textarea>
-                <button type="button" class="ghost" data-cite-copy>Copy</button>
-            </div>
-            <span class="muted small" data-cite-status></span>
-        </div>
-    </section>
-    {% endif %}
-    {% elif project.doi or zenodo_deposit %}
+    {% if project.doi or zenodo_deposit %}
     <section class="project-doi">
         <h2>Cite this project</h2>
         {% with latest=zenodo_deposit.latest_version %}
@@ -181,13 +155,6 @@
             Cite the project DOI for the work as a whole. Cite a version DOI when
             you need to point at exactly one snapshot.
         </p>
-    </section>
-    {% endif %}
-
-    {% if project.is_indexed %}
-    <section>
-        <h2>Submitted to the index by</h2>
-        <p>{% if project.listed_by %}<a href="{% url 'profile' project.listed_by.get_username %}">@{{ project.listed_by.get_username }}</a>{% else %}OSPREY staff{% endif %}{% if project.indexed_at %} <span class="muted small">&middot; {{ project.indexed_at|date:"Y-m-d" }}</span>{% endif %}</p>
     </section>
     {% endif %}
 

@@ -581,28 +581,3 @@ class DeleteDraftJourneyTests(JourneyTestCase):
         self.assertIn("Deleted the draft", self.page.content())
         self.assertFalse(Project.objects.filter(pk=draft.pk).exists())
         self.assertNoBrowserErrors()
-
-
-class IndexedEntryJourneyTests(JourneyTestCase):
-    def test_reader_filters_to_entries_opens_one_and_follows_it(self):
-        from projects.management.commands.seed_indexed_examples import seed_indexed_examples
-
-        entries = {e.source: e for e in seed_indexed_examples()}
-        reader = self.make_owner("journey-reader")
-        self.sign_in(reader)
-        self.page.goto(self.url("projects:list"))
-        self.page.select_option("#kind-filter", "indexed")
-        with self.page.expect_navigation():
-            self.page.click("button:has-text('Search')")
-        self.assertIn("Indexed · GitHub", self.page.content())
-        self.assertNotIn("Spark Assisted", self.page.content())  # held stays hidden
-        with self.page.expect_navigation():
-            self.page.click("text=OpenCTD")
-        self.assertIn("View original", self.page.content())
-        self.assertIn("Submitted to the index by", self.page.content())
-        self.assertEqual(self.page.locator("a.project-tab:has-text('Wiki')").count(), 0)
-        with self.page.expect_navigation():
-            self.page.click("button:has-text('Follow Project')")
-        self.assertIn("Unfollow", self.page.content())
-        self.assertTrue(Watch.objects.filter(user=reader, project=entries["github"]).exists())
-        self.assertNoBrowserErrors()

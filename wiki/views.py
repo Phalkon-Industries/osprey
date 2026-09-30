@@ -26,8 +26,7 @@ def _get_project(slug):
 
 
 def _can_view_project(project, user):
-    # Indexed entries have no wiki (decided 2026-09-28).
-    return project.viewable_by(user) and not project.is_indexed
+    return project.viewable_by(user)
 
 
 def index(request, slug):

@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from django.conf import settings
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -65,8 +66,6 @@ class ProjectSummary(Schema):
     institutions: list[str] = []
     visibility: str
     origin: str = "native"
-    source: str = ""
-    files_url: str = ""
     updated_at: datetime
 
 
@@ -110,8 +109,6 @@ def _project_summary(p: Project) -> dict:
         "institutions": p.institutions,
         "visibility": p.visibility,
         "origin": p.origin,
-        "source": p.source,
-        "files_url": p.files_url,
         "updated_at": p.updated_at,
     }
 
@@ -195,13 +192,8 @@ def list_projects(
 
 @api.get("/projects/{slug}/", response=ProjectDetail)
 def project_detail(request, slug: str):
-    p = get_object_or_404(
-        Project.objects.prefetch_related(
-            "artifact_links", "contributions__user", "tags", "images"
-        ),
-        slug=slug,
-        visibility=Project.VISIBILITY_PUBLIC,
-    )
+    qs = Project.objects.prefetch_related("artifact_links", "contributions__user", "tags", "images")
+    p = get_object_or_404(qs, slug=slug, visibility=Project.VISIBILITY_PUBLIC)
     return _project_detail(p)
 
 

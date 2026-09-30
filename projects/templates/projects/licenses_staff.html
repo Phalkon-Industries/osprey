@@ -1,23 +1,5 @@
 {% extends "base.html" %}
 {% block title %}License checks &middot; OSPREY
-<h2 style="margin-top:2rem">Indexed entries: article says one license, the files say another <span class="muted small">({{ disagreements|length }})</span></h2>
-<p class="muted">A log for later outreach to the authors. <a href="?export=disagreements">Download as CSV</a>.</p>
-<table class="zenodo-jobs">
-    <thead><tr><th>Entry</th><th>Article says</th><th>Files say</th><th>State</th><th>Authors</th></tr></thead>
-    <tbody>
-    {% for d in disagreements %}
-    <tr>
-        <td><a href="{{ d.project.get_absolute_url }}">{{ d.project.title|truncatechars:60 }}</a><br><span class="muted small">{{ d.project.source_label }}{% if d.project.published_on %} &middot; {{ d.project.published_on|date:"Y" }}{% endif %} &middot; <a href="{{ d.project.canonical_url }}" rel="noopener">original</a></span></td>
-        <td>{{ d.declared }}</td>
-        <td>{{ d.linked }} <span class="muted small">on {{ d.linked_source }}</span></td>
-        <td>{{ d.project.index_state }}</td>
-        <td class="small">{% for name, orcid in d.authors|slice:":4" %}{{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if d.authors|length > 4 %} +{{ d.authors|length|add:"-4" }}{% endif %}</td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="5" class="muted">None recorded.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
 {% endblock %}
 {% block content %}
 <h1>License checks</h1>

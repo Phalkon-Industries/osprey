@@ -744,13 +744,6 @@ button.ghost:hover {
     border-color: var(--badge-private-border);
 }
 
-.badge.indexed {
-    background: var(--badge-license-bg);
-    color: var(--fg-muted);
-    border-color: var(--badge-license-border);
-    border-style: dashed;
-}
-
 .badge.license {
     background: var(--badge-license-bg);
     color: var(--badge-license-fg);
@@ -767,57 +760,6 @@ button.ghost:hover {
     overflow: hidden;
     background: var(--bg-soft);
     border-bottom: 1px solid var(--border);
-}
-
-.check-row {
-    display: inline-flex;
-    gap: .35rem;
-    margin-right: .5rem;
-    vertical-align: middle;
-}
-
-.check {
-    display: inline-block;
-    padding: .05rem .45rem;
-    border-radius: 999px;
-    font-size: .78rem;
-    font-weight: 600;
-    border: 1px solid transparent;
-}
-
-.check-ok { background: #e6f4ea; color: #1e6b32; border-color: #b7dfc2; }
-.check-confirm { background: #fff4d6; color: #7a5200; border-color: #f0d48a; }
-.check-fail { background: #fde8e8; color: #8a1c1c; border-color: #f3b4b4; }
-.check-fail-text { display: block; color: #8a1c1c; margin-top: .2rem; }
-.check-confirm-text { display: block; color: #7a5200; margin-top: .2rem; }
-
-.review-group { margin: 1.25rem 0 .25rem; font-size: 1rem; }
-.review-ready { border-left: 4px solid #1e6b32 !important; }
-.review-confirm { border-left: 4px solid #d8a400 !important; }
-.review-failed { border-left: 4px solid #b83232 !important; }
-
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .check-ok { background: #173d22; color: #9be2ae; border-color: #2b6b3c; }
-    :root:not([data-theme="light"]) .check-confirm { background: #3e3000; color: #ffd978; border-color: #6b5400; }
-    :root:not([data-theme="light"]) .check-fail { background: #421818; color: #ffb3b3; border-color: #7a2c2c; }
-    :root:not([data-theme="light"]) .check-fail-text { color: #ffb3b3; }
-    :root:not([data-theme="light"]) .check-confirm-text { color: #ffd978; }
-}
-:root[data-theme="dark"] .check-ok { background: #173d22; color: #9be2ae; border-color: #2b6b3c; }
-:root[data-theme="dark"] .check-confirm { background: #3e3000; color: #ffd978; border-color: #6b5400; }
-:root[data-theme="dark"] .check-fail { background: #421818; color: #ffb3b3; border-color: #7a2c2c; }
-:root[data-theme="dark"] .check-fail-text { color: #ffb3b3; }
-:root[data-theme="dark"] .check-confirm-text { color: #ffd978; }
-
-.index-row label {
-    display: block;
-    margin: .4rem 0;
-}
-
-.index-row select,
-.index-row input[type=text],
-.index-row input[type=url] {
-    width: 100%;
 }
 
 .file-list li {

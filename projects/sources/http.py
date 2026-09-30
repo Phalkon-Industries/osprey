@@ -23,7 +23,7 @@ def _guard_test_run(url: str) -> None:
 
     from osprey import test_runner
 
-    if not getattr(test_runner, "IS_TEST_RUN", False) or os.environ.get("RUN_LIVE_INDEXING") == "1":
+    if not getattr(test_runner, "IS_TEST_RUN", False) or os.environ.get("RUN_LIVE_SOURCES") == "1":
         return
     host = urlparse(url).hostname or ""
     if host not in ("127.0.0.1", "localhost", "::1"):
@@ -43,7 +43,7 @@ def get(url: str, *, accept: str = "application/json", params: dict | None = Non
     mailto = getattr(settings, "EXTERNAL_API_MAILTO", "")
     if mailto:
         headers["User-Agent"] += f" (mailto:{mailto})"
-    delay = getattr(settings, "INDEXING_RETRY_SLEEP", 2.0)
+    delay = getattr(settings, "SOURCES_RETRY_SLEEP", 2.0)
     last: Exception | None = None
     for attempt in range(retries + 1):
         req = Request(url, headers=headers)

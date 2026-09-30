@@ -1,4 +1,5 @@
-"""GitHub repositories as an index source."""
+"""GitHub repositories: what license a linked repository carries, for the
+license audit."""
 from __future__ import annotations
 
 import json
@@ -7,7 +8,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
-from .records import INDEX_ACCEPTED_LICENSES, Author, Gate, SourceError, SourceRecord, normalize_license, summary_from_readme, user_agent
+from .records import ACCEPTED_LICENSES, Author, Gate, SourceError, SourceRecord, normalize_license, user_agent
 
 
 def _base() -> str:
@@ -57,9 +58,7 @@ def fetch(full_name: str) -> SourceRecord:
         external_id=repo.get("full_name") or full_name,
         title=repo.get("name") or full_name.split("/")[-1],
         canonical_url=html_url,
-        # GitHub's About text when the repo has one, else the README's first
-        # paragraph of prose (headings, badges and HTML skipped).
-        summary=(description or summary_from_readme(readme))[:280],
+        summary=description[:280],
         readme=readme[:20000] if readme else description,
         license_raw=spdx,
         license=license_key,
@@ -71,9 +70,6 @@ def fetch(full_name: str) -> SourceRecord:
         artifact_type="Software",
         raw={k: repo.get(k) for k in ("full_name", "html_url", "homepage", "pushed_at", "stargazers_count", "archived", "default_branch")},
     )
-    accepted = license_key in INDEX_ACCEPTED_LICENSES
-    rec.gate_license = Gate(accepted, spdx or "no license file", "GitHub repository license (SPDX)")
-    if license_key and not accepted:
-        rec.gate_license.found = f"{spdx}: open, but not on OSPREY's list"
+    rec.gate_license = Gate(license_key in ACCEPTED_LICENSES, spdx or "no license file", "GitHub repository license (SPDX)")
     rec.gate_files = Gate(True, "repository", "GitHub")
     return rec

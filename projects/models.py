@@ -113,73 +113,17 @@ class Project(models.Model):
         ),
     )
     canonical_url = models.URLField(blank=True)
-    # Where the record lives and who answers for it. `native` and `registered`
-    # are both "OSPREY projects" to the public; `indexed` entries are not.
+    # Where the record lives and who answers for it. Both kinds are "OSPREY
+    # projects" to the public; the difference is who looks after Zenodo.
     ORIGIN_NATIVE = "native"
     ORIGIN_REGISTERED = "registered"
-    ORIGIN_INDEXED = "indexed"
     ORIGIN_CHOICES = [
         (ORIGIN_NATIVE, "Native (published through OSPREY)"),
         (ORIGIN_REGISTERED, "Registered (the authors' own Zenodo record)"),
-        (ORIGIN_INDEXED, "Indexed entry (ownerless reference)"),
     ]
     origin = models.CharField(
         max_length=16, choices=ORIGIN_CHOICES, default=ORIGIN_NATIVE, db_index=True
     )
-    # Indexed entries only: where the record came from and what the two
-    # gates (open license, reachable files) found. See
-    # planning/features/indexed-entries.md.
-    SOURCE_ZENODO = "zenodo"
-    SOURCE_GITHUB = "github"
-    SOURCE_HARDWAREX = "hardwarex"
-    SOURCE_JOH = "joh"
-    SOURCE_OTHER = "other"
-    SOURCE_CHOICES = [
-        (SOURCE_ZENODO, "Zenodo"),
-        (SOURCE_GITHUB, "GitHub"),
-        (SOURCE_HARDWAREX, "HardwareX"),
-        (SOURCE_JOH, "Journal of Open Hardware"),
-        (SOURCE_OTHER, "Other"),
-    ]
-    source = models.CharField(max_length=24, choices=SOURCE_CHOICES, blank=True)
-    external_id = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="DOI, owner/repo, or Zenodo concept id at the source.",
-    )
-    source_metadata = models.JSONField(default=dict, blank=True)
-    files_url = models.URLField(blank=True, help_text="Where the design files live.")
-    FILES_FROM_CHOICES = [
-        ("spec_table", "Journal specifications table"),
-        ("record", "Zenodo record"),
-        ("repo", "Repository"),
-        ("body_scan", "Found in article body"),
-        ("staff", "Entered by staff"),
-        ("submitter", "Entered by the submitter"),
-    ]
-    files_url_source = models.CharField(
-        max_length=16, choices=FILES_FROM_CHOICES, blank=True
-    )
-    published_on = models.DateField(null=True, blank=True)
-    indexed_at = models.DateTimeField(null=True, blank=True)
-    index_checked_at = models.DateTimeField(null=True, blank=True)
-    listed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="listed_entries",
-        help_text="Who submitted the entry. Empty for staff imports.",
-    )
-    INDEX_HELD = "held"
-    INDEX_LIVE = "live"
-    INDEX_STATE_CHOICES = [(INDEX_HELD, "Held for review"), (INDEX_LIVE, "Live")]
-    index_state = models.CharField(
-        max_length=8, choices=INDEX_STATE_CHOICES, default=INDEX_LIVE
-    )
-    gate_license = models.JSONField(default=dict, blank=True)
-    gate_files = models.JSONField(default=dict, blank=True)
-    oshwa_uid = models.CharField(max_length=20, blank=True)
     # License audit (all kinds): OSPREY's license compared with the Zenodo
     # record and any linked GitHub repository. See projects/indexing/license_check.py.
     license_check = models.JSONField(default=dict, blank=True)
@@ -308,13 +252,6 @@ class Project(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["source", "external_id"],
-                condition=~models.Q(external_id=""),
-                name="project_unique_source_external_id",
-            )
-        ]
 
     def __str__(self) -> str:
         return self.title
@@ -410,15 +347,12 @@ class Project(models.Model):
 
         Credit and access are decoupled (decided 2026-09-04): being
         listed never confers edit rights by itself; the owner grants
-        them per contributor via the editor flag. Indexed entries have
-        no owner; only staff edit them.
+        them per contributor via the editor flag.
         """
         if user is None or not user.is_authenticated:
             return False
         if user.is_staff:
             return True
-        if self.is_indexed:
-            return False
         if self.created_by_id == user.id:
             return True
         return self.contributions.filter(
@@ -430,8 +364,6 @@ class Project(models.Model):
         staff) holds that irreversible click. Owner-only controls
         (contributor list, transfer) key off this too."""
         if user is None or not user.is_authenticated:
-            return False
-        if self.is_indexed:
             return False
         return user.is_staff or self.created_by_id == user.id
 
@@ -446,35 +378,6 @@ class Project(models.Model):
     @property
     def is_registered(self) -> bool:
         return self.origin == self.ORIGIN_REGISTERED
-
-    @property
-    def is_indexed(self) -> bool:
-        return self.origin == self.ORIGIN_INDEXED
-
-    @property
-    def is_held(self) -> bool:
-        return self.is_indexed and self.index_state == self.INDEX_HELD
-
-    @property
-    def source_label(self) -> str:
-        """Short source name for the Indexed badge and the citation venue."""
-        return {
-            self.SOURCE_ZENODO: "Zenodo",
-            self.SOURCE_GITHUB: "GitHub",
-            self.SOURCE_HARDWAREX: "HardwareX",
-            self.SOURCE_JOH: "JOH",
-            self.SOURCE_OTHER: "Web",
-        }.get(self.source, "")
-
-    @property
-    def source_venue(self) -> str:
-        """Venue wording for 'Cite the original'."""
-        return {
-            self.SOURCE_ZENODO: "Zenodo",
-            self.SOURCE_GITHUB: "GitHub repository",
-            self.SOURCE_HARDWAREX: "HardwareX",
-            self.SOURCE_JOH: "Journal of Open Hardware",
-        }.get(self.source, "")
 
     @property
     def accepts_publish(self) -> bool:

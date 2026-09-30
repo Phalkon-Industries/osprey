@@ -100,8 +100,6 @@ class ProjectAdmin(admin.ModelAdmin):
         "visibility",
         "is_staff_hidden",
         "origin",
-        "source",
-        "index_state",
         "field",
         "artifact_type",
         "institution",

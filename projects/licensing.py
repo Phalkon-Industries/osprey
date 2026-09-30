@@ -23,21 +23,21 @@ MAX_DEPTH = 1  # root, or inside one top-level folder
 LICENSE_LABELS = dict(COMMON_LICENSES)
 LICENSE_LABELS.update({
     "BSD-2-Clause": "BSD 2-Clause", "BSD-3-Clause": "BSD 3-Clause", "LGPL-3.0": "LGPL 3.0",
-    "MPL-2.0": "MPL 2.0", "TAPR-OHL-1.0": "TAPR Open Hardware License 1.0",
+    "MPL-2.0": "MPL 2.0",
     "CC-BY-NC": "a non-commercial Creative Commons license", "CC-BY-ND": "a no-derivatives Creative Commons license",
 })
 
 
 def identify_license_text(text: str) -> str:
     """Name the license a text is, by its distinctive phrases. Returns an
-    OSPREY key, a recognized-but-not-accepted key (BSD, LGPL, MPL, TAPR,
+    OSPREY key, a recognized-but-not-accepted key (BSD, LGPL, MPL,
     CC-BY-NC, CC-BY-ND), or "" when the text isn't a known license."""
     t = re.sub(r"\s+", " ", (text or "").lower())
     if not t:
         return ""
     m = re.search(r"spdx-license-identifier:\s*([a-z0-9.+-]+)", t)
     if m:
-        from .indexing.records import normalize_license
+        from .sources.records import normalize_license
 
         key = normalize_license(m.group(1)) or m.group(1).upper()
         if key:
@@ -68,8 +68,6 @@ def identify_license_text(text: str) -> str:
         if "permissive" in t or "cern-ohl-p" in t:
             return "CERN-OHL-P-2.0"
         return ""
-    if "tapr open hardware license" in t:
-        return "TAPR-OHL-1.0"
     if "cc0 1.0 universal" in t or "creative commons zero" in t:
         return "CC0-1.0"
     if "attribution-sharealike 4.0" in t or "attribution sharealike 4.0" in t:

@@ -7,14 +7,6 @@
     <section>
         <h1 style="margin-top:1rem">Files</h1>
 
-        {% if project.is_indexed %}
-        <p>
-            <strong>Design files:</strong>
-            {% if project.files_url %}<a href="{{ project.files_url }}" rel="noopener">{{ project.files_url }}</a>{% else %}not yet linked.{% endif %}
-        </p>
-        <p><strong>Original:</strong> <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a></p>
-        {% endif %}
-
         {% for group in file_groups %}
         {% if forloop.first %}
         <h2>{% if group.version %}v{{ group.version.version_index }} <span class="muted small">&middot; {{ group.version.published_at|date:"Y-m-d" }}</span>{% else %}Published files{% endif %}</h2>
@@ -49,14 +41,14 @@
             {% endfor %}
         </ul>
         <p class="muted small">Moves to Zenodo on publish.</p>
-        {% elif not file_groups and not project.is_indexed %}
+        {% elif not file_groups %}
         <p class="muted">No files yet.</p>
         {% endif %}
 
-        {% if project.artifact_links.all or project.canonical_url and not project.is_indexed %}
+        {% if project.artifact_links.all or project.canonical_url %}
         <h2>Repositories</h2>
         <ul>
-            {% if project.canonical_url and not project.is_indexed %}
+            {% if project.canonical_url %}
             <li>
                 <span class="pill">{{ project.canonical_url_label }}</span>
                 <a href="{{ project.canonical_url }}" rel="noopener">{{ project.canonical_url }}</a>

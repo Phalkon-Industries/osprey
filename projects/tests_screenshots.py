@@ -95,10 +95,6 @@ class ScreenshotBaselineTests(JourneyTestCase):
         # comes from the slug; pin it so the baseline is stable.
         Project.objects.filter(pk=self.registered.pk).update(slug="shots-registered-pump")
         self.registered.refresh_from_db()
-        from projects.management.commands.seed_indexed_examples import seed_indexed_examples
-        self.entry = [e for e in seed_indexed_examples() if e.source == "hardwarex"][0]
-        Project.objects.filter(pk=self.entry.pk).update(slug="shots-indexed-welder")
-        self.entry.refresh_from_db()
         self.sign_in(owner)
         return owner, published, draft
 
@@ -116,8 +112,6 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-edit-lineage", self.url("projects:edit", draft.slug) + "?tab=related"),
             ("new-version", self.url("projects:zenodo_new_version", published.slug)),
             ("project-delete", self.url("projects:delete", draft.slug)),
-            ("indexed-entry", self.url("projects:detail", self.entry.slug)),
-            ("projects-list-indexed", self.url("projects:list") + "?kind=indexed"),
             ("register-page", self.url("projects:register")),
             ("project-edit-registered", self.url("projects:edit", self.registered.slug)),
             ("contributor-credits", self.url("contributor_claims")),

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from projects.indexing import license_check
+from projects.sources import license_check
 from projects.models import Project
 
 

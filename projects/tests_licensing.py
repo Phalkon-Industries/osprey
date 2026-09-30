@@ -42,7 +42,6 @@ class IdentifyTests(TestCase):
         self.assertEqual(identify_license_text(CC_BY_SA), "CC-BY-SA-4.0")
         self.assertEqual(identify_license_text(CC_BY_NC), "CC-BY-NC")
         self.assertEqual(identify_license_text("SPDX-License-Identifier: Apache-2.0\n"), "Apache-2.0")
-        self.assertEqual(identify_license_text("TAPR Open Hardware License Version 1.0"), "TAPR-OHL-1.0")
         self.assertEqual(identify_license_text("Some notes about the project."), "")
         self.assertEqual(identify_license_text(""), "")
 

@@ -26,17 +26,16 @@ project Edit button (kept separate from sub-page `can_edit` flags).
 
 <header class="project-header">
     <h1><a href="{% url 'projects:detail' project.slug %}" style="color:inherit;text-decoration:none">{{ project.title }}</a></h1>
-    {% if project.is_indexed %}<span class="badge indexed">Indexed &middot; {{ project.source_label }}</span>{% endif %}
-    {% if project.is_held %}<span class="badge private">held for review</span>{% elif not project.is_public %}<span class="badge private">draft</span>{% endif %}
+    {% if not project.is_public %}<span class="badge private">draft</span>{% endif %}
     {% if project.license %}<span class="badge license">{{ project.license }}</span>{% endif %}
     <span class="spacer"></span>
-    {% if show_watch and user.is_authenticated and project.is_public and not hero_can_edit or show_watch and user.is_authenticated and project.is_public and project.is_indexed %}
+    {% if show_watch and user.is_authenticated and project.is_public and not hero_can_edit %}
     <form method="post" action="{% url 'projects:watch_toggle' project.slug %}" style="display:inline;margin:0">
         {% csrf_token %}
         <button type="submit" class="button ghost" title="{% if is_watching %}Stop getting notified about new versions, wiki pages, and use reports here{% else %}Get notified about new versions, wiki pages, and use reports on this project{% endif %}">{% if is_watching %}Unfollow{% else %}Follow Project{% endif %}</button>
     </form>
     {% endif %}
-    {% if hero_can_edit and not project.is_indexed %}<a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>{% endif %}
+    {% if hero_can_edit %}<a class="button ghost" href="{% url 'projects:edit' project.slug %}">Edit</a>{% endif %}
     {% if hero_can_new_version %}<a class="button ghost" href="{% url 'projects:zenodo_new_version' project.slug %}" title="Publish a new version with a fresh version DOI">New version</a>{% endif %}
 </header>
 

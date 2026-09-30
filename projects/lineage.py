@@ -166,8 +166,6 @@ def activate_pending(child: Project) -> int:
 def respond(edge: LineageEdge, user, action: str, reason: str = ""):
     """Parent-side dispute, or retraction of one. Returns an error
     string or None."""
-    if edge.parent.is_indexed:
-        return "Indexed entries have no team on OSPREY, so links to them can't be disputed."
     if not edge.parent.editable_by(user):
         return "Only the linked project's team can respond to this claim."
     if edge.is_withdrawn:

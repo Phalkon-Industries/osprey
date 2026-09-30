@@ -23,7 +23,7 @@ Tags stay off cards; they live on the project page.
     {% endif %}
     <h3>
         <span>{{ project.title }}</span>
-        {% if project.is_held %}<span class="badge private" style="font-weight:500">held</span>{% elif not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
+        {% if not project.is_public %}<span class="badge private" style="font-weight:500">draft</span>{% endif %}
     </h3>
     <p class="summary">{{ project.summary|truncatewords:words|default_if_none:"" }}</p>
     {% with authors=project.credited_contributions.all|slice:":3" total=project.credited_contributions.count %}
@@ -40,10 +40,9 @@ Tags stay off cards; they live on the project page.
         {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
         {% for inst in project.institutions %}<span>· {{ inst }}</span>{% endfor %}
     </div>
-    {% if project.is_indexed or project.license %}
+    {% if project.license %}
     <div class="card-badges">
-        {% if project.is_indexed %}<span class="badge indexed">Indexed &middot; {{ project.source_label }}</span>{% endif %}
-        {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{% endif %}
+        <span class="badge license" style="margin-left:auto">{{ project.license }}</span>
     </div>
     {% endif %}
 </a>

@@ -17,14 +17,6 @@
     </div>
     <div class="search-row narrow">
         <div class="search-field">
-            <label for="kind-filter">Kind</label>
-            <select name="kind" id="kind-filter">
-                <option value="">Everything</option>
-                <option value="projects">OSPREY projects</option>
-                <option value="indexed">Indexed entries</option>
-            </select>
-        </div>
-        <div class="search-field">
             <label for="field-filter">Field</label>
             <select name="field" id="field-filter">
                 <option value="">Any field</option>
@@ -58,7 +50,6 @@
                 }
             }
         }
-        setSel('kind-filter', params.get('kind'));
         setSel('field-filter', params.get('field'));
         setSel('type-filter', params.get('project_type'));
     })();
