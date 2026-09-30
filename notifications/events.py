@@ -100,7 +100,12 @@ def _project_team(project):
 
     v1 decision (2026-08-27): the owner only. Widening to verified
     contributors or a real editors model happens here and nowhere else.
+    An owner who muted activity on the project (the as-is badge offers
+    it) hears nothing about questions, use reports, wiki suggestions or
+    lineage claims there.
     """
+    if project.owner_activity_muted:
+        return []
     return [project.created_by] if project.created_by_id else []
 
 

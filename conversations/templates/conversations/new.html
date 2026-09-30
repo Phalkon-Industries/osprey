@@ -6,6 +6,7 @@
     <p class="muted small"><a href="{% url 'conversations:index' project.slug %}">&larr; Discussion</a></p>
     <h1>Start a thread on {{ project.title }}</h1>
     <p class="muted">Ask a specific question about the project. Markdown is supported in the body.</p>
+    {% if project.provided_as_is %}<p class="muted">This project is provided as-is. Answers come from the community, if at all.</p>{% endif %}
     <form method="post" class="stack-form">
         {% csrf_token %}
         <p>

@@ -40,9 +40,10 @@ Tags stay off cards; they live on the project page.
         {% if project.artifact_type %}<span>· {{ project.artifact_type }}</span>{% endif %}
         {% for inst in project.institutions %}<span>· {{ inst }}</span>{% endfor %}
     </div>
-    {% if project.license %}
+    {% if project.license or project.provided_as_is %}
     <div class="card-badges">
-        <span class="badge license" style="margin-left:auto">{{ project.license }}</span>
+        {% if project.provided_as_is %}<span class="badge as-is">as-is</span>{% endif %}
+        {% if project.license %}<span class="badge license" style="margin-left:auto">{{ project.license }}</span>{% endif %}
     </div>
     {% endif %}
 </a>

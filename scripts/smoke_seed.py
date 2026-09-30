@@ -791,3 +791,35 @@ print(f"wiki_pages:      {WikiPage.objects.count()}")
 print(f"use reports:     {UseReport.objects.count()}")
 print(f"citations:       {Citation.objects.count()}")
 print(f"lineage_edges:   {LineageEdge.objects.count()}")
+
+
+# --- A finished instrument nobody maintains: provided as-is ---------------
+TIDE_README = """\
+Tide gauge logger built for a 2019 field season: a pressure sensor, a
+low-power board, and a housing that survived a winter. It worked, the
+season ended, and nobody is developing it further. The design is
+complete as of this version.
+"""
+tide_owner = Project.objects.get(slug="whoi-pump").created_by
+tide, _ = Project.objects.get_or_create(
+    slug="tide-gauge-logger-2019",
+    defaults={
+        "title": "Tide Gauge Logger (2019 season)",
+        "summary": "A pressure-based tide gauge logger from a finished field season. Provided as-is.",
+        "readme": TIDE_README,
+        "artifact_type": "hardware",
+        "field": "oceanography",
+        "license": "CERN-OHL-P-2.0",
+        "institution": WHOI,
+        "visibility": Project.VISIBILITY_PUBLIC,
+        "created_by": tide_owner,
+        "self_rating": 7,
+        "self_rating_note": "Deployed for one season; documentation complete.",
+    },
+)
+Project.objects.filter(pk=tide.pk).update(
+    visibility=Project.VISIBILITY_PUBLIC, created_by=tide_owner, provided_as_is=True, wiki_requires_approval=False
+)
+Contribution.objects.update_or_create(
+    project=tide, display_name="Field Team 2019", defaults={"user": None, "role": "Design and deployment", "order": 0}
+)

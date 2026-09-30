@@ -273,6 +273,11 @@ def project_list(request):
     project_type = request.GET.get("project_type", "").strip()
     institution = request.GET.get("institution", "").strip()
     tag = request.GET.get("tag", "").strip()
+    support = request.GET.get("support", "").strip()
+    if support == "as_is":
+        qs = qs.filter(provided_as_is=True)
+    elif support == "maintained":
+        qs = qs.filter(provided_as_is=False)
 
     if q:
         qs = qs.filter(
@@ -350,6 +355,7 @@ def project_detail(request, slug: str):
         {
             "project": project,
             "can_edit": project.editable_by(request.user),
+            "is_owner": project.publishable_by(request.user),
             "zenodo_configured": zenodo_configured(),
             "zenodo_mode_label": zenodo_mode_label(),
             "zenodo_deposit": deposit,
@@ -1837,6 +1843,19 @@ def project_register(request):
         "projects/register.html",
         {"error": error, "doi": doi, "verified_orcid": verified_orcid},
     )
+
+
+@login_required
+def mute_toggle(request, slug: str):
+    """Owner's one-click mute of activity notifications on their project."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.publishable_by(request.user):
+        raise Http404
+    if request.method == "POST":
+        project.owner_activity_muted = not project.owner_activity_muted
+        project.save(update_fields=["owner_activity_muted"])
+        messages.success(request, "Activity muted." if project.owner_activity_muted else "Activity unmuted.")
+    return redirect(project.get_absolute_url())
 
 
 @login_required

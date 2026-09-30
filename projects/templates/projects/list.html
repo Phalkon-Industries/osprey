@@ -30,6 +30,14 @@
                 {% for opt in project_type_options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
             </select>
         </div>
+        <div class="search-field">
+            <label for="support-filter">Support</label>
+            <select name="support" id="support-filter">
+                <option value="">Any</option>
+                <option value="maintained">Maintained</option>
+                <option value="as_is">Provided as-is</option>
+            </select>
+        </div>
     </div>
 </form>
 
@@ -52,6 +60,7 @@
         }
         setSel('field-filter', params.get('field'));
         setSel('type-filter', params.get('project_type'));
+        setSel('support-filter', params.get('support'));
     })();
 </script>
 

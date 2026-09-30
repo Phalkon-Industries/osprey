@@ -434,6 +434,9 @@ def metadata_for_project(project: Project, deposit: ProjectDeposit | None = None
     if deposit is not None and deposit.pending_changelog:
         metadata["version"] = f"v{deposit.next_version_index}"
         metadata["notes"] = deposit.pending_changelog
+    if project.provided_as_is:
+        note = "Provided as-is: no support or updates are planned."
+        metadata["notes"] = (metadata.get("notes") + "\n\n" + note) if metadata.get("notes") else note
     return metadata
 
 
@@ -459,6 +462,7 @@ def _osprey_metadata_payload(project: Project) -> dict[str, Any]:
         "doi": project.doi,
         "canonical_url": project.canonical_url,
         "institution": project.institution,
+        "provided_as_is": project.provided_as_is,
         "contributors": contributors,
         "tags": list(project.tags.values_list("name", flat=True)),
         "osprey_url": _osprey_permalink(project),

@@ -744,6 +744,25 @@ button.ghost:hover {
     border-color: var(--badge-private-border);
 }
 
+.badge.as-is {
+    background: var(--bg-soft);
+    color: var(--fg-muted);
+    border-color: var(--border);
+}
+
+.as-is-box {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .6rem .9rem;
+    margin: 0 0 1rem;
+    color: var(--fg-muted);
+}
+
+.as-is-box p {
+    margin: 0;
+}
+
 .badge.license {
     background: var(--badge-license-bg);
     color: var(--badge-license-fg);

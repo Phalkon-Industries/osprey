@@ -24,6 +24,22 @@
     </div>
     {% endif %}
 
+    {% if project.provided_as_is %}
+    <section class="as-is-box">
+        <p>
+            <span class="badge as-is">Provided as-is</span>
+            No support or updates are planned.
+            {% if is_owner %}
+            <form method="post" action="{% url 'projects:mute_toggle' project.slug %}" style="display:inline;margin-left:.5rem">
+                {% csrf_token %}
+                <button type="submit" class="ghost small">{% if project.owner_activity_muted %}Unmute activity{% else %}Mute activity{% endif %}</button>
+            </form>
+            {% if project.owner_activity_muted %}<span class="muted small">Activity here doesn't notify you.</span>{% endif %}
+            {% endif %}
+        </p>
+    </section>
+    {% endif %}
+
     {% if project.readme %}
     <section>
         <div class="prose">{{ project.readme|markdown }}</div>

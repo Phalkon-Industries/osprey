@@ -104,6 +104,9 @@
         {% include "projects/_form_field.html" with field=form.artifact_type require=True %}
         {% include "projects/_form_field.html" with field=form.self_rating require=True %}
         {% include "projects/_form_field.html" with field=form.self_rating_note %}
+        <p>
+            <label><input type="checkbox" name="{{ form.provided_as_is.html_name }}" value="on"{% if form.provided_as_is.value %} checked{% endif %}> {{ form.provided_as_is.label }}</label>
+        </p>
 
     {% include "projects/_form_field.html" with field=form.cover_image %}
     <p class="muted" style="font-size:.85rem;margin:-.5rem 0 .75rem">
@@ -427,7 +430,11 @@
         {% include "projects/_form_field.html" with field=form.funding %}
         {% include "projects/_form_field.html" with field=form.publications %}
         {% include "projects/_form_field.html" with field=form.tags_input %}
+        {% if project.provided_as_is %}
+        <p class="muted small">Wiki edits apply directly on a project provided as-is.</p>
+        {% else %}
         {% include "projects/_form_field.html" with field=form.wiki_requires_approval %}
+        {% endif %}
         <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
 

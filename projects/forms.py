@@ -162,6 +162,7 @@ class ProjectForm(forms.ModelForm):
             "funding",
             "self_rating",
             "self_rating_note",
+            "provided_as_is",
             "publications",
             "wiki_requires_approval",
         ]
@@ -278,6 +279,8 @@ class ProjectForm(forms.ModelForm):
         # The short description drives cards and search results, so the
         # form requires it even though old rows may predate the rule.
         self.fields["summary"].required = True
+        self.fields["provided_as_is"].label = "Provided as-is. No support or updates are planned."
+        self.fields["provided_as_is"].help_text = ""
         # Pre-populate the license dropdown from the saved value. A saved
         # license that is no longer on the curated list (all past options
         # were open licenses) stays valid for this project, so editing
@@ -324,6 +327,10 @@ class ProjectForm(forms.ModelForm):
     def save(self, commit: bool = True) -> Project:
         project = super().save(commit=False)
         project.license = self.cleaned_data.get("resolved_license", "") or ""
+        # An as-is project has nobody reviewing wiki suggestions, so its wiki
+        # is always open to direct edits (decided 2026-09-29).
+        if project.provided_as_is:
+            project.wiki_requires_approval = False
         if not project.slug:
             project.slug = _generate_slug(project.title)
         # Re-encode cover image (upload or URL) before persisting.

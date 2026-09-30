@@ -14,7 +14,7 @@
         {% endif %}
     </header>
     <p class="muted">
-        Questions about this project.
+        Questions about this project.{% if project.provided_as_is %} This project is provided as-is. Answers come from the community, if at all.{% endif %}
     </p>
     {% for t in threads %}
     <article class="thread-row">

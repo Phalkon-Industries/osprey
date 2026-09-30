@@ -13,6 +13,7 @@ urlpatterns = [
     path("<slug:slug>/edit/", views.project_edit, name="edit"),
     path("<slug:slug>/delete/", views.project_delete, name="delete"),
     path("<slug:slug>/watch/", views.watch_toggle, name="watch_toggle"),
+    path("<slug:slug>/mute/", views.mute_toggle, name="mute_toggle"),
     path("<slug:slug>/versions/", views.project_versions, name="versions"),
     path("<slug:slug>/files/", views.project_files, name="files"),
     path("<slug:slug>/citations/", views.project_citations, name="citations"),

@@ -124,6 +124,13 @@ class Project(models.Model):
     origin = models.CharField(
         max_length=16, choices=ORIGIN_CHOICES, default=ORIGIN_NATIVE, db_index=True
     )
+    # Provided as-is: a promise about support, not a verdict on quality
+    # (decided 2026-09-29). Per project, editable any time.
+    provided_as_is = models.BooleanField(default=False)
+    # Owner's one-click mute of project activity notifications (questions,
+    # use reports, wiki suggestions, lineage claims). Offered from the
+    # as-is badge; works for any project.
+    owner_activity_muted = models.BooleanField(default=False)
     # License audit (all kinds): OSPREY's license compared with the Zenodo
     # record and any linked GitHub repository. See projects/indexing/license_check.py.
     license_check = models.JSONField(default=dict, blank=True)
@@ -255,6 +262,16 @@ class Project(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args, **kwargs):
+        # Provided as-is means nobody reviews wiki suggestions: the wiki is
+        # always open. Enforced here so no path can leave it in review mode.
+        if self.provided_as_is and self.wiki_requires_approval:
+            self.wiki_requires_approval = False
+            fields = kwargs.get("update_fields")
+            if fields is not None and "wiki_requires_approval" not in fields:
+                kwargs["update_fields"] = list(fields) + ["wiki_requires_approval"]
+        super().save(*args, **kwargs)
 
     def get_absolute_url(self) -> str:
         return reverse("projects:detail", args=[self.slug])
