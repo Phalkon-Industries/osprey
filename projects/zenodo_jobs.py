@@ -163,9 +163,36 @@ def _requeue_stale_running() -> int:
     ).update(status=ZenodoJob.STATUS_QUEUED, next_attempt_at=timezone.now())
 
 
+SLOW_AFTER_SECONDS = 600
+
+
+def alert_slow_jobs() -> int:
+    """Tell staff, once per job, about work that has waited more than ten
+    minutes. The owner's page says staff has been notified; this is what
+    makes that true. Returns how many alerts went out."""
+    from django.urls import reverse
+
+    cutoff = timezone.now() - timedelta(seconds=SLOW_AFTER_SECONDS)
+    sent = 0
+    for job in ZenodoJob.objects.filter(status__in=ZenodoJob.PENDING_STATUSES, created_at__lt=cutoff).select_related("project"):
+        if job.payload.get("staff_alerted"):
+            continue
+        title = f"Zenodo job waiting {int((timezone.now() - job.created_at).total_seconds() // 60)} min: {job.project.title}"[:200]
+        body = f"{job.get_kind_display()} for {job.project.title}, attempt {job.attempts}. Last error: {job.last_error[:300] or 'none yet'}"
+        _notify(lambda events, t=title, b=body: [
+            events._emit(u, kind="zenodo_job_slow", title=t, body=b, url=reverse("zenodo_jobs"), dedup_key=f"zenodo_job_slow:{job.pk}")
+            for u in events._staff()
+        ])
+        job.payload = {**job.payload, "staff_alerted": True}
+        job.save(update_fields=["payload", "updated_at"])
+        sent += 1
+    return sent
+
+
 def run_due_jobs(limit: int = 20) -> int:
     """Claim due jobs under a row lock, then run them one at a time."""
     _requeue_stale_running()
+    alert_slow_jobs()
     now = timezone.now()
     with transaction.atomic():
         ids = list(
@@ -176,7 +203,18 @@ def run_due_jobs(limit: int = 20) -> int:
         )
         ZenodoJob.objects.filter(id__in=ids).update(status=ZenodoJob.STATUS_RUNNING, updated_at=now)
     for job_id in ids:
-        run_job(ZenodoJob.objects.select_related("project", "requested_by").get(pk=job_id))
+        try:
+            run_job(ZenodoJob.objects.select_related("project", "requested_by").get(pk=job_id))
+        except Exception as exc:  # noqa: BLE001 - a crash before run_job's own guard
+            # (loading the job's project, for instance) must still land on the
+            # job: attempts counted, retry scheduled, owner told after the last
+            # one. Otherwise the job sits "running" and the loop repeats forever.
+            logger.exception("Zenodo job %s crashed outside its runner", job_id)
+            job = ZenodoJob.objects.filter(pk=job_id).first()
+            if job is not None:
+                job.attempts += 1
+                job.save(update_fields=["attempts", "updated_at"])
+                _on_failure(job, exc)
     return len(ids)
 
 

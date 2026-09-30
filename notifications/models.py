@@ -330,3 +330,41 @@ class Announcement(models.Model):
     @property
     def is_sent(self) -> bool:
         return self.sent_at is not None
+
+
+class LoopHeartbeat(models.Model):
+    """Singleton: is the notifier loop alive? Written every iteration so the
+    staff dashboard can show it, and so a run of failures raises an alarm
+    instead of filling a log nobody reads (decided 2026-09-29)."""
+
+    last_ok_at = models.DateTimeField(null=True, blank=True)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    consecutive_failures = models.PositiveIntegerField(default=0)
+    alerted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "notifier heartbeat"
+        verbose_name_plural = "notifier heartbeat"
+
+    def __str__(self) -> str:
+        return "Notifier heartbeat"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "LoopHeartbeat":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def is_stale(self) -> bool:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        if self.last_ok_at is None:
+            return True
+        return timezone.now() - self.last_ok_at > timedelta(minutes=5)

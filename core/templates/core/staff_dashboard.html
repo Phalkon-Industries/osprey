@@ -11,6 +11,13 @@
 </p>
 
 <section style="margin-bottom:1.5rem">
+    <h2>Notifier</h2>
+    <p{% if heartbeat.is_stale %} class="check-fail-text"{% endif %}>
+        {% if heartbeat.last_ok_at %}Last clean run {{ heartbeat.last_ok_at|timesince }} ago{% else %}No clean run recorded yet{% endif %}{% if heartbeat.is_stale %} &middot; <strong>stale</strong>: publishing, email and digests are not running{% endif %}{% if heartbeat.consecutive_failures %} &middot; {{ heartbeat.consecutive_failures }} failure{{ heartbeat.consecutive_failures|pluralize }} in a row: <span class="small">{{ heartbeat.last_error|truncatechars:160 }}</span>{% endif %}
+    </p>
+</section>
+
+<section style="margin-bottom:1.5rem">
     <h2>Overview</h2>
     <ul class="stats" style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:1rem">
         <li><strong>{{ totals.projects }}</strong> projects total ({{ totals.public_projects }} public)</li>

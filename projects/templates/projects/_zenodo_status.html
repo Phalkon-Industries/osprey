@@ -8,6 +8,9 @@
     {% if zenodo_job.attempts > 1 %}
     <span class="muted">Zenodo hasn't responded yet (attempt {{ zenodo_job.attempts }}; next try {{ zenodo_job.next_attempt_at|timeuntil }} from now).</span>
     {% endif %}
+    {% if zenodo_job_slow %}
+    <span class="muted">This is taking longer than usual. Staff has been notified and will look into it.</span>
+    {% endif %}
 </div>
 {% elif zenodo_job.status == "failed" %}
 <div class="zenodo-status is-failed" role="alert">

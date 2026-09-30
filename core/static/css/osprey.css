@@ -744,6 +744,10 @@ button.ghost:hover {
     border-color: var(--badge-private-border);
 }
 
+.check-fail-text { color: #8a1c1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .check-fail-text { color: #ffb3b3; } }
+:root[data-theme="dark"] .check-fail-text { color: #ffb3b3; }
+
 .badge.as-is {
     background: var(--bg-soft);
     color: var(--fg-muted);

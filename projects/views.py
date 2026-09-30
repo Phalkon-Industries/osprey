@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from allauth.socialaccount.models import SocialAccount
 from django_ratelimit.decorators import ratelimit
@@ -367,6 +368,10 @@ def project_detail(request, slug: str):
             "citations_count": citations_count,
             "is_watching": is_watching,
             "zenodo_job": zenodo_job,
+            "zenodo_job_slow": bool(
+                zenodo_job and zenodo_job.is_pending
+                and (timezone.now() - zenodo_job.created_at).total_seconds() > 600
+            ),
             "zenodo_sync_pending": zenodo_sync_pending,
             "can_new_version": bool(
                 project.publishable_by(request.user)
@@ -1761,10 +1766,12 @@ def zenodo_jobs_staff(request):
     jobs = ZenodoJob.objects.select_related("project", "requested_by").order_by(
         "-created_at"
     )[:100]
+    from notifications.models import LoopHeartbeat
+
     return render(
         request,
         "projects/zenodo_jobs.html",
-        {"jobs": jobs, "health": zenodo_jobs.health()},
+        {"jobs": jobs, "health": zenodo_jobs.health(), "heartbeat": LoopHeartbeat.load()},
     )
 
 

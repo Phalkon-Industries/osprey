@@ -41,6 +41,8 @@ EVENTS = {
     "wiki_suggestion_reviewed": GROUP_REPLIES,
     "feedback_reply": GROUP_REPLIES,
     "feedback_submitted": GROUP_STAFF,
+    "notifier_failing": GROUP_STAFF,
+    "zenodo_job_slow": GROUP_STAFF,
     "feedback_user_replied": GROUP_STAFF,
     "feedback_reopen_requested": GROUP_STAFF,
     "staff_message_received": GROUP_ACCOUNT,

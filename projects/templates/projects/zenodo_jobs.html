@@ -7,6 +7,7 @@
     user's request, with retries when Zenodo is down.
 </p>
 <ul class="zenodo-health">
+    <li{% if heartbeat.is_stale %} class="check-fail-text"{% endif %}>Notifier loop: {% if heartbeat.last_ok_at %}last clean run {{ heartbeat.last_ok_at|timesince }} ago{% else %}no clean run recorded{% endif %}{% if heartbeat.is_stale %} (stale){% endif %}{% if heartbeat.consecutive_failures %} &middot; {{ heartbeat.consecutive_failures }} failing iteration{{ heartbeat.consecutive_failures|pluralize }}: {{ heartbeat.last_error|truncatechars:120 }}{% endif %}</li>
     <li>Last success: {% if health.last_success_at %}{{ health.last_success_at|timesince }} ago{% else %}none recorded{% endif %}</li>
     <li>Failures since then: {{ health.recent_failures }}</li>
     <li>Queued: {{ health.queued }} &middot; Running: {{ health.running }} &middot; Failed: {{ health.failed }}</li>

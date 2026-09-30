@@ -2842,3 +2842,55 @@ class DraftDeleteZenodoTests(FakeZenodoMixin, ProjectTestCase):
         with self.assertRaises(ZenodoError):
             client.delete_deposition(str(dep_id))
         self.assertIn(dep_id, self.fz.depositions)
+
+
+class JobCrashOutsideRunnerTests(ProjectTestCase):
+    """A crash between claiming a job and its own failure guard still lands
+    on the job, so a broken loop can't leave work 'running' forever."""
+
+    def test_crash_while_loading_the_job_counts_as_an_attempt(self):
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        from projects import zenodo_jobs
+        from projects.models import ZenodoJob
+
+        job = ZenodoJob.objects.create(
+            project=self.private_project, kind=ZenodoJob.KIND_PUBLISH, status=ZenodoJob.STATUS_QUEUED,
+            requested_by=self.owner, next_attempt_at=timezone.now(),
+        )
+        with patch("projects.zenodo_jobs.run_job", side_effect=RuntimeError("column projects_project.source does not exist")):
+            zenodo_jobs.run_due_jobs()
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 1)
+        self.assertEqual(job.status, ZenodoJob.STATUS_QUEUED)  # scheduled for a retry, not stranded
+        self.assertGreater(job.next_attempt_at, timezone.now())
+        self.assertIn("projects_project.source", job.last_error)
+
+
+class SlowJobAlertTests(ProjectTestCase):
+    def test_staff_hear_once_about_a_job_waiting_over_ten_minutes(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from notifications.models import Notification
+        from projects import zenodo_jobs
+        from projects.models import ZenodoJob
+
+        job = ZenodoJob.objects.create(
+            project=self.private_project, kind=ZenodoJob.KIND_PUBLISH, status=ZenodoJob.STATUS_QUEUED,
+            requested_by=self.owner, next_attempt_at=timezone.now() + timedelta(hours=1), last_error="HTTP 503",
+        )
+        self.assertEqual(zenodo_jobs.alert_slow_jobs(), 0)  # just created
+        ZenodoJob.objects.filter(pk=job.pk).update(created_at=timezone.now() - timedelta(minutes=11))
+        self.assertEqual(zenodo_jobs.alert_slow_jobs(), 1)
+        notices = Notification.objects.filter(kind="zenodo_job_slow", user=self.staff)
+        self.assertEqual(notices.count(), 1)
+        self.assertIn("Private Pump", notices.get().title)
+        self.assertIn("HTTP 503", notices.get().body)
+        self.assertEqual(zenodo_jobs.alert_slow_jobs(), 0)  # once per job
+        self.client.force_login(self.owner)
+        page = self.client.get(self.private_project.get_absolute_url())
+        self.assertContains(page, "Staff has been notified and will look into it.")

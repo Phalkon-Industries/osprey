@@ -60,6 +60,12 @@ def contributor_guidelines(request):
     return render(request, "core/contributor_guidelines.html")
 
 
+def _heartbeat():
+    from notifications.models import LoopHeartbeat
+
+    return LoopHeartbeat.load()
+
+
 def _signup_gate_on() -> bool:
     from people.models import SignupGate
 
@@ -91,6 +97,7 @@ def staff_dashboard(request):
             "status_summary": status_summary,
             "recent_feedback": recent_feedback,
             "signup_gate_on": _signup_gate_on(),
+            "heartbeat": _heartbeat(),
             "totals": {
                 "feedback": Feedback.objects.count(),
                 "projects": Project.objects.count(),

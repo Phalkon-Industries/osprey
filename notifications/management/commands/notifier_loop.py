@@ -18,6 +18,19 @@ INTERVAL_SECONDS = 30
 COMMUNITY_POLL_SECONDS = 600
 
 
+def _heartbeat(*, ok: bool, exc: BaseException | None = None) -> None:
+    """Record the iteration; raise the alarm on a streak. Never raises."""
+    try:
+        from notifications import loop_health
+
+        if ok:
+            loop_health.record_ok()
+        else:
+            loop_health.record_failure(exc or RuntimeError("unknown"))
+    except Exception:  # noqa: BLE001 - if even this fails, the log line above stands
+        pass
+
+
 class Command(BaseCommand):
     help = "Run the notification email loop (outbox every 30s, digests daily)."
 
@@ -46,9 +59,11 @@ class Command(BaseCommand):
                     call_command("refresh_registered_projects")
                     call_command("license_audit")
                     last_digest_date = today
+                _heartbeat(ok=True)
             except Exception as exc:  # noqa: BLE001 - the loop must survive
                 # transient DB/provider outages and try again next tick.
                 self.stderr.write(f"notifier iteration failed: {exc}")
+                _heartbeat(ok=False, exc=exc)
             if options["once"]:
                 break
             time.sleep(INTERVAL_SECONDS)
