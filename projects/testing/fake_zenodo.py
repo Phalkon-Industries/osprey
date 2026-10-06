@@ -138,6 +138,7 @@ class FakeZenodoServer(ThreadingHTTPServer):
         self.buckets: dict[str, int] = {}
         self.rules: list[Rule] = []
         self.requests: list[tuple[str, str]] = []
+        self.in_flight = 0  # requests being handled, hung ones included
         self.community_requests: dict[str, CommunityRequest] = {}
         self.community = "osprey"
         # Largest page the versions listing will serve (Zenodo's own cap is
@@ -154,9 +155,25 @@ class FakeZenodoServer(ThreadingHTTPServer):
         return f"http://{host}:{port}"
 
     def start(self) -> "FakeZenodoServer":
-        self._thread = threading.Thread(target=self.serve_forever, daemon=True)
+        self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
         return self
+
+    def _serve(self) -> None:
+        # A short poll so stop() returns at once. The default half-second
+        # poll cost every test that starts a server up to 0.5 s in teardown.
+        self.serve_forever(poll_interval=0.02)
+
+    def wait_idle(self, timeout_s: float = 5.0) -> None:
+        """Block until no request is being handled: a `hang` rule's request
+        finishes after the client has given up on it."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            with self.lock:
+                if self.in_flight == 0:
+                    return
+            time.sleep(0.01)
+        raise AssertionError(f"fake Zenodo still busy after {timeout_s}s")
 
     def stop(self) -> None:
         self.shutdown()
@@ -420,6 +437,15 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         return self.headers.get("Authorization") == f"Bearer {self.server.token}"
 
     def _dispatch(self, method: str) -> None:
+        with self.server.lock:
+            self.server.in_flight += 1
+        try:
+            self._handle(method)
+        finally:
+            with self.server.lock:
+                self.server.in_flight -= 1
+
+    def _handle(self, method: str) -> None:
         path = urlparse(self.path).path
         with self.server.lock:
             self.server.requests.append((method, path))

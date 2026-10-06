@@ -29,9 +29,10 @@ class Command(BaseCommand):
             except Project.DoesNotExist as exc:
                 raise CommandError("No such project.") from exc
         else:
-            projects = license_check.auditable()
+            projects = list(license_check.auditable())
         counts = license_check.run_audit(projects, pause=options["pause"], notify=not options["no_notify"])
         self.stdout.write(f"license audit: checked {counts['checked']}, with findings {counts['with_findings']}")
-        for p in Project.objects.exclude(license_check={}).order_by("pk"):
+        # Only what this run checked; other projects keep their last result.
+        for p in Project.objects.filter(pk__in=[p.pk for p in projects]).order_by("pk"):
             for f in p.license_findings:
                 self.stdout.write(f"  {p.slug}: {f['text']}")

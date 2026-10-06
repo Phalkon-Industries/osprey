@@ -9,5 +9,6 @@ EXEC=("${COMPOSE[@]}" exec -T --user "$USER_SPEC" -w /app "$SERVICE")
 "${EXEC[@]}" python manage.py check
 "${EXEC[@]}" python manage.py makemigrations --check --dry-run
 "${EXEC[@]}" coverage erase
-"${EXEC[@]}" coverage run manage.py test "$@"
+"${EXEC[@]}" coverage run manage.py test --parallel "${OSPREY_TEST_PARALLEL:-4}" "$@"
+"${EXEC[@]}" coverage combine
 "${EXEC[@]}" coverage report

@@ -204,8 +204,8 @@ class FakeZenodoServerTests(FakeZenodoMixin, TestCase):
         self.assertEqual(published["doi"], f"{DOI_PREFIX}{dep['id']}")
 
     def test_hang_rule_surfaces_as_a_timeout(self):
-        client = self.client_for(timeout=1)
-        self.fz.add_rule(match="/api/deposit/depositions", mode="hang", delay_s=2.5)
+        client = self.client_for(timeout=0.3)
+        self.fz.add_rule(match="/api/deposit/depositions", mode="hang", delay_s=0.9)
         with self.assertRaises(ZenodoError) as caught:
             client.create_deposition()
         self.assertIn("Could not reach Zenodo", str(caught.exception))
@@ -439,9 +439,9 @@ class ZenodoFlowsThroughFakeTests(FakeZenodoMixin, TestCase):
         # The retry checks Zenodo and reuses the draft: nothing orphaned.
         self.assertEqual(len([p for p in self.fz.paths("POST") if p == "/api/deposit/depositions"]), 1)
 
-    @override_settings(ZENODO_TIMEOUT_SECONDS=1)
+    @override_settings(ZENODO_TIMEOUT_SECONDS=0.3)
     def test_zenodo_hanging_surfaces_as_a_timeout_not_a_crash(self):
-        self.fz.add_rule(match="actions/publish", mode="hang", delay_s=2.5)
+        self.fz.add_rule(match="actions/publish", mode="hang", delay_s=0.9)
         with self.assertRaises(ZenodoError) as caught:
             publish_project_now(self.project, self.owner)
         self.assertIn("timed out", str(caught.exception))

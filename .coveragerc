@@ -1,5 +1,9 @@
 [run]
 branch = True
+# manage.py test --parallel forks workers; each writes its own data file,
+# merged by `coverage combine` before the report.
+parallel = True
+concurrency = multiprocessing
 source = .
 omit =
     manage.py

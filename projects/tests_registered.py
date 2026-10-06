@@ -421,11 +421,11 @@ class RegisterEdgeCaseTests(RegisteredProjectBase):
         project = self.link(plain.doi)
         self.assertEqual(project.readme, "Plain text.\n\nTwo paragraphs.")
 
-    @override_settings(ZENODO_TIMEOUT_SECONDS=1)
+    @override_settings(ZENODO_TIMEOUT_SECONDS=0.3)
     def test_outages_during_registration_create_nothing(self):
         for mode, extra, expect in (
             ("status", {"status": 503}, "HTTP 503"),
-            ("hang", {"delay_s": 2.5}, "Couldn't reach Zenodo"),
+            ("hang", {"delay_s": 0.9}, "Couldn't reach Zenodo"),
             ("drop", {}, "Couldn't reach Zenodo"),
             ("garbage", {"status": 200}, "isn't a Zenodo record"),
         ):
@@ -445,12 +445,12 @@ class RefreshEdgeCaseTests(RegisteredProjectBase):
         zenodo_register.refresh_registered(project)
         self.assertEqual(project.contributions.count(), 3)  # nothing removed
 
-    @override_settings(ZENODO_TIMEOUT_SECONDS=1)
+    @override_settings(ZENODO_TIMEOUT_SECONDS=0.3)
     def test_refresh_during_an_outage_changes_nothing(self):
         project = self.link()
         deposit = ProjectDeposit.objects.get(project=project)
         synced = deposit.zenodo_synced_at
-        self.fz.add_rule(match="/api/records/", mode="hang", delay_s=2.5)
+        self.fz.add_rule(match="/api/records/", mode="hang", delay_s=0.9)
         with self.assertRaises(zenodo_register.RegistrationError):
             zenodo_register.refresh_registered(project)
         deposit.refresh_from_db()

@@ -78,9 +78,14 @@ class FakeGitHubServer(ThreadingHTTPServer):
         return f"http://{host}:{port}"
 
     def start(self) -> "FakeGitHubServer":
-        self._thread = threading.Thread(target=self.serve_forever, daemon=True)
+        self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
         return self
+
+    def _serve(self) -> None:
+        # A short poll so stop() returns at once. The default half-second
+        # poll cost every test that starts a server up to 0.5 s in teardown.
+        self.serve_forever(poll_interval=0.02)
 
     def stop(self) -> None:
         self.shutdown()

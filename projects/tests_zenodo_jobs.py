@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
-import time
 import zipfile
 from datetime import timedelta
 
@@ -131,9 +130,9 @@ class PublishJobTests(ZenodoJobBase):
         self.project.refresh_from_db()
         self.assertEqual(self.project.visibility, Project.VISIBILITY_PUBLIC)
 
-    @override_settings(ZENODO_TIMEOUT_SECONDS=1)
+    @override_settings(ZENODO_TIMEOUT_SECONDS=0.3)
     def test_hang_counts_as_an_outage(self):
-        self.fz.add_rule(match="actions/publish", mode="hang", delay_s=2.5)
+        self.fz.add_rule(match="actions/publish", mode="hang", delay_s=0.9)
         job = zenodo_jobs.enqueue_publish(self.project, self.owner)
         self._run()
         job.refresh_from_db()
@@ -507,14 +506,14 @@ class NoLicenseNeverReachesZenodoTests(ZenodoJobBase):
         self._assert_refused(job, calls_before)
 
 
-@override_settings(ZENODO_TIMEOUT_SECONDS=1)
+@override_settings(ZENODO_TIMEOUT_SECONDS=0.3)
 class LostResponseTests(ZenodoJobBase):
     # Zenodo did the work but OSPREY timed out before the answer came.
     # The fake's `hang` rule answers after the client has given up, so
     # the request still lands. A retry must finish the same record, never
     # make a second one.
     def _lose(self, match):
-        self.fz.add_rule(match=match, mode="hang", delay_s=1.5)
+        self.fz.add_rule(match=match, mode="hang", delay_s=0.9)
 
     def _settle(self, job):
         """First attempt times out; wait for the fake to finish, then retry."""
@@ -522,7 +521,7 @@ class LostResponseTests(ZenodoJobBase):
         job.refresh_from_db()
         self.assertEqual(job.status, ZenodoJob.STATUS_QUEUED, job.last_error)
         self.assertIn("timed out", job.last_error)
-        time.sleep(1.0)
+        self.fz.wait_idle()  # the hung request lands after the client gave up
         self._due_now(job)
         self._run()
         job.refresh_from_db()

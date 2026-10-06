@@ -49,10 +49,17 @@ case "${1:-}" in
 esac
 
 CMD=(docker compose -p "$PROJECT")
+USER_FLAGS=()
 if [[ -n "$ENV_FILE" ]]; then
     CMD+=(--env-file "$ENV_FILE" -f docker-compose.yml -f "$OVERRIDE")
+else
+    # Local only: the repo is bind-mounted, so files a command writes
+    # (makemigrations) should belong to the host user. On prod and
+    # sandbox the container runs as root and owns media/; run as root
+    # there too, like gunicorn and deploy.sh.
+    USER_FLAGS=(--user 1000:1000)
 fi
-CMD+=(exec "${EXEC_FLAGS[@]}" --user 1000:1000 -w /app web python manage.py "$@")
+CMD+=(exec "${EXEC_FLAGS[@]}" "${USER_FLAGS[@]}" -w /app web python manage.py "$@")
 
 # If the user isn't in the docker group's primary set, wrap with sg.
 if id -nG | tr ' ' '\n' | grep -qx docker; then
