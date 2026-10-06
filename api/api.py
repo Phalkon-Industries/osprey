@@ -12,11 +12,11 @@ from datetime import datetime
 from typing import Optional
 
 from django.conf import settings
-from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Schema
 
+from projects import search
 from projects.models import (
     ArtifactLink,
     Contribution,
@@ -172,13 +172,6 @@ def list_projects(
     ).prefetch_related("tags")
     if origin:
         qs = qs.filter(origin=origin)
-    if q:
-        qs = qs.filter(
-            Q(title__icontains=q)
-            | Q(summary__icontains=q)
-            | Q(description__icontains=q)
-            | Q(slug__icontains=q)
-        )
     if field:
         qs = qs.filter(field=field)
     if artifact_type:
@@ -187,7 +180,8 @@ def list_projects(
         qs = qs.filter(institution__iexact=institution)
     if tag:
         qs = qs.filter(tags__name=tag)
-    return [_project_summary(p) for p in qs.distinct()]
+    qs = search.search(qs.distinct(), q)
+    return [_project_summary(p) for p in qs]
 
 
 @api.get("/projects/{slug}/", response=ProjectDetail)

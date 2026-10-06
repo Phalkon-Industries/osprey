@@ -756,3 +756,29 @@ class ImagesJourneyTests(JourneyTestCase):
         self.assertEqual(self.page.input_value("textarea[name=readme]"), f"# Journey Captions\n![Sensor wiring, rev B]({img.image.url})\n")
         self.assertTrue(self.page.locator(f"{tile} [data-not-used]").is_hidden())
         self.assertNoBrowserErrors()
+
+
+class SearchJourneyTests(JourneyTestCase):
+    def test_search_box_ranks_title_matches_first(self):
+        owner = self.make_owner()
+        for slug, title, readme in [
+            ("journey-readme", "Tide Logger", "Pairs with any peristaltic pump."),
+            ("journey-title", "Peristaltic Sampler", ""),
+            ("journey-unrelated", "Camera Housing", ""),
+        ]:
+            Project.objects.create(
+                slug=slug, title=title, readme=readme,
+                visibility=Project.VISIBILITY_PUBLIC, created_by=owner,
+            )
+        self.page.goto(self.url("projects:list"))
+        self.page.fill("#q", "peristaltic pumps")
+        self.page.press("#q", "Enter")
+        self.page.wait_for_url("**q=peristaltic+pumps*")
+        titles = self.page.locator(".grid .card h3 > span:first-child").all_inner_texts()
+        self.assertEqual(titles, ["Tide Logger"])
+        self.page.fill("#q", "peristaltic")
+        self.page.press("#q", "Enter")
+        self.page.wait_for_url("**q=peristaltic&*")
+        titles = self.page.locator(".grid .card h3 > span:first-child").all_inner_texts()
+        self.assertEqual(titles, ["Peristaltic Sampler", "Tide Logger"])
+        self.assertNoBrowserErrors()

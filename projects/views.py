@@ -35,6 +35,7 @@ from .models import (
 )
 from . import claiming
 from . import lineage as lineage_claims
+from . import search
 from . import zenodo_jobs
 from . import zenodo_register
 from .models import LineageEdge, ProjectDepositVersion, ZenodoJob
@@ -280,13 +281,6 @@ def project_list(request):
     elif support == "maintained":
         qs = qs.filter(provided_as_is=False)
 
-    if q:
-        qs = qs.filter(
-            Q(title__icontains=q)
-            | Q(summary__icontains=q)
-            | Q(readme__icontains=q)
-            | Q(slug__icontains=q)
-        )
     if field:
         qs = qs.filter(field__iexact=field)
     if project_type:
@@ -295,6 +289,7 @@ def project_list(request):
         qs = qs.filter(institution__icontains=institution)
     if tag:
         qs = qs.filter(tags__name=tag)
+    qs = search.search(qs.distinct(), q)
 
     field_values = (
         Project.objects.exclude(field="").values_list("field", flat=True).distinct()
@@ -309,7 +304,7 @@ def project_list(request):
         request,
         "projects/list.html",
         {
-            "projects": qs.distinct(),
+            "projects": qs,
             "q": q,
             "active_field": field,
             "active_project_type": project_type,

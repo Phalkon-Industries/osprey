@@ -8,3 +8,6 @@ class ProjectsConfig(AppConfig):
     def ready(self):
         # Registers the Zenodo endpoint startup check.
         from . import checks  # noqa: F401
+        from . import signals
+
+        signals.connect()

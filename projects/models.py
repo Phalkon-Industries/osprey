@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.validators import RegexValidator
 from django.db import models
@@ -256,9 +258,12 @@ class Project(models.Model):
     tags = models.ManyToManyField(Tag, through="TagAssignment", related_name="projects")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Weighted full-text index, rebuilt by signals. See projects/search.py.
+    search_vector = SearchVectorField(null=True, editable=False)
 
     class Meta:
         ordering = ["-updated_at"]
+        indexes = [GinIndex(fields=["search_vector"], name="project_search_idx")]
 
     def __str__(self) -> str:
         return self.title

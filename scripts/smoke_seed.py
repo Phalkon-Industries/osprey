@@ -904,4 +904,8 @@ if rig.images.count() < _images.MAX_IMAGES:
         f"## Schematic\n\n![{readme_imgs[1].caption}]({readme_imgs[1].image.url})\n\n"
         f"## Results\n\n![{readme_imgs[2].caption}]({readme_imgs[2].image.url})\n"
     ))
+    # A queryset update skips the save signal that keeps the search index current.
+    from projects import search as _search
+
+    _search.rebuild(rig.pk)
 print("image test rig:", rig.images.filter(kind="gallery").count(), "gallery,", rig.images.filter(kind="readme").count(), "README")
