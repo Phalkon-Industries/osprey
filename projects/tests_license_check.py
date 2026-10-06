@@ -9,6 +9,7 @@ from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils.text import slugify
 
 from notifications.models import Notification
 from projects import zenodo_register
@@ -34,7 +35,7 @@ class LicenseAuditTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
 
     def _native(self, license="MIT", repo="https://github.com/acme/pump", publish=True):
         project = Project.objects.create(
-            slug=f"pump-{license.lower()}", title="Pump", summary="A pump.", readme="# Pump",
+            slug=slugify(f"pump-{license}"), title="Pump", summary="A pump.", readme="# Pump",
             artifact_type="Hardware", field="Oceanography", license=license, canonical_url=repo,
             visibility=Project.VISIBILITY_PUBLIC, created_by=self.owner,
         )
@@ -43,6 +44,29 @@ class LicenseAuditTests(FakeGitHubMixin, FakeZenodoMixin, TestCase):
             ProjectAttachment.objects.create(project=project, file=ContentFile(payload, name="pump.zip"), filename="pump.zip", size_bytes=len(payload))
             publish_project_now(project, self.owner)
         return project
+
+    def test_every_license_on_the_form_survives_the_zenodo_round_trip(self):
+        # Publish with each dropdown license, read back what Zenodo says,
+        # and the audit must agree. The fake answers with the spellings
+        # real Zenodo uses (apgl-v3, cc-zero, apache2.0), and applies
+        # CC BY 4.0 when no license is sent, as Zenodo does.
+        from projects.forms import COMMON_LICENSES
+
+        for key, _label in COMMON_LICENSES:
+            with self.subTest(license=key):
+                project = self._native(license=key, repo="")
+                result = license_check.audit(project, fetch_github=False)
+                self.assertEqual(result["findings"], [], result)
+                self.assertEqual(result["zenodo"], key)
+
+    def test_zenodo_legacy_spellings_are_recognized(self):
+        for raw, key in [
+            ("apgl-v3", "AGPL-3.0"), ("agpl-3.0-only", "AGPL-3.0"), ("cc-zero", "CC0-1.0"),
+            ("apache2.0", "Apache-2.0"), ("bsd-2-clause-netbsd", "BSD-2-Clause"),
+            ("mit-license", "MIT"), ("cern-ohl-s-2.0", "CERN-OHL-S-2.0"),
+        ]:
+            with self.subTest(raw=raw):
+                self.assertEqual(zenodo_register.license_of({"metadata": {"license": {"id": raw}}}), key)
 
     def test_consistent_project_has_no_findings(self):
         self.gh.seed_repo("acme/pump", license="MIT")

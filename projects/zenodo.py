@@ -25,6 +25,11 @@ class ZenodoError(RuntimeError):
     """Raised when the Zenodo API rejects a request or config is missing."""
 
 
+class LicenseNotSendable(ZenodoError):
+    """The project's license has no Zenodo id. Zenodo applies CC BY 4.0 to
+    an open record sent without one, so OSPREY sends nothing at all."""
+
+
 @dataclass(frozen=True)
 class ProjectArchive:
     filename: str
@@ -175,6 +180,9 @@ class ZenodoClient:
             expected=(200, 202),
         )
 
+    def get_deposition(self, deposition_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/deposit/depositions/{deposition_id}", expected=(200,))
+
     def create_new_version(self, deposition_id: str) -> dict[str, Any]:
         """Open a new-version draft from a published deposition.
 
@@ -314,6 +322,11 @@ def _project_publication_type(project: Project) -> str:
 
 
 def _zenodo_license(project: Project) -> str:
+    return zenodo_license_id(project.license)
+
+
+def zenodo_license_id(license: str) -> str:
+    """Zenodo's id for an OSPREY license, or "" when there is none."""
     mapping = {
         "MIT": "mit-license",
         "Apache-2.0": "apache-2.0",
@@ -335,7 +348,14 @@ def _zenodo_license(project: Project) -> str:
         "CERN-OHL-S-2.0": "cern-ohl-s-2.0",
         "CERN-OHL-W-2.0": "cern-ohl-w-2.0",
     }
-    return mapping.get(project.license, "")
+    return mapping.get(license or "", "")
+
+
+def _require_license(project: Project) -> str:
+    license_id = _zenodo_license(project)
+    if not license_id:
+        raise LicenseNotSendable("The project has no license Zenodo accepts, so nothing was sent.")
+    return license_id
 
 
 def _creator_rows(project: Project) -> list[dict[str, str]]:
@@ -423,9 +443,7 @@ def metadata_for_project(project: Project, deposit: ProjectDeposit | None = None
     }
     if upload_type == "publication":
         metadata["publication_type"] = _project_publication_type(project)
-    license_id = _zenodo_license(project)
-    if license_id:
-        metadata["license"] = license_id
+    metadata["license"] = _require_license(project)
     if settings.ZENODO_DEFAULT_COMMUNITY:
         metadata["communities"] = [{"identifier": settings.ZENODO_DEFAULT_COMMUNITY}]
     related = _related_identifiers(project, deposit)
@@ -663,6 +681,7 @@ def _extract_zenodo_ids(response: dict[str, Any]) -> dict[str, str]:
 
 def sync_project_to_zenodo(project: Project, user) -> ProjectDeposit:
     """Create/update a Zenodo draft and upload an OSPREY snapshot ZIP."""
+    _require_license(project)
     client = ZenodoClient.from_settings()
     deposit, created = ProjectDeposit.objects.get_or_create(
         project=project,
@@ -670,8 +689,17 @@ def sync_project_to_zenodo(project: Project, user) -> ProjectDeposit:
         sandbox=settings.ZENODO_USE_SANDBOX,
         defaults={"created_by": user if getattr(user, "is_authenticated", False) else None},
     )
+    if not created and deposit.state == ProjectDeposit.STATE_PUBLISHED:
+        return deposit
     try:
-        if created or not deposit.deposition_id or deposit.state != ProjectDeposit.STATE_DRAFT:
+        current = None
+        if not created and deposit.deposition_id:
+            # A retry. Ask Zenodo what the last attempt actually did.
+            current = _current_deposition(client, deposit)
+            if current is not None and current.get("submitted"):
+                _record_published(deposit, current)
+                return deposit
+        if current is None:
             created_response = client.create_deposition()
             ids = _extract_zenodo_ids(created_response)
             deposit.deposition_id = ids["deposition_id"]
@@ -681,6 +709,8 @@ def sync_project_to_zenodo(project: Project, user) -> ProjectDeposit:
             deposit.doi = ids["doi"]
             deposit.concept_doi = ids["concept_doi"]
             deposit.state = ProjectDeposit.STATE_DRAFT
+            # Saved now, so a retry after a later failure finds this draft.
+            deposit.save()
 
         metadata_response = client.update_deposition_metadata(deposit.deposition_id, metadata_for_project(project, deposit))
         if not deposit.bucket_url:
@@ -716,57 +746,75 @@ def sync_project_to_zenodo(project: Project, user) -> ProjectDeposit:
         raise
 
 
+def _record_published(deposit: ProjectDeposit, response: dict[str, Any]) -> ProjectDeposit:
+    """Book a published Zenodo deposition: ids, version row, project DOI.
+    Used on publish, and on a retry that finds the publish went through."""
+    pending_changelog = deposit.pending_changelog
+    pending_repo_link = deposit.repo_link
+    next_index = deposit.next_version_index
+    ids = _extract_zenodo_ids(response)
+    deposit.record_id = ids["record_id"] or deposit.record_id
+    deposit.concept_id = ids["concept_id"] or deposit.concept_id
+    deposit.doi = ids["doi"] or deposit.doi
+    deposit.concept_doi = ids["concept_doi"] or deposit.concept_doi
+    deposit.state = ProjectDeposit.STATE_PUBLISHED
+    deposit.published_at = timezone.now()
+    deposit.last_response = response
+    deposit.last_error = ""
+    # Always record a version row so every published snapshot is in history.
+    ProjectDepositVersion.objects.create(
+        deposit=deposit,
+        version_index=next_index,
+        deposition_id=deposit.deposition_id,
+        record_id=deposit.record_id,
+        doi=deposit.doi,
+        changelog=pending_changelog,
+        repo_link=pending_repo_link,
+        published_at=deposit.published_at,
+        last_response=response,
+    )
+    deposit.pending_changelog = ""
+    deposit.repo_link = ""
+    deposit.save()
+
+    project = deposit.project
+    # Prefer the concept (project) DOI on the project record so the
+    # canonical DOI does not change when a new version is published.
+    canonical_doi = deposit.concept_doi or deposit.doi
+    if canonical_doi:
+        project.doi = canonical_doi
+        project.save(update_fields=["doi"])
+    if deposit.external_url:
+        ArtifactLink.objects.update_or_create(
+            project=project,
+            kind="zenodo",
+            url=deposit.external_url,
+            defaults={"label": zenodo_mode_label()},
+        )
+    return deposit
+
+
+def _current_deposition(client: "ZenodoClient", deposit: ProjectDeposit) -> dict[str, Any] | None:
+    """Zenodo's view of the deposition OSPREY last worked on, or None if
+    Zenodo has no such deposition."""
+    try:
+        return client.get_deposition(deposit.deposition_id)
+    except ZenodoError as exc:
+        if "HTTP 404" in str(exc) or "HTTP 410" in str(exc):
+            return None
+        raise
+
+
 def publish_project_deposit(deposit: ProjectDeposit) -> ProjectDeposit:
     if deposit.provider != ProjectDeposit.PROVIDER_ZENODO:
         raise ZenodoError("Only Zenodo deposits can be published here.")
     if not deposit.deposition_id:
         raise ZenodoError("Create a Zenodo draft before publishing.")
+    _require_license(deposit.project)
     client = ZenodoClient.from_settings()
-    pending_changelog = deposit.pending_changelog
-    pending_repo_link = deposit.repo_link
-    next_index = deposit.next_version_index
     try:
         response = client.publish_deposition(deposit.deposition_id)
-        ids = _extract_zenodo_ids(response)
-        deposit.record_id = ids["record_id"] or deposit.record_id
-        deposit.concept_id = ids["concept_id"] or deposit.concept_id
-        deposit.doi = ids["doi"] or deposit.doi
-        deposit.concept_doi = ids["concept_doi"] or deposit.concept_doi
-        deposit.state = ProjectDeposit.STATE_PUBLISHED
-        deposit.published_at = timezone.now()
-        deposit.last_response = response
-        deposit.last_error = ""
-        # Always record a version row so every published snapshot is in history.
-        ProjectDepositVersion.objects.create(
-            deposit=deposit,
-            version_index=next_index,
-            deposition_id=deposit.deposition_id,
-            record_id=deposit.record_id,
-            doi=deposit.doi,
-            changelog=pending_changelog,
-            repo_link=pending_repo_link,
-            published_at=deposit.published_at,
-            last_response=response,
-        )
-        deposit.pending_changelog = ""
-        deposit.repo_link = ""
-        deposit.save()
-
-        project = deposit.project
-        # Prefer the concept (project) DOI on the project record so the
-        # canonical DOI does not change when a new version is published.
-        canonical_doi = deposit.concept_doi or deposit.doi
-        if canonical_doi:
-            project.doi = canonical_doi
-            project.save(update_fields=["doi"])
-        if deposit.external_url:
-            ArtifactLink.objects.update_or_create(
-                project=project,
-                kind="zenodo",
-                url=deposit.external_url,
-                defaults={"label": zenodo_mode_label()},
-            )
-        return deposit
+        return _record_published(deposit, response)
     except ZenodoError as exc:
         deposit.state = ProjectDeposit.STATE_ERROR
         deposit.last_error = str(exc)
@@ -789,7 +837,15 @@ def start_new_version_for_deposit(
     """
     if deposit.provider != ProjectDeposit.PROVIDER_ZENODO:
         raise ZenodoError("Only Zenodo deposits support new versions here.")
-    if deposit.state != ProjectDeposit.STATE_PUBLISHED:
+    # A retry finds the deposit mid-way. Either it still points at the
+    # last published version (the draft request failed or its answer was
+    # lost: asking again returns any draft Zenodo opened), or it points at
+    # the new-version draft (carry on with it).
+    latest = deposit.latest_version
+    retrying = deposit.state in (ProjectDeposit.STATE_DRAFT, ProjectDeposit.STATE_ERROR) and bool(latest and latest.deposition_id)
+    on_published = retrying and deposit.deposition_id == latest.deposition_id
+    resuming = retrying and bool(deposit.deposition_id) and not on_published
+    if deposit.state != ProjectDeposit.STATE_PUBLISHED and not retrying:
         raise ZenodoError("Publish the current Zenodo draft before starting a new version.")
     if not deposit.deposition_id:
         raise ZenodoError("This deposit has no Zenodo deposition to fork.")
@@ -802,18 +858,29 @@ def start_new_version_for_deposit(
     deposit.pending_changelog = changelog
     deposit.repo_link = (repo_link or "").strip()
     deposit.save(update_fields=["pending_changelog", "repo_link", "updated_at"])
-    client = ZenodoClient.from_settings()
     project = deposit.project
+    _require_license(project)
+    client = ZenodoClient.from_settings()
     try:
-        draft = client.create_new_version(deposit.deposition_id)
-        ids = _extract_zenodo_ids(draft)
-        deposit.deposition_id = ids["deposition_id"] or deposit.deposition_id
-        deposit.bucket_url = ids["bucket_url"]
-        deposit.record_id = ids["record_id"] or deposit.record_id
-        deposit.concept_id = ids["concept_id"] or deposit.concept_id
-        # Hold on to the previous version DOI until publish replaces it.
-        deposit.doi = ids["doi"] or deposit.doi
-        deposit.concept_doi = ids["concept_doi"] or deposit.concept_doi
+        if resuming:
+            current = _current_deposition(client, deposit)
+            if current is not None and current.get("submitted"):
+                # The last attempt's publish went through.
+                return _record_published(deposit, current)
+            if current is None:
+                # The draft is gone on Zenodo: open a fresh one.
+                deposit.deposition_id = latest.deposition_id
+                resuming = False
+        if not resuming:
+            draft = client.create_new_version(deposit.deposition_id)
+            ids = _extract_zenodo_ids(draft)
+            deposit.deposition_id = ids["deposition_id"] or deposit.deposition_id
+            deposit.bucket_url = ids["bucket_url"]
+            deposit.record_id = ids["record_id"] or deposit.record_id
+            deposit.concept_id = ids["concept_id"] or deposit.concept_id
+            # Hold on to the previous version DOI until publish replaces it.
+            deposit.doi = ids["doi"] or deposit.doi
+            deposit.concept_doi = ids["concept_doi"] or deposit.concept_doi
         deposit.state = ProjectDeposit.STATE_DRAFT
         deposit.save()
 
@@ -867,19 +934,27 @@ def update_published_metadata(project: Project) -> ProjectDeposit | None:
     ).first()
     if deposit is None or not deposit.deposition_id:
         return None
+    _require_license(project)
     client = ZenodoClient.from_settings()
+    current: dict[str, Any] = {}
     try:
-        client.edit_published_deposition(deposit.deposition_id)
+        current = client.edit_published_deposition(deposit.deposition_id)
     except ZenodoError as exc:
         message = str(exc).lower()
         # If the deposition is already in edit mode we can proceed; any
         # other failure should bubble up so the caller can flag it.
         if "already" not in message and "edit" not in message:
             raise
+    metadata = metadata_for_project(project, deposit)
+    # An edit keeps the record's publication date; only new versions are
+    # dated the day they publish.
+    published = ((current or {}).get("metadata") or {}).get("publication_date") or (
+        (deposit.last_response or {}).get("metadata") or {}
+    ).get("publication_date")
+    if published:
+        metadata["publication_date"] = published
     try:
-        client.update_deposition_metadata(
-            deposit.deposition_id, metadata_for_project(project, deposit)
-        )
+        client.update_deposition_metadata(deposit.deposition_id, metadata)
         response = client.publish_deposition(deposit.deposition_id)
     except ZenodoError:
         try:
@@ -906,4 +981,6 @@ def publish_new_version_now(
         repo_link=repo_link,
         user=user,
     )
+    if deposit.state == ProjectDeposit.STATE_PUBLISHED:
+        return deposit  # a retry found the last publish went through
     return publish_project_deposit(deposit)

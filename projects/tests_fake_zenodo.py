@@ -436,8 +436,8 @@ class ZenodoFlowsThroughFakeTests(FakeZenodoMixin, TestCase):
 
         retried = publish_project_now(self.project, self.owner)
         self.assertEqual(retried.state, ProjectDeposit.STATE_PUBLISHED)
-        # The retry re-created the draft; the failed one is orphaned on Zenodo.
-        self.assertEqual(len([p for p in self.fz.paths("POST") if p == "/api/deposit/depositions"]), 2)
+        # The retry checks Zenodo and reuses the draft: nothing orphaned.
+        self.assertEqual(len([p for p in self.fz.paths("POST") if p == "/api/deposit/depositions"]), 1)
 
     @override_settings(ZENODO_TIMEOUT_SECONDS=1)
     def test_zenodo_hanging_surfaces_as_a_timeout_not_a_crash(self):

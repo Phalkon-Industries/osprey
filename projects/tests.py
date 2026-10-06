@@ -647,6 +647,53 @@ class ProjectViewTests(ProjectTestCase):
         self.assertEqual(project.visibility, Project.VISIBILITY_PUBLIC)
 
 
+class PublishRequiresLicenseTests(ProjectTestCase):
+    # The browser marks License required; the server refuses too, so no
+    # request can publish a project Zenodo would relabel CC BY 4.0.
+    def setUp(self):
+        super().setUp()
+        add_orcid_account(self.owner, "0000-0001-2345-6789")
+        self.client.force_login(self.owner)
+
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
+    def test_new_project_without_a_license_is_not_published(self, publish_mock):
+        data = self.project_form_post_data(action="publish")
+        data["title"] = "Unlicensed Pump"
+        data["license_choice"] = ""
+        response = self.client.post(reverse("projects:new"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Choose a license", " ".join(response.context["form"].errors.get("license_choice", [])))
+        publish_mock.assert_not_called()
+        self.assertFalse(Project.objects.filter(title="Unlicensed Pump").exists())
+
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_project_now")
+    def test_draft_without_a_sendable_license_is_not_published(self, publish_mock):
+        for license in ["", "WTFPL"]:
+            with self.subTest(license=license):
+                Project.objects.filter(pk=self.private_project.pk).update(license=license)
+                data = self.project_form_post_data(action="publish")
+                data["license_choice"] = license
+                data["contributions-INITIAL_FORMS"] = "1"
+                data["contributions-0-id"] = str(self.private_project.contributions.first().pk)
+                response = self.client.post(reverse("projects:edit", args=[self.private_project.slug]), data)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("Choose a license", " ".join(response.context["form"].errors.get("license_choice", [])))
+                publish_mock.assert_not_called()
+                self.private_project.refresh_from_db()
+                self.assertEqual(self.private_project.visibility, Project.VISIBILITY_PRIVATE)
+
+    @patch("projects.zenodo_jobs.publish_project_now")
+    def test_saving_a_draft_without_a_license_still_works(self, publish_mock):
+        data = self.project_form_post_data(action="draft")
+        data["title"] = "Unlicensed Draft"
+        data["license_choice"] = ""
+        response = self.client.post(reverse("projects:new"), data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Project.objects.get(title="Unlicensed Draft").license, "")
+
+
 class MarkdownTemplateTagTests(TestCase):
     def test_markdown_sanitizes_html_and_keeps_safe_links(self):
         rendered = str(
@@ -1218,6 +1265,35 @@ class ProjectVersionsTests(ProjectTestCase):
             kwargs["repo_link"],
             "https://github.com/example/public-pump/releases/tag/v0.2",
         )
+
+    @override_settings(ZENODO_JOBS_INLINE=True)
+    @patch("projects.zenodo_jobs.publish_new_version_now")
+    def test_new_version_view_refuses_a_license_zenodo_cannot_take(self, service_mock):
+        # A legacy license is offered as "Current license"; keeping it would
+        # fail in the job. The page refuses up front, like the project form.
+        self._published_deposit()
+        Project.objects.filter(pk=self.public_project.pk).update(license="WTFPL")
+        add_orcid_account(self.owner)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("projects:zenodo_new_version", args=[self.public_project.slug]),
+            {
+                "action": "publish",
+                "changelog": "Cleaned up wiring.",
+                "license_choice": "WTFPL",
+                "archive": SimpleUploadedFile(
+                    "panda-v2.zip", b"PK\x03\x04stub", content_type="application/zip"
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Choose a license", " ".join(response.context["form"].errors.get("license_choice", [])))
+        service_mock.assert_not_called()
+        from .models import ZenodoJob
+
+        self.assertFalse(ZenodoJob.objects.exists())
 
     @override_settings(ZENODO_JOBS_INLINE=True)
     @patch("projects.zenodo_jobs.publish_new_version_now")

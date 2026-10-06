@@ -223,6 +223,11 @@ _LICENSE_IDS = {
     "gpl-3.0-or-later": "GPL-3.0-or-later", "lgpl-3.0": "LGPL-3.0", "mpl-2.0": "MPL-2.0",
     "cc-by-4.0": "CC-BY-4.0", "cc-by-sa-4.0": "CC-BY-SA-4.0", "cc0-1.0": "CC0-1.0",
     "cern-ohl-p-2.0": "CERN-OHL-P-2.0", "cern-ohl-s-2.0": "CERN-OHL-S-2.0", "cern-ohl-w-2.0": "CERN-OHL-W-2.0",
+    # Zenodo's legacy API spellings (apgl-v3 is Zenodo's own typo) and
+    # current ids, so a record reads the same in either format.
+    "apgl-v3": "AGPL-3.0", "agpl-3.0-only": "AGPL-3.0", "cc-zero": "CC0-1.0",
+    "apache2.0": "Apache-2.0", "bsd-2-clause-netbsd": "BSD-2-Clause",
+    "lgpl-3.0-only": "LGPL-3.0",
 }
 
 

@@ -21,10 +21,13 @@ Behavior copied from Zenodo where the code has depended on it:
   otherwise 400 with Zenodo's error body shape.
 - A new version copies the previous version's files into a fresh draft
   and answers with the *original* deposition carrying a
-  `links.latest_draft` pointer, which the client then follows.
+  `links.latest_draft` pointer, which the client then follows. If a
+  new-version draft is already open, that draft comes back instead.
 - Edit mode (`actions/edit`) snapshots metadata so `actions/discard` can
   restore it; publishing an edit keeps the same DOI.
 - Every `/api/` call needs the Bearer token; otherwise 401.
+- Licenses come back in Zenodo's legacy spelling (`LEGACY_LICENSE_IDS`),
+  and publishing an open deposition without a license applies CC BY 4.0.
 
 Failure injection: `server.add_rule(match="actions/publish", mode="status",
 status=500, times=1)`. Modes: `status` (respond with an error),
@@ -54,6 +57,21 @@ from django.test import override_settings
 DOI_PREFIX = "10.5072/zenodo."
 FIRST_RECORD_ID = 900000
 REQUIRED_METADATA = ("title", "upload_type", "description", "creators")
+
+# License ids Zenodo reports back under a different spelling in its legacy
+# API format. Checked against zenodo.org records and zenodo-rdm's legacy
+# license map on 2026-10-06. Ids not listed come back as sent.
+LEGACY_LICENSE_IDS = {
+    "agpl-3.0": "apgl-v3",
+    "agpl-3.0-only": "apgl-v3",
+    "apache-2.0": "apache2.0",
+    "bsd-2-clause": "bsd-2-clause-netbsd",
+    "cc0-1.0": "cc-zero",
+    "gpl-3.0-only": "gpl-3.0",
+    "lgpl-3.0-only": "lgpl-3.0",
+    "mit": "mit-license",
+}
+DEFAULT_LICENSE = "cc-by-4.0"
 
 STATE_UNSUBMITTED = "unsubmitted"  # draft, never published
 STATE_DONE = "done"  # published
@@ -282,6 +300,13 @@ class FakeZenodoServer(ThreadingHTTPServer):
         }
         metadata = dict(dep.metadata)
         metadata["prereserve_doi"] = {"doi": f"{DOI_PREFIX}{dep.id}", "recid": dep.id}
+        license = metadata.get("license")
+        if isinstance(license, dict) and license.get("id"):
+            key = str(license["id"]).lower()
+            metadata["license"] = {**license, "id": LEGACY_LICENSE_IDS.get(key, key)}
+        elif license:
+            key = str(license).lower()
+            metadata["license"] = LEGACY_LICENSE_IDS.get(key, key)
         rep: dict[str, Any] = {
             "id": dep.id,
             "conceptrecid": str(dep.conceptrecid),
@@ -380,7 +405,10 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         if raw:
-            self.wfile.write(raw)
+            try:
+                self.wfile.write(raw)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client gave up (a hang rule); the work is done
 
     def _error(self, status: int, message: str, errors: list[dict[str, str]] | None = None) -> None:
         body: dict[str, Any] = {"status": status, "message": message}
@@ -488,7 +516,12 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
             if dep.state != STATE_DONE:
                 self._error(400, "Please publish the deposition before creating a new version.")
                 return
-            draft = self.server.new_deposition(concept=dep.conceptrecid, copy_from=dep)
+            # An open new-version draft is handed back rather than a second
+            # one, as InvenioRDM's new_version does.
+            draft = next(
+                (d for d in self.server.depositions.values() if d.conceptrecid == dep.conceptrecid and d.state == STATE_UNSUBMITTED),
+                None,
+            ) or self.server.new_deposition(concept=dep.conceptrecid, copy_from=dep)
             rep = self.server.representation(dep)
             rep["links"]["latest_draft"] = f"{self.server.url}/api/deposit/depositions/{draft.id}"
             self._send(201, rep)
@@ -522,6 +555,8 @@ class FakeZenodoHandler(BaseHTTPRequestHandler):
         if errors:
             self._error(400, "Validation error.", errors)
             return
+        if not dep.metadata.get("license") and dep.metadata.get("access_right") == "open":
+            dep.metadata["license"] = DEFAULT_LICENSE
         dep.doi = f"{DOI_PREFIX}{dep.id}"
         dep.conceptdoi = dep.conceptdoi or f"{DOI_PREFIX}{dep.conceptrecid}"
         # Zenodo does not invent a version label; it is only present when

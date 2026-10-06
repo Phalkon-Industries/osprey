@@ -25,6 +25,7 @@ from . import claiming
 from . import lineage as lineage_claims
 from .models import Project, ProjectDeposit, ZenodoJob
 from .zenodo import (
+    LicenseNotSendable,
     ZenodoError,
     publish_new_version_now,
     publish_project_now,
@@ -275,6 +276,8 @@ def _notify(fn) -> None:
 
 
 def _is_permanent(exc: Exception) -> bool:
+    if isinstance(exc, LicenseNotSendable):
+        return True
     if not isinstance(exc, ZenodoError):
         return False
     message = str(exc)

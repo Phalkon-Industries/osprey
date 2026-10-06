@@ -188,6 +188,20 @@ def _process_attachments(request, project: Project) -> None:
     )
 
 
+_LICENSE_NOT_SENDABLE = "Choose a license from the list before publishing."
+
+
+def _license_blocks_publish(form) -> bool:
+    """Add a License error when the chosen license can't go to Zenodo.
+    Zenodo relabels an open record sent without a license as CC BY 4.0."""
+    from .zenodo import zenodo_license_id
+
+    if zenodo_license_id(form.cleaned_data.get("resolved_license", "")):
+        return False
+    form.add_error("license_choice", _LICENSE_NOT_SENDABLE)
+    return True
+
+
 def _archive_license_conflict(request, project, chosen_license: str, *, field: str = "attachment_files") -> str:
     """Block message when the archive being published carries a license
     that disagrees with the chosen one. Looks at the file in this request
@@ -861,6 +875,8 @@ def project_new(request):
             if conflict:
                 form.add_error(None, conflict)
                 can_publish = False
+            elif _license_blocks_publish(form):
+                can_publish = False
         if form.is_valid() and formset.is_valid() and can_publish:
             project = form.save(commit=False)
             project.created_by = request.user
@@ -960,6 +976,8 @@ def project_edit(request, slug: str):
             conflict = _archive_license_conflict(request, project, form.cleaned_data.get("resolved_license", ""))
             if conflict:
                 form.add_error(None, conflict)
+                can_publish = False
+            elif _license_blocks_publish(form):
                 can_publish = False
         if (
             form.is_valid()
@@ -1124,9 +1142,14 @@ def project_zenodo_new_version(request, slug: str):
             form.add_error("archive", "Archive exceeds 500 MiB limit.")
         chosen_license = form.data.get("license_choice") or project.license
         if action == "publish" and not form.errors:
+            from .zenodo import zenodo_license_id
+
             conflict = _archive_license_conflict(request, project, chosen_license, field="archive")
             if conflict:
                 form.add_error("archive", conflict)
+            elif not zenodo_license_id(chosen_license):
+                # A legacy license kept as "Current license" has no Zenodo id.
+                form.add_error("license_choice", _LICENSE_NOT_SENDABLE)
         if form.is_valid():
             if chosen_license and chosen_license != project.license:
                 project.license = chosen_license

@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
+import time
 import zipfile
 from datetime import timedelta
 
@@ -225,6 +226,19 @@ class MetadataAndVersionJobTests(ZenodoJobBase):
         # Syncs are invisible plumbing: no owner notification either way.
         self.assertFalse(Notification.objects.filter(kind__in=["deposit_published", "deposit_failed"], user=self.owner).count() > 1)
 
+    def test_metadata_sync_keeps_the_original_publication_date(self):
+        # A sync edits the record; it must not re-date it to the sync day.
+        project = self._published()
+        deposit = ProjectDeposit.objects.get(project=project)
+        self.fz.deposition(deposit.deposition_id).metadata["publication_date"] = "2026-09-01"
+        project.title = "Queued Pump, renamed"
+        project.save(update_fields=["title"])
+        zenodo_jobs.enqueue_metadata_sync(project)
+        self._run()
+        metadata = self.fz.deposition(deposit.deposition_id).metadata
+        self.assertEqual(metadata["title"], "Queued Pump, renamed")
+        self.assertEqual(metadata["publication_date"], "2026-09-01")
+
     def test_new_version_job_publishes_a_second_version(self):
         project = self._published()
         payload = _zip()
@@ -236,6 +250,33 @@ class MetadataAndVersionJobTests(ZenodoJobBase):
         deposit = ProjectDeposit.objects.get(project=project)
         self.assertEqual([v.version_index for v in ProjectDepositVersion.objects.filter(deposit=deposit).order_by("version_index")], [1, 2])
         self.assertTrue(Notification.objects.filter(user=self.owner, kind="deposit_published", title__startswith="New version").exists())
+
+    def _second_version_after_failure(self, match):
+        project = self._published()
+        payload = _zip()
+        ProjectAttachment.objects.create(project=project, file=ContentFile(payload, name="v2.zip"), filename="v2.zip", size_bytes=len(payload))
+        self.fz.add_rule(match=match, mode="status", status=503, times=1)
+        job = zenodo_jobs.enqueue_new_version(project, self.owner, changelog="Second spin.")
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_QUEUED, job.last_error)
+        self._due_now(job)
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_DONE, job.last_error)
+        deposit = ProjectDeposit.objects.get(project=project)
+        versions = list(ProjectDepositVersion.objects.filter(deposit=deposit).order_by("version_index"))
+        self.assertEqual([v.version_index for v in versions], [1, 2])
+        self.assertEqual(versions[1].changelog, "Second spin.")
+        self.assertEqual(deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        # One draft was opened on Zenodo, not one per attempt.
+        self.assertEqual(len([p for p in self.fz.paths("POST") if p.endswith("/actions/newversion")]), 1)
+
+    def test_new_version_resumes_after_a_failed_upload(self):
+        self._second_version_after_failure("/api/files/")
+
+    def test_new_version_resumes_after_a_failed_publish(self):
+        self._second_version_after_failure("actions/publish")
 
     def test_health_summary(self):
         self._published()
@@ -417,3 +458,130 @@ class RecordShapeTests(ZenodoJobBase):
         deposit = ProjectDeposit.objects.get(project=self.project)
         fake_dep = self.fz.deposition(deposit.deposition_id)
         self.assertEqual(fake_dep.metadata["contributors"][0]["type"], "HostingInstitution")
+
+
+class NoLicenseNeverReachesZenodoTests(ZenodoJobBase):
+    # Zenodo applies CC BY 4.0 to an open record sent without a license,
+    # so OSPREY refuses before making any call at all.
+    def _published(self) -> Project:
+        zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self.project.refresh_from_db()
+        return self.project
+
+    def _assert_refused(self, job, calls_before):
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_FAILED)
+        self.assertEqual(job.attempts, 1)
+        self.assertIn("license", job.last_error)
+        self.assertEqual(self.fz.paths()[calls_before:], [])
+
+    def test_publish_without_a_license_sends_nothing(self):
+        for license in ["", "WTFPL"]:
+            with self.subTest(license=license):
+                ZenodoJob.objects.all().delete()
+                Project.objects.filter(pk=self.project.pk).update(license=license)
+                calls_before = len(self.fz.paths())
+                job = zenodo_jobs.enqueue_publish(self.project, self.owner)
+                self._run()
+                self._assert_refused(job, calls_before)
+                self.assertTrue(Notification.objects.filter(user=self.owner, kind="deposit_failed").exists())
+                self.assertFalse(ProjectDeposit.objects.filter(project=self.project).exclude(deposition_id="").exists())
+
+    def test_metadata_sync_without_a_license_sends_nothing(self):
+        project = self._published()
+        deposit = ProjectDeposit.objects.get(project=project)
+        Project.objects.filter(pk=project.pk).update(license="")
+        calls_before = len(self.fz.paths())
+        job = zenodo_jobs.enqueue_metadata_sync(project)
+        self._run()
+        self._assert_refused(job, calls_before)
+        self.assertEqual(self.fz.deposition(deposit.deposition_id).metadata["license"], "mit-license")
+
+    def test_new_version_without_a_license_sends_nothing(self):
+        project = self._published()
+        Project.objects.filter(pk=project.pk).update(license="WTFPL")
+        calls_before = len(self.fz.paths())
+        job = zenodo_jobs.enqueue_new_version(project, self.owner, changelog="Second spin.")
+        self._run()
+        self._assert_refused(job, calls_before)
+
+
+@override_settings(ZENODO_TIMEOUT_SECONDS=1)
+class LostResponseTests(ZenodoJobBase):
+    # Zenodo did the work but OSPREY timed out before the answer came.
+    # The fake's `hang` rule answers after the client has given up, so
+    # the request still lands. A retry must finish the same record, never
+    # make a second one.
+    def _lose(self, match):
+        self.fz.add_rule(match=match, mode="hang", delay_s=1.5)
+
+    def _settle(self, job):
+        """First attempt times out; wait for the fake to finish, then retry."""
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_QUEUED, job.last_error)
+        self.assertIn("timed out", job.last_error)
+        time.sleep(1.0)
+        self._due_now(job)
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_DONE, job.last_error)
+
+    def _published_depositions(self):
+        return [d for d in self.fz.depositions.values() if d.doi]
+
+    def _first_publish(self):
+        zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self.project.refresh_from_db()
+        payload = _zip()
+        ProjectAttachment.objects.create(project=self.project, file=ContentFile(payload, name="v2.zip"), filename="v2.zip", size_bytes=len(payload))
+
+    def test_lost_first_publish_makes_one_record(self):
+        self._lose("actions/publish")
+        job = zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._settle(job)
+        self.assertEqual(len(self.fz.depositions), 1)
+        self.assertEqual(len(self._published_depositions()), 1)
+        deposit = ProjectDeposit.objects.get(project=self.project)
+        self.assertEqual(deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        self.assertEqual(deposit.doi, self._published_depositions()[0].doi)
+        self.assertEqual(ProjectDepositVersion.objects.filter(deposit=deposit).count(), 1)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.visibility, Project.VISIBILITY_PUBLIC)
+        self.assertEqual(Notification.objects.filter(user=self.owner, kind="deposit_published").count(), 1)
+
+    def test_failed_first_upload_reuses_the_draft(self):
+        self.fz.add_rule(match="/api/files/", mode="status", status=503, times=1)
+        job = zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self._due_now(job)
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_DONE, job.last_error)
+        self.assertEqual(len(self.fz.depositions), 1)
+
+    def test_lost_new_version_draft_is_picked_up(self):
+        self._first_publish()
+        self._lose("actions/newversion")
+        job = zenodo_jobs.enqueue_new_version(self.project, self.owner, changelog="Second spin.")
+        self._settle(job)
+        deposit = ProjectDeposit.objects.get(project=self.project)
+        self.assertEqual(len(self.fz.depositions), 2)
+        self.assertEqual(len(self._published_depositions()), 2)
+        self.assertEqual([v.version_index for v in ProjectDepositVersion.objects.filter(deposit=deposit).order_by("version_index")], [1, 2])
+
+    def test_lost_new_version_publish_records_the_version(self):
+        self._first_publish()
+        self._lose("actions/publish")
+        job = zenodo_jobs.enqueue_new_version(self.project, self.owner, changelog="Second spin.")
+        self._settle(job)
+        deposit = ProjectDeposit.objects.get(project=self.project)
+        self.assertEqual(deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        self.assertEqual(len(self._published_depositions()), 2)
+        versions = list(ProjectDepositVersion.objects.filter(deposit=deposit).order_by("version_index"))
+        self.assertEqual([v.version_index for v in versions], [1, 2])
+        self.assertEqual(versions[1].changelog, "Second spin.")
+        self.assertEqual(versions[1].doi, deposit.doi)
+        self.assertEqual(Notification.objects.filter(user=self.owner, kind="deposit_published").count(), 2)
