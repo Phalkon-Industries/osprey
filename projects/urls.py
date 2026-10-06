@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_images
 
 urlpatterns = [
     # Before the <slug> routes, or "register" is taken for a project slug.
@@ -14,6 +14,10 @@ urlpatterns = [
     path("<slug:slug>/delete/", views.project_delete, name="delete"),
     path("<slug:slug>/watch/", views.watch_toggle, name="watch_toggle"),
     path("<slug:slug>/mute/", views.mute_toggle, name="mute_toggle"),
+    path("<slug:slug>/images/upload/", views_images.upload, name="image_upload"),
+    path("<slug:slug>/images/reorder/", views_images.reorder, name="image_reorder"),
+    path("<slug:slug>/images/<int:image_id>/caption/", views_images.caption, name="image_caption"),
+    path("<slug:slug>/images/<int:image_id>/delete/", views_images.delete, name="image_delete"),
     path("<slug:slug>/versions/", views.project_versions, name="versions"),
     path("<slug:slug>/files/", views.project_files, name="files"),
     path("<slug:slug>/citations/", views.project_citations, name="citations"),

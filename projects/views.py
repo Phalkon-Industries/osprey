@@ -630,11 +630,23 @@ def _send_return_url(request, slug: str) -> str:
 _FORM_TAB_NAMES = {
     "basics",
     "description",
+    "images",
     "contributors",
     "files",
     "details",
     "related",
 }
+
+
+def _image_context(project) -> dict:
+    from . import images as project_images
+
+    return {
+        "image_max": project_images.MAX_IMAGES,
+        "image_limit_text": project_images.LIMIT_TEXT,
+        "image_accept": project_images.ACCEPT_ATTR,
+        "project_readme_images": list(project.images.filter(kind="readme")) if project is not None and project.pk else [],
+    }
 
 
 def _section_return_url(request, slug: str) -> str | None:
@@ -900,6 +912,7 @@ def project_new(request):
             "project": None,
             "role_suggestions": ROLE_SUGGESTIONS,
             "can_publish_project": True,
+            **_image_context(None),
             "owner_row_indexes": _owner_row_indexes(
                 formset, request.user, _verified_orcid_for(request.user)
             ),
@@ -1017,6 +1030,7 @@ def project_edit(request, slug: str):
             "project": project,
             "role_suggestions": ROLE_SUGGESTIONS,
             "can_publish_project": project.publishable_by(request.user) and project.accepts_publish,
+            **_image_context(project),
             "owner_row_indexes": _owner_row_indexes(
                 formset, project.created_by, _verified_orcid_for(project.created_by)
             ),
@@ -1886,8 +1900,10 @@ def project_delete(request, slug: str):
         discard_draft_depositions(project)
         for attachment in project.attachments.exclude(file=""):
             attachment.file.delete(save=False)
+        from . import images as project_images
+
         for image in project.images.all():
-            image.image.delete(save=False)
+            project_images.delete_files(image)
         if project.cover_image:
             project.cover_image.delete(save=False)
         project.delete()

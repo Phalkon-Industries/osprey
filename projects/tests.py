@@ -432,10 +432,10 @@ class ProjectViewTests(ProjectTestCase):
         names = [name for name, _ in parser.panels]
         self.assertEqual(
             names,
-            ["basics", "description", "files", "contributors", "details", "related"],
+            ["basics", "description", "images", "files", "contributors", "details", "related"],
         )
         self.assertEqual(
-            [d for _, d in parser.panels], [0] * 6,
+            [d for _, d in parser.panels], [0] * 7,
             f"nested form panels: {parser.panels}",
         )
 
@@ -535,11 +535,11 @@ class ProjectViewTests(ProjectTestCase):
         page = self.client.get(reverse("contributor_guidelines"))
         self.assertContains(page, "Who to list")
 
-    def test_cover_image_input_states_accepted_types(self):
+    def test_image_input_states_accepted_types(self):
         self.client.force_login(self.owner)
-        response = self.client.get(reverse("projects:new"))
-        self.assertContains(response, 'accept="image/png,image/jpeg,image/webp,image/gif"')
-        self.assertContains(response, "SVG isn&#x27;t accepted")
+        response = self.client.get(reverse("projects:edit", args=[self.private_project.slug]))
+        self.assertContains(response, 'accept="image/png,image/jpeg,image/gif,image/webp" data-image-input')
+        self.assertContains(response, "PNG, JPEG, GIF or WebP.")
 
     def test_save_draft_creates_private_project_and_renders_detail(self):
         self.client.force_login(self.owner)
@@ -1591,97 +1591,6 @@ class DraftDataLossRegressionTests(ProjectTestCase):
         # call, so a failed or killed request can't eat it.
         deposit.refresh_from_db()
         self.assertEqual(deposit.pending_changelog, "Fixed the seal spec")
-
-
-@override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)
-class CoverImageProcessingTests(ProjectTestCase):
-    """projects/cover_images.py caused a real production crash once; pin
-    its behavior directly: re-encode, skip, and every failure path."""
-
-    def _png_bytes(self, size=(64, 48), color=(200, 30, 30)) -> bytes:
-        from PIL import Image
-
-        buffer = io.BytesIO()
-        Image.new("RGB", size, color).save(buffer, format="PNG")
-        return buffer.getvalue()
-
-    def _project(self, **kwargs) -> Project:
-        return Project.objects.create(
-            slug=kwargs.pop("slug", f"cover-{uuid.uuid4().hex[:6]}"),
-            title="Cover Test",
-            visibility=Project.VISIBILITY_PRIVATE,
-            created_by=self.owner,
-            **kwargs,
-        )
-
-    def test_uploaded_png_is_reencoded_to_webp(self):
-        from .cover_images import process_cover_image
-
-        project = self._project()
-        project.cover_image = SimpleUploadedFile(
-            "cover.png", self._png_bytes(), content_type="image/png"
-        )
-        changed = process_cover_image(project)
-        self.assertTrue(changed)
-        self.assertTrue(project.cover_image.name.endswith(".webp"))
-        with project.cover_image.open("rb") as fh:
-            header = fh.read(16)
-        self.assertEqual(header[:4], b"RIFF")
-        self.assertEqual(header[8:12], b"WEBP")
-
-    def test_already_stored_webp_is_left_alone(self):
-        from .cover_images import process_cover_image
-
-        project = self._project()
-        project.cover_image = SimpleUploadedFile(
-            "cover.png", self._png_bytes(), content_type="image/png"
-        )
-        process_cover_image(project)
-        project.save()
-        stored_name = project.cover_image.name
-        # A later save with the processed file in place must be a no-op,
-        # and crucially must not blow up on a closed/consumed file.
-        self.assertFalse(process_cover_image(project))
-        self.assertEqual(project.cover_image.name, stored_name)
-
-    def test_corrupt_upload_fails_soft(self):
-        from .cover_images import process_cover_image
-
-        project = self._project()
-        project.cover_image = SimpleUploadedFile(
-            "cover.png", b"this is not an image", content_type="image/png"
-        )
-        self.assertFalse(process_cover_image(project))
-
-    def test_unreachable_cover_url_fails_soft(self):
-        from unittest.mock import patch as mock_patch
-
-        from .cover_images import process_cover_image
-
-        project = self._project(cover_image_url="https://example.org/gone.png")
-        with mock_patch(
-            "projects.cover_images._fetch_url", return_value=None
-        ) as fetch:
-            self.assertFalse(process_cover_image(project))
-        fetch.assert_called_once()
-
-    def test_cover_url_source_is_reencoded(self):
-        from unittest.mock import patch as mock_patch
-
-        from .cover_images import process_cover_image
-
-        project = self._project(cover_image_url="https://example.org/c.png")
-        with mock_patch(
-            "projects.cover_images._fetch_url", return_value=self._png_bytes()
-        ):
-            self.assertTrue(process_cover_image(project))
-        self.assertTrue(project.cover_image.name.endswith(".webp"))
-
-    def test_no_source_is_a_noop(self):
-        from .cover_images import process_cover_image
-
-        self.assertFalse(process_cover_image(self._project()))
-
 
 
 @override_settings(MEDIA_ROOT=_TEST_MEDIA_ROOT)

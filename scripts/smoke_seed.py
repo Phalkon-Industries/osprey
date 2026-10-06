@@ -823,3 +823,85 @@ Project.objects.filter(pk=tide.pk).update(
 Contribution.objects.update_or_create(
     project=tide, display_name="Field Team 2019", defaults={"user": None, "role": "Design and deployment", "order": 0}
 )
+
+
+# --- A project at the image limit: 17 gallery images, 3 in the README -----
+import io as _io
+import math as _math
+
+from django.core.files.uploadedfile import SimpleUploadedFile as _Upload
+from PIL import Image as _Image, ImageDraw as _Draw
+
+from projects import images as _images
+
+
+def _test_image(w, h, hue, label):
+    """A photo-like test card: a gradient, a few shapes, and its own size
+    written on it, so aspect handling is easy to judge by eye."""
+    im = _Image.new("RGB", (w, h))
+    px = im.load()
+    r0, g0, b0 = [int(127 + 120 * _math.sin(hue + k)) for k in (0, 2.1, 4.2)]
+    for y in range(h):
+        t = y / max(h - 1, 1)
+        row = (int(r0 * (1 - t) + 20 * t), int(g0 * (1 - t) + 30 * t), int(b0 * (1 - t) + 60 * t))
+        for x in range(0, w, 1):
+            px[x, y] = row
+    d = _Draw.Draw(im)
+    m = min(w, h)
+    d.ellipse([w * 0.1, h * 0.15, w * 0.1 + m * 0.4, h * 0.15 + m * 0.4], outline=(255, 255, 255), width=max(2, m // 120))
+    d.rectangle([w * 0.55, h * 0.55, w * 0.9, h * 0.9], outline=(255, 255, 255), width=max(2, m // 120))
+    d.line([0, h - 1, w - 1, 0], fill=(255, 255, 255), width=max(1, m // 300))
+    d.text((m * 0.05, m * 0.05), label, fill=(255, 255, 255), font_size=max(14, m // 14))
+    buf = _io.BytesIO()
+    im.save(buf, "JPEG", quality=90)
+    return _Upload(f"{label.replace(' ', '_')}.jpg", buf.getvalue(), content_type="image/jpeg")
+
+
+gallery_owner = Project.objects.get(slug="whoi-pump").created_by
+rig, _ = Project.objects.get_or_create(
+    slug="image-limit-test-rig",
+    defaults={
+        "title": "Image Limit Test Rig",
+        "summary": "Twenty images in every common shape, for checking the gallery, the cover crop and README images.",
+        "readme": "",
+        "artifact_type": "hardware",
+        "field": "oceanography",
+        "license": "CERN-OHL-S-2.0",
+        "institution": WHOI,
+        "visibility": Project.VISIBILITY_PUBLIC,
+        "created_by": gallery_owner,
+        "self_rating": 5,
+    },
+)
+Project.objects.filter(pk=rig.pk).update(visibility=Project.VISIBILITY_PUBLIC, created_by=gallery_owner)
+Contribution.objects.update_or_create(
+    project=rig, display_name="Bench Team", defaults={"user": None, "role": "Testing", "order": 0}
+)
+if rig.images.count() < _images.MAX_IMAGES:
+    for old in rig.images.all():
+        _images.delete_files(old)
+        old.delete()
+    shapes = [
+        (1920, 1080, "16x9 landscape"), (1200, 900, "4x3 landscape"), (1500, 1000, "3x2 landscape"),
+        (1200, 1200, "1x1 square"), (1080, 1920, "9x16 portrait"), (900, 1200, "3x4 portrait"),
+        (2100, 900, "21x9 wide"), (3600, 900, "4x1 panorama"), (800, 2400, "1x3 tall"),
+        (1080, 1350, "4x5 portrait"), (1000, 1500, "2x3 portrait"), (1280, 1024, "5x4 landscape"),
+        (2000, 1000, "2x1 landscape"), (640, 480, "small 640x480"), (4000, 3000, "large 4000x3000"),
+        (500, 500, "small square"), (1600, 1200, "4x3 bench photo"),
+    ]
+    for i, (w, h, label) in enumerate(shapes):
+        _images.store(rig, _test_image(w, h, i * 0.7, label), kind="gallery", caption=label if i % 3 == 0 else "")
+    readme_shapes = [(1200, 600, "wiring diagram 2x1"), (800, 800, "schematic 1x1"), (1000, 400, "chart 5x2")]
+    readme_imgs = [
+        _images.store(rig, _test_image(w, h, 3 + i, label), kind="readme", caption=label)
+        for i, (w, h, label) in enumerate(readme_shapes)
+    ]
+    Project.objects.filter(pk=rig.pk).update(readme=(
+        "# Image Limit Test Rig\n\n"
+        "A bench rig used to check how OSPREY handles images. The gallery holds seventeen images "
+        "in every common shape; three more live in this README.\n\n"
+        f"## Wiring\n\n![{readme_imgs[0].caption}]({readme_imgs[0].image.url})\n\n"
+        f"## Schematic\n\n![{readme_imgs[1].caption}]({readme_imgs[1].image.url})\n\n"
+        f"## Results\n\n![{readme_imgs[2].caption}]({readme_imgs[2].image.url})\n"
+    ))
+print("image test rig:", rig.images.filter(kind="gallery").count(), "gallery,", rig.images.filter(kind="readme").count(), "README")

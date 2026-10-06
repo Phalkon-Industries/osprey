@@ -4,22 +4,13 @@ Pass `project`. Optional `words` (summary truncation, default 22).
 Tags stay off cards; they live on the project page.
 {% endcomment %}
 <a class="card linked" href="{{ project.get_absolute_url }}" style="text-decoration:none;color:inherit">
-    {% if project.cover_image_display_url %}
+    {% if project.card_image_url %}
     <span class="thumb-frame"
         style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-            class="thumb" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover"
+            class="thumb" src="{{ project.card_image_url }}" alt="{{ project.title }} cover"
             loading="lazy"></span>
     {% else %}
-    {% with first_image=project.images.first %}
-    {% if first_image %}
-    <span class="thumb-frame"
-        style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}"><img
-            class="thumb" src="{{ first_image.image.url }}"
-            alt="{{ first_image.caption|default:project.title }}"></span>
-    {% else %}
     {% include "projects/_cover_placeholder.html" with frame_class="thumb-frame" %}
-    {% endif %}
-    {% endwith %}
     {% endif %}
     <h3>
         <span>{{ project.title }}</span>

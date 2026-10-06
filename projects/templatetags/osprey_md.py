@@ -52,3 +52,45 @@ def render_markdown(value: str) -> str:
         skip_tags=["pre", "code"],
     )
     return mark_safe(cleaned)
+
+
+def _project_image_prefixes(project) -> tuple[str, ...]:
+    from django.conf import settings
+
+    base = settings.MEDIA_URL.rstrip("/")
+    # Current layout keys by id; images uploaded before 2026-10-06 used the slug.
+    return (f"{base}/projects/{project.pk}/images/", f"{base}/projects/{project.slug}/images/")
+
+
+@register.filter(name="project_markdown")
+def render_project_markdown(value: str, project) -> str:
+    """Markdown for a project README. Images must be the project's own
+    uploads; anything else is dropped, so a README can't hotlink a tracking
+    pixel or another site's image (decided 2026-10-06)."""
+    if not value:
+        return ""
+    prefixes = _project_image_prefixes(project)
+
+    def img_attr(tag, name, val):
+        if name == "src":
+            return any(val.startswith(p) for p in prefixes)
+        return name in ("alt", "title")
+
+    html = md.markdown(
+        value,
+        extensions=["extra", "sane_lists", "tables", "fenced_code", "nl2br"],
+        output_format="html5",
+    )
+    attrs = dict(_ALLOWED_ATTRS)
+    attrs["img"] = img_attr
+    cleaned = bleach.clean(html, tags=_ALLOWED_TAGS, attributes=attrs, protocols=_ALLOWED_PROTOCOLS, strip=True)
+    # An <img> whose src was refused is left with no src; drop it.
+    import re
+
+    cleaned = re.sub(r"<img(?![^>]*\ssrc=)[^>]*>", "", cleaned)
+    cleaned = bleach.linkify(
+        cleaned,
+        callbacks=[lambda attrs, new=False: {**attrs, (None, "rel"): "noopener"}],
+        skip_tags=["pre", "code"],
+    )
+    return mark_safe(cleaned)

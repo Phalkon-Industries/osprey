@@ -283,6 +283,8 @@ class SubmissionJourneyTests(JourneyTestCase):
         # background and advance without leaving the page.
         self.page.fill("textarea[name=readme]", "# Tabbed Tide Logger\n\nBuilt in a browser test.")
         self.save_and_continue("description")
+        self.page.wait_for_selector("[data-form-panel=images]:not([hidden])")
+        self.save_and_continue("images")
         self.page.wait_for_selector("[data-form-panel=contributors]:not([hidden])")
         self.assertEqual(self.page.input_value("input[name=contributions-0-role]"), "Project lead")
         self.save_and_continue("contributors")
@@ -300,7 +302,7 @@ class SubmissionJourneyTests(JourneyTestCase):
         self.save_and_continue("details")
         self.page.wait_for_selector("[data-form-panel=related]:not([hidden])")
         self.save_and_continue("related")
-        for name in ("basics", "description", "contributors", "files", "details", "related"):
+        for name in ("basics", "description", "images", "contributors", "files", "details", "related"):
             self.assertEqual(self.tab_state(name), "✓", name)
         # The background autosave persisted the README.
         self.page.wait_for_timeout(500)
@@ -580,4 +582,123 @@ class DeleteDraftJourneyTests(JourneyTestCase):
             self.page.click("button:has-text('Delete draft')")
         self.assertIn("Deleted the draft", self.page.content())
         self.assertFalse(Project.objects.filter(pk=draft.pk).exists())
+        self.assertNoBrowserErrors()
+
+
+def _png(colour, size=(1200, 800)) -> bytes:
+    import io as _io
+
+    from PIL import Image as _Image
+
+    buf = _io.BytesIO()
+    _Image.new("RGB", size, colour).save(buf, "PNG")
+    return buf.getvalue()
+
+
+class ImagesJourneyTests(JourneyTestCase):
+    def test_upload_caption_reorder_readme_insert_and_view(self):
+        from projects.models import ProjectImage
+
+        owner = self.make_owner()
+        project = Project.objects.create(
+            slug="journey-images", title="Journey Images", summary="Pictures.", readme="# Journey Images\n",
+            artifact_type="Hardware", field="Oceanography", license="MIT",
+            visibility=Project.VISIBILITY_PUBLIC, created_by=owner,
+        )
+        Contribution.objects.create(project=project, user=owner, display_name="Journey Owner", role="Project lead", order=0, claim_status="verified")
+        self.sign_in(owner)
+        self.page.goto(self.url("projects:edit", project.slug) + "?tab=images")
+        self.page.wait_for_selector("[data-form-panel=images]:not([hidden])")
+        self.page.set_input_files("[data-image-input]", [
+            {"name": "front.png", "mimeType": "image/png", "buffer": _png((38, 99, 140))},
+            {"name": "side.png", "mimeType": "image/png", "buffer": _png((150, 92, 48))},
+            {"name": "back.png", "mimeType": "image/png", "buffer": _png((60, 120, 60))},
+        ])
+        self.page.wait_for_selector("[data-image-tile] >> nth=2")
+        self.assertEqual(self.page.inner_text("[data-image-count]"), "3 of 20 images")
+        self.assertTrue(self.page.is_visible("[data-image-tile] >> nth=0 >> [data-cover-label]"))
+        caption = self.page.locator("[data-image-tile] >> nth=1 >> [data-tile-caption]")
+        caption.fill("Side view")
+        with self.page.expect_response(lambda r: "/caption/" in r.url):
+            caption.press("Enter")
+        with self.page.expect_response(lambda r: r.url.endswith("/images/reorder/")):
+            self.page.click("[data-image-tile] >> nth=1 >> [data-tile-earlier]")
+        self.assertEqual(self.page.input_value("[data-image-tile] >> nth=0 >> [data-tile-caption]"), "Side view")
+        self.assertTrue(self.page.is_visible("[data-image-tile] >> nth=0 >> [data-cover-label]"))
+        # Remove asks first (journeys auto-accept confirms); the tile and the count follow the server's answer.
+        with self.page.expect_response(lambda r: r.url.endswith("/delete/")):
+            self.page.click("[data-image-tile] >> nth=2 >> [data-tile-remove]")
+        self.page.wait_for_function("() => document.querySelectorAll('[data-image-tile]').length === 2")
+        self.assertEqual(self.page.inner_text("[data-image-count]"), "2 of 20 images")
+        gallery = list(ProjectImage.objects.filter(project=project, kind="gallery").order_by("order"))
+        self.assertEqual([g.caption for g in gallery], ["Side view", ""])
+        self.assertEqual(ProjectImage.objects.filter(project=project).count(), 2)
+
+        # README: Insert image uploads and drops Markdown at the cursor.
+        self.page.click("button[data-form-tab=description]")
+        self.page.click("textarea[name=readme]")
+        self.page.keyboard.press("End")
+        self.page.set_input_files("[data-readme-image-input]", {"name": "diagram.png", "mimeType": "image/png", "buffer": _png((10, 10, 10), (600, 400))})
+        self.page.wait_for_function("() => document.querySelector('textarea[name=readme]').value.includes('![image](')")
+        readme_image = ProjectImage.objects.get(project=project, kind="readme")
+        self.page.click("button[type=submit][name=action][value=save]")
+        try:
+            self.page.wait_for_url(f"**/projects/{project.slug}/", timeout=8000)
+        except Exception:
+            errs = self.page.eval_on_selector_all(".field-error", "els => els.map(e => e.textContent.trim()).filter(Boolean)")
+            raise AssertionError(f"save stayed on {self.page.url}: {errs}")
+
+        # The page: viewer on top with the reordered cover, README image inline, full-screen view.
+        self.assertIn(readme_image.image.url, self.page.inner_html(".prose"))
+        main = self.page.get_attribute("[data-gallery-main]", "src")
+        self.assertEqual(main, gallery[0].image.url)
+        self.page.click("[data-gallery-thumb] >> nth=1")
+        self.assertEqual(self.page.get_attribute("[data-gallery-main]", "src"), gallery[1].image.url)
+        self.page.click("[data-gallery-open]")
+        self.assertTrue(self.page.is_visible("[data-gallery-lightbox]"))
+        self.page.keyboard.press("ArrowRight")
+        self.assertEqual(self.page.get_attribute("[data-gallery-full]", "src"), gallery[0].full_url)
+        self.page.keyboard.press("Escape")
+        self.assertFalse(self.page.is_visible("[data-gallery-lightbox]"))
+        self.assertNoBrowserErrors()
+
+    def test_adding_an_image_to_a_new_project_saves_the_draft(self):
+        owner = self.make_owner()
+        self.sign_in(owner)
+        self.page.goto(self.url("projects:new"))
+        # Nothing filled in yet: the drop zone says what's missing and saves nothing.
+        self.page.click("button[data-form-tab=images]")
+        self.page.set_input_files("[data-image-input]", {"name": "a.png", "mimeType": "image/png", "buffer": _png((38, 99, 140))})
+        self.page.wait_for_selector("[data-image-errors]:not([hidden])")
+        self.assertIn("Basics first", self.page.inner_text("[data-image-errors]"))
+        self.assertFalse(Project.objects.filter(created_by=owner).exists())
+        # The README can't take images yet either: there is no draft to attach them to.
+        self.page.click("button[data-form-tab=description]")
+        self.page.evaluate("""() => {
+            const area = document.querySelector('textarea[name=readme]');
+            const transfer = new DataTransfer();
+            transfer.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'a.png', {type: 'image/png'}));
+            area.dispatchEvent(new DragEvent('drop', {dataTransfer: transfer, bubbles: true, cancelable: true}));
+        }""")
+        self.page.wait_for_selector("[data-readme-image-error]:not([hidden])")
+        self.assertIn("Save the draft first", self.page.inner_text("[data-readme-image-error]"))
+        self.assertFalse(Project.objects.filter(created_by=owner).exists())
+        # Basics filled: adding images saves the draft and lands back on Images with them uploaded.
+        self.page.click("button[data-form-tab=basics]")
+        self.page.fill("input[name=title]", "Picture First Logger")
+        self.page.fill("[name=summary]", "Images before anything else.")
+        self.page.select_option("select[name=license_choice]", "MIT")
+        self.page.fill("input[name=artifact_type]", "Hardware")
+        self.page.select_option("select[name=self_rating]", "4")
+        self.page.click("button[data-form-tab=images]")
+        self.page.set_input_files("[data-image-input]", [
+            {"name": "a.png", "mimeType": "image/png", "buffer": _png((38, 99, 140))},
+            {"name": "b.png", "mimeType": "image/png", "buffer": _png((150, 92, 48))},
+        ])
+        self.page.wait_for_url("**/edit/?tab=images*", timeout=20000)
+        self.page.wait_for_selector("[data-image-tile] >> nth=1")
+        project = Project.objects.get(title="Picture First Logger")
+        self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
+        self.assertEqual(len(project.gallery_images), 2)
+        self.assertTrue(self.page.is_visible("[data-form-panel=images]"))
         self.assertNoBrowserErrors()

@@ -14,7 +14,6 @@ from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
 from .models import MATURITY_LEVELS, Contribution, Project, Tag
-from .cover_images import MAX_DOWNLOAD_BYTES, process_cover_image
 
 FIELD_SUGGESTIONS = [
     "Oceanography",
@@ -150,7 +149,6 @@ class ProjectForm(forms.ModelForm):
         fields = [
             "title",
             "summary",
-            "cover_image",
             "cover_image_focal_x",
             "cover_image_focal_y",
             "cover_image_zoom",
@@ -212,9 +210,6 @@ class ProjectForm(forms.ModelForm):
                     "placeholder": "One per line. Include a DOI or URL where you can.",
                 }
             ),
-            "cover_image": forms.ClearableFileInput(
-                attrs={"accept": "image/png,image/jpeg,image/webp,image/gif"}
-            ),
             "cover_image_focal_x": forms.HiddenInput(),
             "cover_image_focal_y": forms.HiddenInput(),
             "cover_image_zoom": forms.NumberInput(
@@ -226,7 +221,6 @@ class ProjectForm(forms.ModelForm):
             "readme": "README",
             "artifact_type": "Project type",
             "canonical_url": "Project repository",
-            "cover_image": "Cover image upload",
             "cover_image_focal_x": "Horizontal crop",
             "cover_image_focal_y": "Vertical crop",
             "cover_image_zoom": "Zoom",
@@ -239,15 +233,8 @@ class ProjectForm(forms.ModelForm):
         help_texts = {
             "field": _examples_text(FIELD_SUGGESTIONS),
             "artifact_type": _examples_text(PROJECT_TYPE_SUGGESTIONS),
-            "readme": (
-                "Markdown is supported. For inline images, link to files "
-                "hosted elsewhere; OSPREY does not host README images."
-            ),
+            "readme": "Markdown is supported.",
             "canonical_url": "Public source repository (GitHub, Codeberg, GitLab). The link shown on the project page.",
-            "cover_image": (
-                "Optional. PNG, JPEG, WebP or GIF, up to 10 MiB; SVG isn't "
-                "accepted. OSPREY downscales and re-encodes it to WebP."
-            ),
             "cover_image_focal_x": "Saved horizontal crop position.",
             "cover_image_focal_y": "Saved vertical crop position.",
             "cover_image_zoom": "Zoom in when important detail is too small in the crop.",
@@ -312,18 +299,6 @@ class ProjectForm(forms.ModelForm):
             self.errors.pop("license_choice", None)
         return cleaned
 
-    def clean_cover_image(self):
-        upload = self.cleaned_data.get("cover_image")
-        if not upload:
-            return upload
-        size = getattr(upload, "size", None)
-        if size is not None and size > MAX_DOWNLOAD_BYTES:
-            mib = MAX_DOWNLOAD_BYTES / (1024 * 1024)
-            raise forms.ValidationError(
-                f"Cover image must be {mib:.0f} MiB or smaller."
-            )
-        return upload
-
     def save(self, commit: bool = True) -> Project:
         project = super().save(commit=False)
         project.license = self.cleaned_data.get("resolved_license", "") or ""
@@ -333,11 +308,6 @@ class ProjectForm(forms.ModelForm):
             project.wiki_requires_approval = False
         if not project.slug:
             project.slug = _generate_slug(project.title)
-        # Re-encode cover image (upload or URL) before persisting.
-        try:
-            process_cover_image(project)
-        except Exception:  # pragma: no cover - defensive; processor logs
-            pass
         if commit:
             project.save()
             self.save_m2m()

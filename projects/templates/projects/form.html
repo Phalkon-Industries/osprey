@@ -62,6 +62,7 @@
     <nav class="project-tabs form-tabs" data-form-tabs aria-label="Form sections">
         <button type="button" class="project-tab is-active" data-form-tab="basics">Basics <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="description">Description <span class="form-tab-state" data-tab-state></span></button>
+        <button type="button" class="project-tab" data-form-tab="images">Images <span class="form-tab-state" data-tab-state></span></button>
         <button type="button" class="project-tab" data-form-tab="contributors">Contributors <span class="form-tab-state" data-tab-state></span></button>
         {% if not project.is_registered %}<button type="button" class="project-tab" data-form-tab="files">Files <span class="form-tab-state" data-tab-state></span></button>{% endif %}
         <button type="button" class="project-tab" data-form-tab="details">More details <span class="form-tab-state" data-tab-state></span></button>
@@ -108,19 +109,63 @@
             <label><input type="checkbox" name="{{ form.provided_as_is.html_name }}" value="on"{% if form.provided_as_is.value %} checked{% endif %}> {{ form.provided_as_is.label }}</label>
         </p>
 
-    {% include "projects/_form_field.html" with field=form.cover_image %}
-    <p class="muted" style="font-size:.85rem;margin:-.5rem 0 .75rem">
-        Optional. Projects without a cover get a generated one based on
-        the project title.
-    </p>
+    <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="description">
+        {% include "projects/_form_field.html" with field=form.readme %}
+        {% if mode == 'edit' %}
+        <p class="readme-image-controls">
+            <button type="button" class="ghost small" data-readme-image-button>Insert image</button>
+            <input type="file" accept="{{ image_accept }}" data-readme-image-input hidden>
+            <span class="muted small">Or paste or drop an image into the README.</span>
+            <span class="image-error small" data-readme-image-error hidden></span>
+        </p>
+        {% else %}
+        <p class="image-error small" data-readme-image-error hidden></p>
+        {% endif %}
+        <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
+    </section>
+
+    <section class="form-tab-panel" data-form-panel="images" data-stay-after-save>
+        <div class="image-editor" data-image-editor
+            {% if mode == 'edit' %}
+            data-upload-url="{% url 'projects:image_upload' project.slug %}"
+            data-reorder-url="{% url 'projects:image_reorder' project.slug %}"
+            data-caption-url="{% url 'projects:image_caption' project.slug 0 %}"
+            data-delete-url="{% url 'projects:image_delete' project.slug 0 %}"
+            {% else %}
+            data-new-project
+            {% endif %}
+            data-max="{{ image_max }}">
+            <p class="muted small">{{ image_limit_text }} The first image is the cover. Drag to reorder.</p>
+            <div class="dropzone image-dropzone" data-image-drop>
+                <p class="dropzone-hint muted small">Drop images here, or choose them below.</p>
+                <input type="file" multiple accept="{{ image_accept }}" data-image-input>
+            </div>
+            <p class="image-error" data-image-errors hidden></p>
+            {% if mode != 'edit' %}<p class="muted small" data-new-project-note>Adding an image saves the draft.</p>{% endif %}
+            <ol class="image-tiles" data-image-tiles>
+                {% for img in project.gallery_images %}{% include "projects/_image_tile.html" with img=img first=forloop.first %}{% endfor %}
+            </ol>
+            <p class="muted small" data-image-count>{% if mode == 'edit' %}{{ project.images.count }}{% else %}0{% endif %} of {{ image_max }} images</p>
+            <div data-readme-image-list{% if not project_readme_images %} hidden{% endif %}>
+                <h3 style="font-size:1rem">Images in the README</h3>
+                <ol class="image-tiles readme-tiles" data-readme-tiles>
+                    {% for img in project_readme_images %}{% include "projects/_image_tile.html" with img=img readme=True %}{% endfor %}
+                </ol>
+            </div>
+        </div>
+        {% if mode == 'edit' %}
     <section class="cover-crop-editor" data-cover-crop-editor data-existing-url="{{ form.instance.cover_image_display_url|default_if_none:'' }}">
-        <h2>Cover image crop</h2>
+        <h2>Cover crop</h2>
+        <p class="muted small" style="margin-top:-.4rem">How the first image is cropped on cards.</p>
         <div class="cover-crop-layout">
             <div>
                 <div class="cover-preview-label">Crop frame</div>
                 <div class="cover-crop-frame" data-cover-drag-frame>
                     <img class="cover-crop-image" alt="Cover crop editor">
-                    <span class="cover-crop-empty">Upload a cover image to position it.</span>
+                    <span class="cover-crop-empty">Add an image to position the cover.</span>
                     <span class="cover-crop-box" aria-hidden="true"></span>
                 </div>
             </div>
@@ -149,13 +194,12 @@
         </p>
         {% endif %}
     </section>
-    <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
-    </section>
-
-    <section class="form-tab-panel" data-form-panel="description">
-        {% include "projects/_form_field.html" with field=form.readme %}
+        {% else %}
+        <span hidden>{{ form.cover_image_focal_x }}{{ form.cover_image_focal_y }}{{ form.cover_image_zoom }}</span>
+        {% endif %}
         <p><button type="button" class="ghost" data-mark-done>Save and continue</button></p>
     </section>
+
 
     {% if not project.is_registered %}
     <section class="form-tab-panel" data-form-panel="files"
@@ -498,6 +542,7 @@
 
 <script src="{% static 'projects/form_autosave.js' %}" defer></script>
 <script src="{% static 'projects/dropzone.js' %}" defer></script>
+<script src="{% static 'projects/images_editor.js' %}" defer></script>
 <script>
     (function () {
         // Prevent Enter from implicitly submitting the form except when focus
@@ -626,7 +671,6 @@
     (function () {
         var editor = document.querySelector('[data-cover-crop-editor]');
         if (!editor) return;
-        var fileInput = document.getElementById('id_cover_image');
         var x = document.getElementById('id_cover_image_focal_x');
         var y = document.getElementById('id_cover_image_focal_y');
         var zoom = document.getElementById('id_cover_image_zoom');
@@ -642,7 +686,7 @@
         // Source for preview images: starts as the existing saved cover (when
         // editing), updated when the user picks a new file.
         var currentSrc = editor.getAttribute('data-existing-url') || '';
-        if (!fileInput || !x || !y || !zoom || !dragFrame || !centerBtn || !valuePosition || !valueZoom) return;
+        if (!x || !y || !zoom || !dragFrame || !centerBtn || !valuePosition || !valueZoom) return;
 
         function clamp(value, min, max) {
             return Math.max(min, Math.min(max, value));
@@ -685,19 +729,16 @@
             syncCover();
         }
 
-        fileInput.addEventListener('change', function () {
-            var file = fileInput.files && fileInput.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function (e) {
-                currentSrc = e.target.result;
-                // Reset crop to centered when a new image is picked.
-                x.value = '50';
-                y.value = '50';
-                zoom.value = '1';
-                syncCover();
-            };
-            reader.readAsDataURL(file);
+        // The images editor announces a new first image (upload, reorder,
+        // removal); the crop follows it and resets to centered.
+        document.addEventListener('osprey:cover-changed', function (e) {
+            var src = (e.detail && e.detail.src) || '';
+            if (src === currentSrc) return;
+            currentSrc = src;
+            x.value = '50';
+            y.value = '50';
+            zoom.value = '1';
+            syncCover();
         });
         zoom.addEventListener('input', syncCover);
         centerBtn.addEventListener('click', function () {
@@ -1311,7 +1352,8 @@
                 // back to the form, carrying the marks. An incomplete
                 // section returns to itself so its red cross and missing
                 // list are what the user sees after the reload.
-                ensureHidden('next_tab').value = met ? (next || name) : name;
+                var stay = panel.hasAttribute('data-stay-after-save');
+                ensureHidden('next_tab').value = (met && !stay) ? (next || name) : name;
                 ensureHidden('marked_section').value = order.filter(function (n) { return done[n]; }).join(',');
                 var actionInput = form.querySelector('input[type=hidden][name=action]');
                 if (actionInput) actionInput.value = 'save_continue';

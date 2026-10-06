@@ -297,14 +297,37 @@ class Project(models.Model):
         return zlib.crc32(self.slug.encode("utf-8")) % 360
 
     @property
+    def gallery_images(self) -> list:
+        """Gallery images in order. Iterates the prefetched set when there is one."""
+        return [i for i in self.images.all() if i.kind == "gallery"]
+
+    @property
+    def cover(self):
+        """The first gallery image: the cover on cards and at the top of the page."""
+        gallery = self.gallery_images
+        return gallery[0] if gallery else None
+
+    @property
     def cover_image_display_url(self) -> str:
-        """URL of the cover image to render. Prefers the uploaded file."""
+        """URL of the cover at display size. The first gallery image; the old
+        separate cover fields are a fallback for rows not yet migrated."""
+        cover = self.cover
+        if cover is not None:
+            return cover.image.url
         if self.cover_image:
             try:
                 return self.cover_image.url
             except ValueError:
                 return ""
         return self.cover_image_url or ""
+
+    @property
+    def card_image_url(self) -> str:
+        """Small cover for cards."""
+        cover = self.cover
+        if cover is not None:
+            return cover.thumb_url
+        return self.cover_image_display_url
 
     @property
     def canonical_url_label(self) -> str:
@@ -961,17 +984,40 @@ class TagAssignment(models.Model):
 
 
 def project_image_upload_to(instance: "ProjectImage", filename: str) -> str:
-    return f"projects/{instance.project.slug}/images/{filename}"
+    return f"projects/{instance.project_id}/images/{filename}"
 
 
 class ProjectImage(models.Model):
+    """One image in a project's set. Gallery images show at the top of the
+    project page, and the first one is the cover everywhere. README images
+    are inserted into the README and kept out of the gallery. Three WebP
+    sizes; see projects/images.py."""
+
+    KIND_GALLERY = "gallery"
+    KIND_README = "readme"
+    KIND_CHOICES = [(KIND_GALLERY, "Gallery"), (KIND_README, "README")]
+
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="images"
     )
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=KIND_GALLERY, db_index=True)
+    # Display size (1600 px long edge). Kept as `image` for older code paths.
     image = models.ImageField(upload_to=project_image_upload_to)
+    thumb = models.ImageField(upload_to=project_image_upload_to, blank=True)
+    full = models.ImageField(upload_to=project_image_upload_to, blank=True)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
     caption = models.CharField(max_length=300, blank=True)
     order = models.PositiveIntegerField(default=0)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def thumb_url(self) -> str:
+        return (self.thumb or self.image).url
+
+    @property
+    def full_url(self) -> str:
+        return (self.full or self.image).url
 
     class Meta:
         ordering = ["order", "id"]

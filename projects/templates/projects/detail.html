@@ -42,7 +42,7 @@
 
     {% if project.readme %}
     <section>
-        <div class="prose">{{ project.readme|markdown }}</div>
+        <div class="prose">{{ project.readme|project_markdown:project }}</div>
     </section>
     {% endif %}
 
@@ -54,21 +54,6 @@
     </section>
     {% endif %}
 
-    {% if project.images.count > 1 %}
-    <section>
-        <h2>Gallery</h2>
-        <div class="gallery">
-            {% for img in project.images.all|slice:"1:" %}
-            <figure style="margin:0">
-                <img src="{{ img.image.url }}" alt="{{ img.caption|default:project.title }}">
-                {% if img.caption %}
-                <figcaption class="muted" style="font-size:.85rem;margin-top:.25rem">{{ img.caption }}</figcaption>
-                {% endif %}
-            </figure>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
 
     <div style="margin-top:1.5rem">
         <section>

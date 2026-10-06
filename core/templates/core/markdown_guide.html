@@ -33,31 +33,11 @@ print("fenced code with a language tag")
 
     <h2>Images</h2>
     <p>
-        OSPREY does not host project media. Link to images already hosted
-        somewhere durable (your GitHub repo, Zenodo, lab site). The
-        Markdown syntax is the same as a link, with a leading exclamation
-        point:
+        Upload images to OSPREY. Paste or drop an image into the README, or
+        use Insert image under it. OSPREY adds the Markdown for you:
     </p>
-    <pre><code>![Alt text](https://example.org/img/diagram.png)</code></pre>
-
-    <h3>The GitHub image gotcha</h3>
-    <p>
-        A common slip is to paste the regular GitHub web URL for an image,
-        which renders the GitHub viewer page, not the image itself:
-    </p>
-    <pre><code>![Alt text](https://github.com/username/repository/blob/master/img/octocat.png)</code></pre>
-    <p>
-        That does not render. Use one of these instead.
-    </p>
-    <p>Append <code>?raw=true</code>:</p>
-    <pre><code>![Alt text](https://github.com/username/repository/blob/master/img/octocat.png?raw=true)</code></pre>
-    <p>Or use the <code>raw.githubusercontent.com</code> host:</p>
-    <pre><code>![Alt text](https://raw.githubusercontent.com/username/repository/master/img/octocat.png)</code></pre>
-    <p class="muted small">
-        Same trick works for diagrams committed to your repo. If the image
-        moves, the link breaks; that is the tradeoff for not hosting media
-        in OSPREY.
-    </p>
+    <pre><code>![Alt text](/media/projects/12/images/diagram.webp)</code></pre>
+    <p>Images linked from other sites aren't shown in the README.</p>
 
     <h2>Tables</h2>
     <pre><code>| Sensor | Range  | Notes        |

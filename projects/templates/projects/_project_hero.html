@@ -6,23 +6,18 @@ Shared project page hero: cover image, title row, summary, meta, tab strip.
 Pass `project` and `current_tab`. Optional `project_can_edit` to show the
 project Edit button (kept separate from sub-page `can_edit` flags).
 {% endcomment %}
-{% if project.cover_image_display_url %}
+{% with gallery=project.gallery_images %}
+{% if current_tab == "overview" and gallery %}
+{% include "projects/_gallery.html" with gallery=gallery %}
+{% elif project.cover_image_display_url %}
 <div class="hero-image-frame"
     style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
     <img class="hero-image" src="{{ project.cover_image_display_url }}" alt="{{ project.title }} cover" loading="lazy">
 </div>
 {% else %}
-{% with hero=project.images.first %}
-{% if hero %}
-<div class="hero-image-frame"
-    style="--cover-x:{{ project.cover_image_focal_x }}%;--cover-y:{{ project.cover_image_focal_y }}%;--cover-zoom:{{ project.cover_image_zoom }}">
-    <img class="hero-image" src="{{ hero.image.url }}" alt="{{ hero.caption|default:project.title }}">
-</div>
-{% else %}
 {% include "projects/_cover_placeholder.html" with frame_class="hero-image-frame" %}
 {% endif %}
 {% endwith %}
-{% endif %}
 
 <header class="project-header">
     <h1><a href="{% url 'projects:detail' project.slug %}" style="color:inherit;text-decoration:none">{{ project.title }}</a></h1>

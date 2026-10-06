@@ -851,20 +851,251 @@ button.ghost:hover {
     font-size: 1.7rem;
 }
 
-.gallery {
+.image-error { color: #b42318; margin: .4rem 0; }
+:root[data-theme="dark"] .image-error { color: #fca5a5; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .image-error { color: #fca5a5; } }
+
+.image-tiles {
+    list-style: none;
+    padding: 0;
+    margin: .75rem 0;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: .75rem;
 }
 
-.gallery img {
+.image-tile {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .4rem;
+    background: var(--bg-elev);
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    cursor: grab;
+}
+
+.image-tile.is-dragging {
+    opacity: .5;
+}
+
+.image-tile img {
     width: 100%;
     aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 8px;
-    border: 1px solid var(--border);
+    border-radius: 5px;
     background: var(--bg-soft);
 }
+
+.image-tile-cover {
+    position: absolute;
+    top: .7rem;
+    left: .7rem;
+    background: rgba(0, 0, 0, .65);
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .05rem .45rem;
+    border-radius: 4px;
+}
+
+.image-tile-caption {
+    width: 100%;
+    font-size: .85rem;
+}
+
+.image-tile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    justify-content: flex-end;
+}
+
+.image-tile-actions button {
+    padding: .15rem .5rem;
+    font-size: .8rem;
+    min-width: 0;
+}
+
+.image-editor.is-uploading .image-dropzone {
+    opacity: .6;
+}
+
+.readme-image-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-top: -.25rem;
+}
+
+.gallery-viewer {
+    margin-bottom: 1.25rem;
+}
+
+.gallery-main {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-soft);
+    aspect-ratio: 16 / 9;
+    max-height: 70vh;
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+.gallery-main img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* Caption overlaid on the bottom of the viewer (decided 2026-10-06), so
+   switching between captioned and uncaptioned images never moves the
+   page. The full-screen view shows the caption below the photo. */
+.gallery-main {
+    position: relative;
+}
+
+.gallery-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 1.6rem 1rem .6rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, .68), rgba(0, 0, 0, 0));
+    color: #fff;
+    font-size: .9rem;
+    text-align: left;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+    pointer-events: none;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.gallery-caption[hidden] {
+    display: none;
+}
+
+.gallery-strip {
+    list-style: none;
+    padding: 0;
+    margin: .6rem 0 0;
+    display: flex;
+    gap: .5rem;
+    overflow-x: auto;
+}
+
+.gallery-thumb {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: var(--bg-soft);
+    width: 88px;
+    height: 66px;
+    overflow: hidden;
+    cursor: pointer;
+    flex: none;
+}
+
+.gallery-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-thumb.is-current {
+    border-color: var(--accent, #1d4ed8);
+}
+
+.gallery-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(10, 12, 16, .92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gallery-lightbox[hidden] {
+    display: none;
+}
+
+.gallery-lightbox figure {
+    margin: 0;
+    max-width: 94vw;
+    max-height: 90vh;
+    text-align: center;
+}
+
+.gallery-lightbox img {
+    max-width: 94vw;
+    max-height: 84vh;
+    object-fit: contain;
+}
+
+.gallery-lightbox figcaption {
+    color: #e5e7eb;
+    margin-top: .5rem;
+    font-size: .9rem;
+}
+
+.gallery-close,
+.gallery-nav {
+    position: absolute;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    border: 0;
+    border-radius: 999px;
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.gallery-close { top: 1rem; right: 1rem; }
+.gallery-nav.prev { left: 1rem; top: 50%; }
+.gallery-nav.next { right: 1rem; top: 50%; }
+body.gallery-open { overflow: hidden; }
+
+/* The viewer pieces are buttons for keyboard access; they must not take
+   the site's solid button hover. A faint border change at most. */
+.gallery-main:hover,
+.gallery-main:focus-visible {
+    background: var(--bg-soft);
+    border-color: var(--fg-muted);
+}
+
+.gallery-thumb:hover {
+    background: var(--bg-soft);
+    border-color: var(--border);
+}
+
+.gallery-thumb.is-current:hover {
+    border-color: var(--accent, #1d4ed8);
+}
+
+.gallery-close:hover,
+.gallery-nav:hover {
+    background: rgba(255, 255, 255, .2);
+    color: #fff;
+}
+
+.prose img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+}
+
 
 /* ---- Messages ---- */
 

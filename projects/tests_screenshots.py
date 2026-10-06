@@ -68,12 +68,28 @@ def _diff_ratio(baseline: Image.Image, actual: Image.Image) -> tuple[float, Imag
     return (changed / total if total else 0.0), overlay
 
 
+def _seed_images(project):
+    """Two solid, deterministic images so the viewer and strip render the same every run."""
+    import io as _io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image as _Image
+
+    from projects import images as _images
+
+    for name, colour, caption in (("front", (38, 99, 140), "Pump housing, front"), ("side", (150, 92, 48), "")):
+        buf = _io.BytesIO()
+        _Image.new("RGB", (1600, 1000), colour).save(buf, "PNG")
+        _images.store(project, SimpleUploadedFile(f"{name}.png", buf.getvalue()), kind="gallery", caption=caption)
+
+
 class ScreenshotBaselineTests(JourneyTestCase):
     """One test per theme so a dark-only regression reads as such."""
 
     def _seed(self):
         owner = self.make_owner("shots-owner")
         published = self.make_published_project(owner, slug="shots-published-pump")
+        _seed_images(published)
         draft = Project.objects.create(
             slug="shots-draft-logger",
             title="Shots Draft Logger",
@@ -110,6 +126,7 @@ class ScreenshotBaselineTests(JourneyTestCase):
             ("project-edit-basics", self.url("projects:edit", draft.slug) + "?tab=basics"),
             ("project-edit-contributors", self.url("projects:edit", draft.slug) + "?tab=contributors"),
             ("project-edit-lineage", self.url("projects:edit", draft.slug) + "?tab=related"),
+            ("project-edit-images", self.url("projects:edit", published.slug) + "?tab=images"),
             ("new-version", self.url("projects:zenodo_new_version", published.slug)),
             ("project-delete", self.url("projects:delete", draft.slug)),
             ("register-page", self.url("projects:register")),

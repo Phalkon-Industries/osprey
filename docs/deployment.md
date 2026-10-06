@@ -511,3 +511,13 @@ the database schema matches what `pg_dump` actually produced.
 ## License audit
 
 `GITHUB_API_TOKEN` is optional. The daily license audit reads the license of each linked GitHub repository; without a token GitHub allows 60 unauthenticated calls an hour, which is enough for a small catalog. `EXTERNAL_API_MAILTO` is sent in the User-Agent so the API operators can reach you.
+
+## Project images
+
+After deploying the image gallery (projects migrations 0039 and 0040), run once:
+
+```
+python manage.py reencode_images
+```
+
+Migration 0040 copies each project's old cover in as its first image. The command generates the three WebP sizes for those and for any other image missing a size, and leaves finished images alone, so it is safe to rerun. `--force` re-encodes every image at the current quality setting. Use it only after changing the setting, since each pass re-encodes lossy WebP.

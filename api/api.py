@@ -147,7 +147,7 @@ def _project_detail(p: Project) -> dict:
             "tags": [{"name": t.name} for t in p.tags.all()],
             "images": [
                 {"url": img.image.url, "caption": img.caption, "order": img.order}
-                for img in p.images.all()
+                for img in p.gallery_images
             ],
         }
     )
