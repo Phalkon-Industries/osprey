@@ -2,11 +2,13 @@
     <img src="{{ img.thumb_url }}" alt="" data-tile-thumb data-display="{{ img.image.url }}">
     {% if not readme %}<span class="image-tile-cover" data-cover-label{% if not first %} hidden{% endif %}>Cover</span>{% endif %}
     <input type="text" class="image-tile-caption" value="{{ img.caption }}" placeholder="Caption" maxlength="300" aria-label="Caption" data-tile-caption>
+    {% if readme %}<span class="image-tile-unused small" data-not-used{% if img.image.url in project.readme %} hidden{% endif %}>Not used in the README</span>{% endif %}
     <span class="image-tile-actions">
         {% if not readme %}
         <button type="button" class="ghost small" data-tile-earlier aria-label="Move earlier">&#8592;</button>
         <button type="button" class="ghost small" data-tile-later aria-label="Move later">&#8594;</button>
         {% endif %}
+        {% if readme %}<button type="button" class="ghost small" data-tile-insert>Insert</button>{% endif %}
         <button type="button" class="ghost small" data-tile-remove>Remove</button>
     </span>
 </li>

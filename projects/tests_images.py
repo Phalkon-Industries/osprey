@@ -141,7 +141,7 @@ class EndpointTests(ProjectTestCase):
         self.assertEqual(len(data["images"]), 2)
         self.assertEqual(data["count"], 2)
         self.assertEqual(data["errors"], ["That file isn't an image OSPREY can read."])
-        self.assertTrue(data["images"][0]["markdown"].startswith("![image]("))
+        self.assertTrue(data["images"][0]["markdown"].startswith("![]("))
 
     def test_limit_of_twenty(self):
         self.client.force_login(self.owner)
@@ -316,3 +316,77 @@ class CoverMigrationTests(ProjectTestCase):
         self.assertTrue(gallery[0].image.name.endswith("cover-old-cover.webp"))
         self.assertEqual(gallery[1].pk, existing.pk)
         self.assertNotEqual(gallery[0].image.name, self.public_project.cover_image.name)  # copied, not shared
+
+
+@override_settings(MEDIA_ROOT=_MEDIA)
+class ReadmeCaptionTests(ProjectTestCase):
+    """README image captions live in the Markdown brackets and stay in sync
+    with the image's tile (decided 2026-10-06)."""
+
+    def _readme_image(self, caption=""):
+        return images.store(self.public_project, photo(), kind="readme", caption=caption)
+
+    def test_caption_helpers(self):
+        url = "/media/projects/1/images/abc-image.webp"
+        self.assertEqual(images.markdown_caption("Fig [1]\nhousing  "), "Fig 1 housing")
+        readme = f"![old]({url})\n\ntext\n\n![other]({url}) and ![x](/media/projects/1/images/zzz-image.webp)"
+        self.assertEqual(images.readme_caption(readme, url), "old")
+        self.assertIsNone(images.readme_caption(readme, "/media/projects/1/images/none-image.webp"))
+        rewritten = images.set_readme_caption(readme, url, "new [cap]")
+        self.assertEqual(rewritten.count(f"![new cap]({url})"), 2)
+        self.assertIn("![x](/media/projects/1/images/zzz-image.webp)", rewritten)
+
+    def test_bracket_text_renders_as_a_caption_under_the_image(self):
+        img = self._readme_image()
+        html = render_project_markdown(f"Intro.\n\n![Wiring for the pressure sensor]({img.image.url})\n\nAfter.", self.public_project)
+        self.assertIn("<figure", html)
+        self.assertIn("<figcaption>Wiring for the pressure sensor</figcaption>", html)
+        self.assertIn(img.image.url, html)
+        plain = render_project_markdown(f"![]({img.image.url})", self.public_project)
+        self.assertIn(img.image.url, plain)
+        self.assertNotIn("<figcaption", plain)
+
+    def test_inserted_markdown_carries_the_caption_or_nothing(self):
+        from projects.views_images import image_json
+
+        self.assertEqual(image_json(self._readme_image())["markdown"], f"![]({self.public_project.images.last().image.url})")
+        captioned = self._readme_image(caption="Schematic")
+        self.assertEqual(image_json(captioned)["markdown"], f"![Schematic]({captioned.image.url})")
+
+    def test_tile_caption_rewrites_the_brackets_in_the_readme(self):
+        img = self._readme_image()
+        Project.objects.filter(pk=self.public_project.pk).update(readme=f"# Pump\n\n![]({img.image.url})\n\nText.")
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse("projects:image_caption", args=[self.public_project.slug, img.pk]), {"caption": "Pump housing"})
+        self.public_project.refresh_from_db()
+        self.assertEqual(self.public_project.readme, f"# Pump\n\n![Pump housing]({img.image.url})\n\nText.")
+        self.assertEqual(response.json()["readme"], self.public_project.readme)
+        # Gallery captions never touch the README.
+        gallery = images.store(self.public_project, photo(), kind="gallery")
+        response = self.client.post(reverse("projects:image_caption", args=[self.public_project.slug, gallery.pk]), {"caption": "Front"})
+        self.assertNotIn("readme", response.json())
+
+    def test_editing_the_brackets_updates_the_caption_on_save(self):
+        img = self._readme_image(caption="Old caption")
+        self.client.force_login(self.owner)
+        data = self.project_form_post_data(action="save")
+        data["title"] = self.public_project.title
+        data["readme"] = f"# Pump\n\n![New caption from the README]({img.image.url})\n"
+        self.client.post(reverse("projects:edit", args=[self.public_project.slug]), data)
+        img.refresh_from_db()
+        self.assertEqual(img.caption, "New caption from the README")
+
+    def test_images_left_out_of_the_readme_are_marked_not_used(self):
+        used = self._readme_image(caption="Used")
+        unused = self._readme_image(caption="Unused")
+        Project.objects.filter(pk=self.public_project.pk).update(readme=f"![Used]({used.image.url})")
+        self.client.force_login(self.owner)
+        page = self.client.get(reverse("projects:edit", args=[self.public_project.slug]))
+        body = page.content.decode()
+        tile = body[body.index(f'data-id="{unused.pk}"'):]
+        tile = tile[: tile.index("</li>")]
+        self.assertIn("Not used in the README", tile)
+        self.assertIn("data-tile-insert", tile)
+        used_tile = body[body.index(f'data-id="{used.pk}"'):]
+        used_tile = used_tile[: used_tile.index("</li>")]
+        self.assertIn("hidden", used_tile[used_tile.index("Not used in the README") - 60:used_tile.index("Not used in the README")])

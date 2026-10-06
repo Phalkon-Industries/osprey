@@ -76,8 +76,10 @@
             '<img alt="" data-tile-thumb>' +
             (readme ? "" : '<span class="image-tile-cover" data-cover-label hidden>Cover</span>') +
             '<input type="text" class="image-tile-caption" placeholder="Caption" maxlength="300" aria-label="Caption" data-tile-caption>' +
+            (readme ? '<span class="image-tile-unused small" data-not-used hidden>Not used in the README</span>' : "") +
             '<span class="image-tile-actions">' +
-            (readme ? "" : '<button type="button" class="ghost small" data-tile-earlier aria-label="Move earlier">&#8592;</button>' +
+            (readme ? '<button type="button" class="ghost small" data-tile-insert>Insert</button>' :
+                '<button type="button" class="ghost small" data-tile-earlier aria-label="Move earlier">&#8592;</button>' +
                 '<button type="button" class="ghost small" data-tile-later aria-label="Move later">&#8594;</button>') +
             '<button type="button" class="ghost small" data-tile-remove>Remove</button></span>';
         var thumb = li.querySelector("[data-tile-thumb]");
@@ -97,7 +99,16 @@
         cap.addEventListener("blur", function () {
             if (cap.value === saved) return;
             saved = cap.value;
+            if (isReadmeTile(li)) setReadmeCaption(li, cap.value);
             post(url(editor.dataset.captionUrl, li.dataset.id), { caption: cap.value });
+        });
+        li._setSaved = function (v) { saved = v; };
+        var insertBtn = li.querySelector("[data-tile-insert]");
+        if (insertBtn) insertBtn.addEventListener("click", function () {
+            // From the Images tab the README caret is out of sight, so
+            // Insert appends to the end rather than wherever it last sat.
+            readme.setSelectionRange(readme.value.length, readme.value.length);
+            insertAtCursor("![" + mdCaption(cap.value) + "](" + displayUrl(li) + ")");
         });
         var earlier = li.querySelector("[data-tile-earlier]");
         var later = li.querySelector("[data-tile-later]");
@@ -226,6 +237,36 @@
 
     // ---- README images ----
     var readme = document.getElementById("id_readme");
+
+    function isReadmeTile(li) { return !!(readmeTiles && li.parentNode === readmeTiles); }
+    function displayUrl(li) { return li.querySelector("[data-tile-thumb]").dataset.display; }
+    function mdCaption(text) { return (text || "").replace(/[\[\]\r\n]+/g, " ").replace(/\s+/g, " ").trim(); }
+    function refRe(u) {
+        return new RegExp("!\\[([^\\]]*)\\]\\(\\s*" + u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\)", "g");
+    }
+    function setReadmeCaption(li, caption) {
+        if (!readme) return;
+        var next = readme.value.replace(refRe(displayUrl(li)), "![" + mdCaption(caption) + "](" + displayUrl(li) + ")");
+        if (next !== readme.value) {
+            readme.value = next;
+            readme.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+    }
+    // Keep README tiles honest about the text: bracket edits show on the
+    // tile, and a tile whose image isn't referenced says so.
+    function syncReadmeTiles() {
+        if (!readme || !readmeTiles) return;
+        Array.prototype.forEach.call(readmeTiles.querySelectorAll("[data-image-tile]"), function (li) {
+            var m = refRe(displayUrl(li)).exec(readme.value);
+            var flag = li.querySelector("[data-not-used]");
+            if (flag) flag.hidden = !!m;
+            var cap = li.querySelector("[data-tile-caption]");
+            if (m && cap && document.activeElement !== cap && cap.value !== m[1].trim()) {
+                cap.value = m[1].trim();
+                if (li._setSaved) li._setSaved(cap.value);
+            }
+        });
+    }
     var readmeButton = document.querySelector("[data-readme-image-button]");
     var readmeInput = document.querySelector("[data-readme-image-input]");
     var readmeError = document.querySelector("[data-readme-image-error]");
@@ -253,6 +294,7 @@
         }
         return upload(files, "readme").then(function (data) {
             (data.images || []).forEach(function (img) { insertAtCursor(img.markdown); });
+            syncReadmeTiles();
             if (data.errors && data.errors.length && readmeError) {
                 readmeError.hidden = false;
                 readmeError.textContent = data.errors.join(" ");
@@ -267,6 +309,8 @@
             uploadReadme(readmeInput.files).then(function () { readmeInput.value = ""; });
         });
     }
+    readme.addEventListener("input", syncReadmeTiles);
+    syncReadmeTiles();
     readme.addEventListener("paste", function (e) {
         var files = e.clipboardData && e.clipboardData.files;
         if (!files || !files.length) return;

@@ -900,6 +900,25 @@ button.ghost:hover {
     border-radius: 4px;
 }
 
+.image-tile-unused {
+    color: var(--fg-muted);
+    font-style: italic;
+}
+
+.image-tile-unused[hidden] {
+    display: none;
+}
+
+.readme-figure {
+    margin: 1rem 0;
+}
+
+.readme-figure figcaption {
+    color: var(--fg-muted);
+    font-size: .9rem;
+    margin-top: .35rem;
+}
+
 .image-tile-caption {
     width: 100%;
     font-size: .85rem;

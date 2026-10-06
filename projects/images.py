@@ -134,3 +134,39 @@ def delete_files(img) -> None:
                 field.delete(save=False)
             except Exception:  # noqa: BLE001 - a missing file shouldn't block deletion
                 pass
+
+
+# --- README captions -------------------------------------------------------
+# A README image's caption is the text in its Markdown brackets. The tile's
+# caption field and the brackets are kept in sync (decided 2026-10-06).
+
+import re as _re
+
+
+def markdown_caption(caption: str) -> str:
+    """Caption text safe inside ![...]: no brackets, no line breaks."""
+    return _re.sub(r"\s+", " ", _re.sub(r"[\[\]\r\n]+", " ", caption or "")).strip()
+
+
+def _ref_re(url: str):
+    return _re.compile(r"!\[([^\]]*)\]\(\s*" + _re.escape(url) + r"\s*\)")
+
+
+def set_readme_caption(readme: str, url: str, caption: str) -> str:
+    """Rewrite the brackets of every reference to `url` in the README."""
+    return _ref_re(url).sub(lambda m: f"![{markdown_caption(caption)}]({url})", readme or "")
+
+
+def readme_caption(readme: str, url: str) -> str | None:
+    """The bracket text of the first reference to `url`, or None if unused."""
+    m = _ref_re(url).search(readme or "")
+    return m.group(1).strip() if m else None
+
+
+def sync_captions_from_readme(project) -> None:
+    """After the README is saved, copy bracket text onto README image captions."""
+    for img in project.images.filter(kind="readme"):
+        caption = readme_caption(project.readme, img.image.url)
+        if caption is not None and caption != img.caption:
+            img.caption = caption[:300]
+            img.save(update_fields=["caption"])

@@ -88,6 +88,16 @@ def render_project_markdown(value: str, project) -> str:
     import re
 
     cleaned = re.sub(r"<img(?![^>]*\ssrc=)[^>]*>", "", cleaned)
+
+    # An image on its own line shows its bracket text as a caption.
+    def figure(match):
+        tag = match.group(1)
+        alt = re.search(r'\salt="([^"]*)"', tag)
+        caption = alt.group(1).strip() if alt else ""
+        inner = f"<figcaption>{caption}</figcaption>" if caption else ""
+        return f'<figure class="readme-figure">{tag}{inner}</figure>'
+
+    cleaned = re.sub(r"<p>\s*(<img [^>]*>)\s*</p>", figure, cleaned)
     cleaned = bleach.linkify(
         cleaned,
         callbacks=[lambda attrs, new=False: {**attrs, (None, "rel"): "noopener"}],

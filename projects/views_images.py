@@ -51,7 +51,7 @@ def image_json(img: ProjectImage) -> dict:
         "full": img.full_url,
         "width": img.width,
         "height": img.height,
-        "markdown": f"![{img.caption or 'image'}]({img.image.url})",
+        "markdown": f"![{images.markdown_caption(img.caption)}]({img.image.url})",
     }
 
 
@@ -87,7 +87,12 @@ def caption(request, slug: str, image_id: int):
     img = get_object_or_404(ProjectImage, pk=image_id, project=project)
     img.caption = request.POST.get("caption", "").strip()[:300]
     img.save(update_fields=["caption"])
-    return JsonResponse({"image": image_json(img)})
+    payload = {"image": image_json(img)}
+    if img.kind == ProjectImage.KIND_README:
+        project.readme = images.set_readme_caption(project.readme, img.image.url, img.caption)
+        project.save(update_fields=["readme"])
+        payload["readme"] = project.readme
+    return JsonResponse(payload)
 
 
 @login_required

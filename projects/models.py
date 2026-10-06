@@ -272,6 +272,12 @@ class Project(models.Model):
             if fields is not None and "wiki_requires_approval" not in fields:
                 kwargs["update_fields"] = list(fields) + ["wiki_requires_approval"]
         super().save(*args, **kwargs)
+        fields = kwargs.get("update_fields")
+        if fields is None or "readme" in fields:
+            # README image captions live in the Markdown brackets.
+            from .images import sync_captions_from_readme
+
+            sync_captions_from_readme(self)
 
     def get_absolute_url(self) -> str:
         return reverse("projects:detail", args=[self.slug])

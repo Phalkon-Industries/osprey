@@ -639,7 +639,7 @@ class ImagesJourneyTests(JourneyTestCase):
         self.page.click("textarea[name=readme]")
         self.page.keyboard.press("End")
         self.page.set_input_files("[data-readme-image-input]", {"name": "diagram.png", "mimeType": "image/png", "buffer": _png((10, 10, 10), (600, 400))})
-        self.page.wait_for_function("() => document.querySelector('textarea[name=readme]').value.includes('![image](')")
+        self.page.wait_for_function("() => document.querySelector('textarea[name=readme]').value.includes('![](')")
         readme_image = ProjectImage.objects.get(project=project, kind="readme")
         self.page.click("button[type=submit][name=action][value=save]")
         try:
@@ -701,4 +701,58 @@ class ImagesJourneyTests(JourneyTestCase):
         self.assertEqual(project.visibility, Project.VISIBILITY_PRIVATE)
         self.assertEqual(len(project.gallery_images), 2)
         self.assertTrue(self.page.is_visible("[data-form-panel=images]"))
+        self.assertNoBrowserErrors()
+
+    def test_readme_captions_stay_in_sync_with_the_tile(self):
+        from projects.models import ProjectImage
+
+        owner = self.make_owner()
+        project = Project.objects.create(
+            slug="journey-captions", title="Journey Captions", summary="Captions.", readme="# Journey Captions\n",
+            artifact_type="Hardware", field="Oceanography", license="MIT",
+            visibility=Project.VISIBILITY_PRIVATE, created_by=owner,
+        )
+        Contribution.objects.create(project=project, user=owner, display_name="Journey Owner", role="Project lead", order=0, claim_status="verified")
+        self.sign_in(owner)
+        self.page.goto(self.url("projects:edit", project.slug) + "?tab=description")
+        self.page.click("textarea[name=readme]")
+        self.page.keyboard.press("End")
+        self.page.set_input_files("[data-readme-image-input]", {"name": "wiring.png", "mimeType": "image/png", "buffer": _png((10, 60, 90), (800, 400))})
+        self.page.wait_for_function("() => document.querySelector('textarea[name=readme]').value.includes('![](')")
+        img = ProjectImage.objects.get(project=project, kind="readme")
+
+        # Caption typed on the tile rewrites the brackets in the README.
+        self.page.click("button[data-form-tab=images]")
+        cap = self.page.locator(f"[data-readme-tiles] [data-id='{img.pk}'] [data-tile-caption]")
+        cap.fill("Wiring for the pressure sensor")
+        with self.page.expect_response(lambda r: "/caption/" in r.url):
+            cap.press("Enter")
+        self.page.wait_for_function(
+            "url => document.querySelector('textarea[name=readme]').value.includes('![Wiring for the pressure sensor](' + url + ')')",
+            arg=img.image.url,
+        )
+
+        # Brackets edited in the README update the tile after the autosave.
+        # The caption rewrite left the form dirty, so the tab switch saves
+        # first; wait for that, then for the save carrying the new text.
+        def edit_post(text):
+            return lambda r: r.request.method == "POST" and "/edit/" in r.url and text in (r.request.post_data or "")
+        with self.page.expect_response(edit_post("Wiring for the pressure sensor")):
+            self.page.click("button[data-form-tab=description]")
+        readme = self.page.input_value("textarea[name=readme]").replace("Wiring for the pressure sensor", "Sensor wiring, rev B")
+        self.page.fill("textarea[name=readme]", readme)
+        with self.page.expect_response(edit_post("Sensor wiring, rev B")):
+            self.save_and_continue("description")
+        img.refresh_from_db()
+        self.assertEqual(img.caption, "Sensor wiring, rev B")
+
+        # Removing the line marks the image unused; Insert puts it back.
+        self.page.click("button[data-form-tab=description]")
+        self.page.fill("textarea[name=readme]", "# Journey Captions\n")
+        self.page.click("button[data-form-tab=images]")
+        tile = f"[data-readme-tiles] [data-id='{img.pk}']"
+        self.page.wait_for_selector(f"{tile} [data-not-used]:not([hidden])")
+        self.page.click(f"{tile} [data-tile-insert]")
+        self.assertEqual(self.page.input_value("textarea[name=readme]"), f"# Journey Captions\n![Sensor wiring, rev B]({img.image.url})\n")
+        self.assertTrue(self.page.locator(f"{tile} [data-not-used]").is_hidden())
         self.assertNoBrowserErrors()
