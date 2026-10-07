@@ -1089,6 +1089,54 @@ def project_edit(request, slug: str):
     )
 
 
+def _new_version_stalled(project, deposit) -> bool:
+    """A new version that failed partway: the deposit is off its last
+    published version and no job is working on it."""
+    return (
+        deposit.state in (ProjectDeposit.STATE_DRAFT, ProjectDeposit.STATE_ERROR)
+        and deposit.versions.exists()
+        and zenodo_jobs.pending_job(project) is None
+    )
+
+
+@login_required
+def project_zenodo_new_version_discard(request, slug: str):
+    """Drop the unpublished next version and go back to the last published
+    one. Nothing is sent to Zenodo: a draft it still holds open is handed
+    back, emptied, by the next new version."""
+    project = get_object_or_404(Project, slug=slug)
+    if not project.publishable_by(request.user):
+        raise Http404
+    if request.method != "POST":
+        return redirect("projects:zenodo_new_version", slug=project.slug)
+    deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
+    latest = deposit.latest_version if deposit else None
+    if latest is None:
+        raise Http404
+    if zenodo_jobs.pending_job(project) is not None:
+        messages.error(request, "The new version is being published. Wait for it to finish.")
+        return redirect(project.get_absolute_url())
+    for attachment in project.attachments.filter(published_to_zenodo=False):
+        attachment.file.delete(save=False)
+        attachment.delete()
+    deposit.deposition_id = latest.deposition_id
+    deposit.record_id = latest.record_id
+    deposit.doi = latest.doi
+    deposit.bucket_url = ""
+    deposit.state = ProjectDeposit.STATE_PUBLISHED
+    deposit.published_at = latest.published_at
+    deposit.last_response = latest.last_response
+    deposit.last_error = ""
+    deposit.pending_changelog = ""
+    deposit.repo_link = ""
+    deposit.save()
+    project.zenodo_jobs.filter(kind=ZenodoJob.KIND_NEW_VERSION, status=ZenodoJob.STATUS_FAILED).update(
+        status=ZenodoJob.STATUS_CANCELLED
+    )
+    messages.success(request, "Draft version discarded.")
+    return redirect(project.get_absolute_url())
+
+
 @login_required
 def project_zenodo_new_version(request, slug: str):
     """Start a new Zenodo version. Supports save-as-draft and publish.
@@ -1116,7 +1164,9 @@ def project_zenodo_new_version(request, slug: str):
         )
         return redirect(project.get_absolute_url())
     deposit = project.deposits.filter(provider=ProjectDeposit.PROVIDER_ZENODO).first()
-    if deposit is None or deposit.state != ProjectDeposit.STATE_PUBLISHED:
+    if deposit is None or not (
+        deposit.state == ProjectDeposit.STATE_PUBLISHED or _new_version_stalled(project, deposit)
+    ):
         messages.error(
             request,
             "Publish the project before starting a new version.",
@@ -1210,6 +1260,7 @@ def project_zenodo_new_version(request, slug: str):
             "zenodo_deposit": deposit,
             "zenodo_mode_label": zenodo_mode_label(),
             "pending_attachment": pending_attachment,
+            "can_discard": _new_version_stalled(project, deposit) or bool(pending_attachment or deposit.pending_changelog),
             "lineage_links": list(
                 project.lineage_parents.exclude(
                     status=LineageEdge.STATUS_WITHDRAWN

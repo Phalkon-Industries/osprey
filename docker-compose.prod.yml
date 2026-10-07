@@ -29,6 +29,10 @@ services:
       args:
         INSTALL_PLAYWRIGHT: "0"
     command: python manage.py notifier_loop
+    # The Zenodo queue runs here and uploads archives the web container
+    # saved, so both need the same media volume.
+    volumes:
+      - /srv/osprey-prod/media:/app/media
     env_file:
       - /etc/osprey/.env.prod
     restart: unless-stopped

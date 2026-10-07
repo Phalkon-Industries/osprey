@@ -43,6 +43,11 @@ urlpatterns = [
         name="zenodo_new_version",
     ),
     path(
+        "<slug:slug>/zenodo/new-version/discard/",
+        views.project_zenodo_new_version_discard,
+        name="zenodo_new_version_discard",
+    ),
+    path(
         "<slug:slug>/zenodo/refresh/",
         views.zenodo_refresh,
         name="zenodo_refresh",

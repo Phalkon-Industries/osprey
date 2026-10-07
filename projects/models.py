@@ -611,11 +611,13 @@ class ZenodoJob(models.Model):
     STATUS_RUNNING = "running"
     STATUS_DONE = "done"
     STATUS_FAILED = "failed"
+    STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (STATUS_QUEUED, "Queued"),
         (STATUS_RUNNING, "Running"),
         (STATUS_DONE, "Done"),
         (STATUS_FAILED, "Failed"),
+        (STATUS_CANCELLED, "Cancelled"),
     ]
     PENDING_STATUSES = (STATUS_QUEUED, STATUS_RUNNING)
 

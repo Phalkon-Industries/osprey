@@ -22,6 +22,7 @@
         {% csrf_token %}
         <button type="submit" class="ghost small">Try again</button>
     </form>
+    {% if zenodo_job.kind == "new_version" %}<a class="small" href="{% url 'projects:zenodo_new_version' project.slug %}">Edit or discard</a>{% endif %}
 </div>
 {% endif %}
 {% elif zenodo_sync_pending %}

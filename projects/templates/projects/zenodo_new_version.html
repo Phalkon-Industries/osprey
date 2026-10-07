@@ -30,6 +30,13 @@
         <br><span class="muted small">Edit the changelog and click Publish to push this draft to {{ zenodo_mode_label }}.</span>
     </div>
     {% endif %}
+    {% if can_discard %}
+    <form method="post" action="{% url 'projects:zenodo_new_version_discard' project.slug %}"
+        onsubmit="return window.confirm('Discard this draft version? Its archive and changelog are deleted.');">
+        {% csrf_token %}
+        <button type="submit" class="ghost small">Discard draft version</button>
+    </form>
+    {% endif %}
 
     <form method="post" enctype="multipart/form-data" novalidate data-new-version-form data-autosave>
         {% csrf_token %}

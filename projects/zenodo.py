@@ -25,6 +25,10 @@ class ZenodoError(RuntimeError):
     """Raised when the Zenodo API rejects a request or config is missing."""
 
 
+class ArchiveMissing(ZenodoError):
+    """An attachment's file isn't in OSPREY's storage. Retrying can't help."""
+
+
 class LicenseNotSendable(ZenodoError):
     """The project's license has no Zenodo id. Zenodo applies CC BY 4.0 to
     an open record sent without one, so OSPREY sends nothing at all."""
@@ -548,8 +552,11 @@ def _upload_project_attachments(client, deposit, project) -> None:
     )
     for att in attachments:
         filename = att.filename or att.file.name.rsplit("/", 1)[-1]
-        size = att.size_bytes or att.file.size
-        att.file.open("rb")
+        try:
+            size = att.size_bytes or att.file.size
+            att.file.open("rb")
+        except FileNotFoundError as exc:
+            raise ArchiveMissing(f"The archive {filename} is missing from OSPREY's storage. Upload it again.") from exc
         try:
             client.stream_to_bucket(
                 deposit.bucket_url,

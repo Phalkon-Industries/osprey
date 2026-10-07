@@ -16,6 +16,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -584,3 +585,99 @@ class LostResponseTests(ZenodoJobBase):
         self.assertEqual(versions[1].changelog, "Second spin.")
         self.assertEqual(versions[1].doi, deposit.doi)
         self.assertEqual(Notification.objects.filter(user=self.owner, kind="deposit_published").count(), 2)
+
+
+class MissingArchiveTests(ZenodoJobBase):
+    def test_missing_archive_fails_at_once_with_a_clear_error(self):
+        import os
+
+        os.remove(self.project.attachments.first().file.path)
+        job = zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ZenodoJob.STATUS_FAILED)
+        self.assertEqual(job.attempts, 1)
+        self.assertIn("archive", job.last_error.lower())
+
+
+class FailedNewVersionRecoveryTests(ZenodoJobBase):
+    # A new version that failed for good must leave the owner a way out:
+    # publish again with a new archive, or discard it and go back to the
+    # last published version.
+    def setUp(self):
+        super().setUp()
+        zenodo_jobs.enqueue_publish(self.project, self.owner)
+        self._run()
+        self.project.refresh_from_db()
+        payload = _zip()
+        ProjectAttachment.objects.create(project=self.project, file=ContentFile(payload, name="v2.zip"), filename="v2.zip", size_bytes=len(payload))
+        self.fz.add_rule(match="/api/files/", mode="status", status=400, times=1)
+        self.job = zenodo_jobs.enqueue_new_version(self.project, self.owner, changelog="Second spin.")
+        self._run()
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, ZenodoJob.STATUS_FAILED)
+        self.deposit = ProjectDeposit.objects.get(project=self.project)
+        self.v1 = self.deposit.latest_version
+        self.client.force_login(self.owner)
+        self.url = reverse("projects:zenodo_new_version", args=[self.project.slug])
+
+    def test_new_version_page_opens_after_a_failure(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "v2.zip")
+        self.assertContains(response, "Discard")
+
+    def test_publish_again_with_a_new_archive(self):
+        response = self.client.post(self.url, {
+            "action": "publish", "changelog": "Second spin, fixed.", "license_choice": "MIT",
+            "archive": SimpleUploadedFile("v2b.zip", _zip(), content_type="application/zip"),
+        })
+        self.assertEqual(response.status_code, 302)
+        self._run()
+        self.deposit.refresh_from_db()
+        self.assertEqual(self.deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        versions = list(ProjectDepositVersion.objects.filter(deposit=self.deposit).order_by("version_index"))
+        self.assertEqual([v.version_index for v in versions], [1, 2])
+        self.assertEqual(versions[1].changelog, "Second spin, fixed.")
+        self.assertEqual(len(self.fz.depositions), 2)  # the open Zenodo draft was reused
+        files = [f["filename"] for f in self.fz.deposition(self.deposit.deposition_id).files]
+        self.assertIn("v2b.zip", files)
+        self.assertNotIn("v2.zip", files)
+
+    def test_discard_goes_back_to_the_last_published_version(self):
+        response = self.client.post(reverse("projects:zenodo_new_version_discard", args=[self.project.slug]))
+        self.assertEqual(response.status_code, 302)
+        self.deposit.refresh_from_db()
+        self.assertEqual(self.deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        self.assertEqual(self.deposit.deposition_id, self.v1.deposition_id)
+        self.assertEqual(self.deposit.doi, self.v1.doi)
+        self.assertEqual(self.deposit.pending_changelog, "")
+        self.assertFalse(self.project.attachments.filter(published_to_zenodo=False).exists())
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, ZenodoJob.STATUS_CANCELLED)
+        page = self.client.get(self.project.get_absolute_url())
+        self.assertNotContains(page, "could not be published")
+        # A fresh new version still works, reusing the draft Zenodo kept open.
+        self.client.post(self.url, {
+            "action": "publish", "changelog": "Third try.", "license_choice": "MIT",
+            "archive": SimpleUploadedFile("v2c.zip", _zip(), content_type="application/zip"),
+        })
+        self._run()
+        self.deposit.refresh_from_db()
+        self.assertEqual(self.deposit.state, ProjectDeposit.STATE_PUBLISHED)
+        self.assertEqual(ProjectDepositVersion.objects.filter(deposit=self.deposit).count(), 2)
+        self.assertEqual(len(self.fz.depositions), 2)
+
+    def test_discard_waits_for_a_running_job(self):
+        zenodo_jobs.retry(self.job)
+        self.client.post(reverse("projects:zenodo_new_version_discard", args=[self.project.slug]))
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, ZenodoJob.STATUS_QUEUED)
+        self.deposit.refresh_from_db()
+        self.assertNotEqual(self.deposit.state, ProjectDeposit.STATE_PUBLISHED)
+
+    def test_only_the_owner_can_discard(self):
+        other = get_user_model().objects.create_user(username="someone-else")
+        self.client.force_login(other)
+        response = self.client.post(reverse("projects:zenodo_new_version_discard", args=[self.project.slug]))
+        self.assertEqual(response.status_code, 404)
